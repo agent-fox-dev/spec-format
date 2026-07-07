@@ -1,4 +1,18 @@
-# Spec Format Overview
+# Spec Format
+
+## Why a spec format?
+
+Natural-language requirements are ambiguous, untestable, and drift from
+implementation. The spec format solves this by defining a structured,
+machine-readable package that turns design intent into verifiable contracts.
+Every requirement maps to a test, every test maps to a task — nothing is
+specified without verification and nothing is built without a requirement.
+
+The format is the foundation of the [Agent Fox](https://github.com/agent-fox-dev/agent-fox)
+toolchain: it is what the `spec` CLI produces, what the libraries validate, and
+what AI agents consume to generate and verify code.
+
+## Overview
 
 A specification package ("spec") is the durable artifact that captures design
 intent, acceptance criteria, verification contracts, and implementation plans
@@ -36,16 +50,18 @@ formats, validation rules, subtask state machine, and rendering — is at
 
 ## Implementation
 
-The spec format is implemented by three Python packages in the `agent-fox`
-monorepo (under `packages/`):
+The spec format is implemented by three Python packages in the
+[`agent-fox`](https://github.com/agent-fox-dev/agent-fox) monorepo (under
+`packages/`):
 
-- **afspec** — standalone library for loading, validating, rendering, and
-  mutating spec packages. No AI dependencies. The harness itself depends on
-  this package at execution time.
-- **agentspec** — AI-powered spec creation. Drives PRD assessment, refinement,
-  and artifact generation using Claude models. Depends on afspec.
-- **spec CLI** — command-line wrapper around agentspec for working with specs
-  locally, without the hub.
+- **[afspec](https://github.com/agent-fox-dev/agent-fox/tree/main/packages/afspec)** —
+  standalone library for loading, validating, rendering, and mutating spec
+  packages. No AI dependencies.
+- **[agentspec](https://github.com/agent-fox-dev/agent-fox/tree/main/packages/agentspec)** —
+  AI-powered spec creation. Drives PRD assessment, refinement, and artifact
+  generation using Claude models. Depends on afspec.
+- **[spec CLI](https://github.com/agent-fox-dev/agent-fox/tree/main/packages/spec_cli)** —
+  command-line wrapper around agentspec for working with specs locally.
 
 ## Creating a Spec Package
 
