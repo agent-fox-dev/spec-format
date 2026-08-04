@@ -10,11 +10,11 @@ session — not as a follow-up task.
 
 | What changed | Update |
 |---|---|
-| spec-format.md has changed | `docs/spec-format.md` |
 | CLI commands, subcommands, or flags added/changed/removed | `docs/cli.md` |
-| Config keys or env vars added/changed | `docs/configuration.md` |
-| Architecture, package layout, or data flow changed | `docs/architecture.md` and/or relevant ADR |
 | Setup, quickstart, or project overview changed | `README.md` |
+| package afspec | `packages/afspec/README.md` |
+| package agentspec | `packages/agentspec/README.md` |
+| package spec | `packages/spec/README.md` |
 
 **Instructions:**
 

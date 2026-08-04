@@ -9,21 +9,4 @@ This repository contains the following packages, managed as a
 | **[agentspec](agentspec/)** | AI-powered spec creation library. Drives PRD assessment, refinement, and artifact generation via Claude. | `uv pip install -e packages/agentspec` |
 | **[spec](spec/)** | CLI for AI-powered spec creation. Provides the `spec` command. Agent-friendly JSON output. | `uv pip install -e packages/spec` |
 
-## Dependency graph
-
-```
-spec ──▶ agentspec ──▶ afspec
-  │                      ▲
-  └──────────────────────┘
-```
-
-`afspec` has no internal dependencies and can be used independently.
-
-## Development
-
-From the repo root:
-
-```bash
-uv sync          # install all packages in editable mode
-make check       # lint + test everything
-```
+TBD
