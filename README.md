@@ -86,7 +86,7 @@ with three packages:
 
 | Package | Description |
 |---------|-------------|
-| `packages/afspec/` | Standalone library for the spec format (v1.3.3) |
+| `packages/afspec/` | Standalone library for the spec format (v1.3.4) |
 | `packages/agentspec/` | AI-powered spec creation library |
 | `packages/spec/` | CLI for AI-powered spec creation (`spec` command) |
 
@@ -115,8 +115,8 @@ uv run spec <command>
 package directly from git:
 
 ```bash
-pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.3#subdirectory=packages/afspec"
-pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.3#subdirectory=packages/agentspec"
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/afspec"
+pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/agentspec"
 ```
 
 - **afspec** — load, validate, mutate, and render specs. See
