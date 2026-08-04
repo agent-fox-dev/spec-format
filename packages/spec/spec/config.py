@@ -1,7 +1,7 @@
 """Minimal configuration loader for the spec CLI.
 
-Reads [theme] from .agent-fox/config.toml (local) or
-~/.agent-fox/config.toml (global) and returns a ThemeConfig.
+Reads [theme] from .spec/config.toml (local) or
+~/.spec/config.toml (global) and returns a ThemeConfig.
 """
 
 from __future__ import annotations
@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 def load_theme_config() -> ThemeConfig:
     """Load theme configuration from TOML config files.
 
-    Checks local (.agent-fox/config.toml) then global
-    (~/.agent-fox/config.toml). Returns defaults if neither exists.
+    Checks local (.spec/config.toml) then global
+    (~/.spec/config.toml). Returns defaults if neither exists.
     """
     candidates = [
-        Path.cwd() / ".agent-fox" / "config.toml",
-        Path.home() / ".agent-fox" / "config.toml",
+        Path.cwd() / ".spec" / "config.toml",
+        Path.home() / ".spec" / "config.toml",
     ]
 
     for path in candidates:

@@ -6,9 +6,7 @@ sent to the Anthropic messages API.
 
 Prompt content is loaded from markdown template files under
 ``_templates/prompts/``, with project-level overrides in
-``.agent-fox/prompts/`` taking precedence.
-
-Requirements: 03-REQ-4.1, 03-REQ-4.2, 03-REQ-4.3, 03-REQ-4.E1
+``.spec/prompts/`` taking precedence.
 """
 
 from __future__ import annotations

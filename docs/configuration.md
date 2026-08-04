@@ -119,14 +119,14 @@ If multiple provider environment variables are set, the first match wins:
 
 ## Configuration Files
 
-### TOML config (current)
+### TOML config
 
 The tool reads TOML configuration from two locations, checked in order:
 
 | Location | Scope |
 |----------|-------|
-| `.agent-fox/config.toml` (relative to working directory) | Project-local |
-| `~/.agent-fox/config.toml` | Global (user-wide) |
+| `.spec/config.toml` (relative to working directory) | Project-local |
+| `~/.spec/config.toml` | Global (user-wide) |
 
 The first file found is used. Project-local settings take precedence over
 global settings.
@@ -158,7 +158,7 @@ controls CLI banner and display settings and is unrelated to the LLM provider.
 
 ## Configuration Precedence
 
-Model resolution follows a strict 4-step precedence chain. The first source
+Model resolution follows a strict 3-step precedence chain. The first source
 that provides a value wins:
 
 1. **`AF_SPEC_MODEL` environment variable** -- highest priority. If set, file-based
@@ -166,13 +166,10 @@ that provides a value wins:
    applied if available).
 
 2. **Explicit `[spec_tool]` section in TOML config** -- if the section exists in
-   `.agent-fox/config.toml` or `~/.agent-fox/config.toml`, its values are used
+   `.spec/config.toml` or `~/.spec/config.toml`, its values are used
    with no further fallback.
 
-3. **Legacy `~/.af/settings.yaml`** -- checked only when no TOML config provides
-   a value. Prints a deprecation warning to stderr.
-
-4. **Hardcoded default** -- `model = "STANDARD"`, which resolves to
+3. **Hardcoded default** -- `model = "STANDARD"`, which resolves to
    `claude-sonnet-4-6`.
 
 ## Environment Variables
@@ -185,35 +182,3 @@ that provides a value wins:
 | `CLAUDE_CODE_USE_BEDROCK` | Set to `1` to route requests through AWS Bedrock |
 | `AF_AGENT` | Set to `1` for agent mode (suppresses banner, routes errors to JSON on stdout) |
 
-## Legacy Configuration
-
-Earlier versions used `~/.af/settings.yaml` for configuration. This file is
-still read as a fallback, but it is deprecated. If the tool finds settings in
-this file, it prints a warning:
-
-```
-Deprecation warning: ~/.af/settings.yaml is no longer the preferred config
-location. Migrate your [spec_tool] settings to $HOME/.agent-fox/config.toml.
-```
-
-To migrate, move your `spec_tool` settings from the YAML format:
-
-```yaml
-# ~/.af/settings.yaml (deprecated)
-spec_tool:
-  model: ADVANCED
-  vertex_project: my-gcp-project
-  vertex_region: us-east5
-```
-
-to the equivalent TOML format:
-
-```toml
-# ~/.agent-fox/config.toml
-[spec_tool]
-model = "ADVANCED"
-vertex_project = "my-gcp-project"
-vertex_region = "us-east5"
-```
-
-After migrating, you can safely delete `~/.af/settings.yaml`.

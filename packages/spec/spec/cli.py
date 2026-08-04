@@ -25,7 +25,7 @@ from agentspec.errors import AgentError
 from agentspec.session import SessionState, SpecSession
 
 _SPEC_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-_DEFAULT_SPEC_DIR = ".agent-fox/specs"
+_DEFAULT_SPEC_DIR = ".spec/specs"
 
 
 class _SpecGroup(SpecGroup):

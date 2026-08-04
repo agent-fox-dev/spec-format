@@ -12,33 +12,33 @@ from hypothesis import strategies as st
 class TestConfigLoading:
     """Tests for load_config and AgentSpecConfig."""
 
-    def test_load_from_yaml(
+    def test_load_from_toml(
         self,
         clean_env: None,
         mock_home: Path,
-        settings_yaml: Path,
+        config_toml: Path,
     ) -> None:
-        """Config loads from settings.yaml."""
-        settings_yaml.write_text("spec_tool:\n  model: claude-opus-4-6\n")
+        """Config loads from .spec/config.toml."""
+        config_toml.write_text('[spec_tool]\nmodel = "claude-opus-4-6"\n')
         from agentspec.config import load_config
 
         config = load_config()
         assert config.model == "claude-opus-4-6"
 
-    def test_env_overrides_yaml(
+    def test_env_overrides_toml(
         self,
         clean_env: None,
         mock_home: Path,
-        settings_yaml: Path,
+        config_toml: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Environment variables override settings.yaml values."""
-        settings_yaml.write_text("spec_tool:\n  model: claude-opus-4-6\n")
-        monkeypatch.setenv("AF_SPEC_MODEL", "claude-haiku-4-5-20251001")
+        """Environment variables override config file values."""
+        config_toml.write_text('[spec_tool]\nmodel = "claude-opus-4-6"\n')
+        monkeypatch.setenv("AF_SPEC_MODEL", "claude-haiku-4-5")
         from agentspec.config import load_config
 
         config = load_config()
-        assert config.model == "claude-haiku-4-5-20251001"
+        assert config.model == "claude-haiku-4-5"
 
     def test_config_fields(self) -> None:
         """AgentSpecConfig has required fields."""
@@ -51,40 +51,107 @@ class TestConfigLoading:
         self,
         clean_env: None,
         mock_home: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Default config values when no config file or env vars."""
+        monkeypatch.setattr(Path, "cwd", lambda: mock_home)
         from agentspec.config import load_config
 
         config = load_config()
         assert config.model == "STANDARD"
 
+    def test_all_spec_tool_fields(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """All [spec_tool] fields are loaded."""
+        config_toml.write_text(
+            '[spec_tool]\n'
+            'model = "ADVANCED"\n'
+            'auth_method = "vertex"\n'
+            'vertex_project = "my-project"\n'
+            'vertex_region = "us-east5"\n'
+        )
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.model == "ADVANCED"
+        assert config.auth_method == "vertex"
+        assert config.vertex_project == "my-project"
+        assert config.vertex_region == "us-east5"
+
+    def test_global_config_fallback(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Falls back to ~/.spec/config.toml when no local config."""
+        monkeypatch.setattr(Path, "cwd", lambda: mock_home / "no-local")
+        global_dir = mock_home / ".spec"
+        global_dir.mkdir()
+        (global_dir / "config.toml").write_text('[spec_tool]\nmodel = "SIMPLE"\n')
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.model == "SIMPLE"
+
+    def test_local_takes_precedence_over_global(
+        self,
+        clean_env: None,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Local .spec/config.toml wins over ~/.spec/config.toml."""
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: home_dir)
+        monkeypatch.setattr(Path, "cwd", lambda: project_dir)
+
+        local_dir = project_dir / ".spec"
+        local_dir.mkdir()
+        (local_dir / "config.toml").write_text('[spec_tool]\nmodel = "local-model"\n')
+
+        global_dir = home_dir / ".spec"
+        global_dir.mkdir()
+        (global_dir / "config.toml").write_text('[spec_tool]\nmodel = "global-model"\n')
+
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.model == "local-model"
+
 
 class TestConfigEdgeCases:
     """Edge case tests for configuration loading."""
 
-    def test_invalid_yaml(
+    def test_invalid_toml(
         self,
         clean_env: None,
         mock_home: Path,
-        settings_yaml: Path,
+        config_toml: Path,
     ) -> None:
-        """Invalid YAML raises ConfigError with file path."""
-        settings_yaml.write_text(":::bad yaml")
+        """Invalid TOML raises ConfigError with file path."""
+        config_toml.write_text(":::bad toml")
         from agentspec.config import load_config
         from agentspec.errors import ConfigError
 
         with pytest.raises(ConfigError) as exc_info:
             load_config()
-        assert str(settings_yaml) in str(exc_info.value)
+        assert str(config_toml) in str(exc_info.value)
 
     def test_missing_section(
         self,
         clean_env: None,
         mock_home: Path,
-        settings_yaml: Path,
+        config_toml: Path,
     ) -> None:
         """Missing spec_tool section uses defaults."""
-        settings_yaml.write_text("other_tool:\n  key: value\n")
+        config_toml.write_text("[other_tool]\nkey = 'value'\n")
         from agentspec.config import load_config
 
         config = load_config()
@@ -94,11 +161,11 @@ class TestConfigEdgeCases:
         self,
         clean_env: None,
         mock_home: Path,
-        settings_yaml: Path,
+        config_toml: Path,
     ) -> None:
         """Unknown keys in spec_tool are silently ignored."""
-        settings_yaml.write_text(
-            "spec_tool:\n  unknown_key: value\n  model: test-model\n"
+        config_toml.write_text(
+            '[spec_tool]\nunknown_key = "value"\nmodel = "test-model"\n'
         )
         from agentspec.config import load_config
 
@@ -116,17 +183,17 @@ class TestConfigProperties:
             alphabet=st.characters(categories=("L", "N")),
         ),
     )
-    def test_env_always_overrides_yaml(
+    def test_env_always_overrides_toml(
         self,
         env_model: str,
         clean_env: None,
         mock_home: Path,
-        settings_yaml: Path,
+        config_toml: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Env vars always override YAML values."""
+        """Env vars always override config file values."""
         monkeypatch.setenv("AF_SPEC_MODEL", env_model)
-        settings_yaml.write_text("spec_tool:\n  model: different-value\n")
+        config_toml.write_text('[spec_tool]\nmodel = "different-value"\n')
         from agentspec.config import load_config
 
         config = load_config()
@@ -139,8 +206,10 @@ class TestConfigProperties:
         iteration: int,
         clean_env: None,
         mock_home: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Defaults are consistent across invocations."""
+        monkeypatch.setattr(Path, "cwd", lambda: mock_home)
         from agentspec.config import load_config
 
         config = load_config()
@@ -154,11 +223,11 @@ class TestConfigSmoke:
         self,
         clean_env: None,
         mock_home: Path,
-        settings_yaml: Path,
+        config_toml: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Full config load from YAML + env var override."""
-        settings_yaml.write_text("spec_tool:\n  model: yaml-model\n")
+        """Full config load from TOML + env var override."""
+        config_toml.write_text('[spec_tool]\nmodel = "toml-model"\n')
         monkeypatch.setenv("AF_SPEC_MODEL", "env-model")
         from agentspec.config import load_config
 

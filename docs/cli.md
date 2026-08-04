@@ -6,7 +6,7 @@ The `spec` command is the CLI entry point for AI-powered spec creation. It manag
 
 | Option | Description |
 |--------|-------------|
-| `-d, --spec-dir PATH` | Spec directory (default: `.agent-fox/specs`) |
+| `-d, --spec-dir PATH` | Spec directory (default: `.spec/specs`) |
 | `-q, --quiet` | Suppress progress output |
 | `--version` | Show the version and exit |
 | `--help` | Show help and exit |

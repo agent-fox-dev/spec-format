@@ -50,7 +50,7 @@ from pathlib import Path
 from afspec import load_spec, validate, discover_specs, Status
 
 # Load a single spec
-spec = load_spec(Path(".agent-fox/specs/01_foundation"))
+spec = load_spec(Path(".spec/specs/01_foundation"))
 print(spec.prd.frontmatter.title)  # "Foundation"
 print(spec.prd.frontmatter.status)  # Status.DRAFT
 print(len(spec.requirements.requirements))  # number of requirements
@@ -63,7 +63,7 @@ if result.errors:
         print(f"{err.file}:{err.path} — {err.message}")
 
 # Discover all specs in a directory
-metas = discover_specs(Path(".agent-fox/specs"))
+metas = discover_specs(Path(".spec/specs"))
 for meta in metas:
     print(f"{meta.spec_id}: {meta.spec_name} ({meta.status})")
 ```
