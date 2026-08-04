@@ -69,21 +69,16 @@ No additional libraries or configuration are needed.
 
 ### Google Vertex AI
 
+The Vertex AI SDK dependencies are included with `agentspec` automatically.
 To use Claude through Google Cloud Vertex AI:
 
-1. Install the Vertex AI dependencies:
-
-   ```sh
-   pip install 'anthropic[vertex]'
-   ```
-
-2. Set the environment variable to enable Vertex:
+1. Set the environment variable to enable Vertex:
 
    ```sh
    export CLAUDE_CODE_USE_VERTEX=1
    ```
 
-3. Configure your Google Cloud project and region in your TOML config file:
+2. Configure your Google Cloud project and region in your TOML config file:
 
    ```toml
    [spec_tool]
@@ -91,7 +86,7 @@ To use Claude through Google Cloud Vertex AI:
    vertex_region = "us-east5"
    ```
 
-4. Authenticate with Google Cloud using Application Default Credentials
+3. Authenticate with Google Cloud using Application Default Credentials
    (e.g., `gcloud auth application-default login`).
 
 When Vertex AI is enabled, `ANTHROPIC_API_KEY` is not needed -- authentication
@@ -99,21 +94,16 @@ is handled through `google-auth`.
 
 ### AWS Bedrock
 
+The Bedrock SDK dependencies are included with `agentspec` automatically.
 To use Claude through AWS Bedrock:
 
-1. Install the Bedrock dependencies:
-
-   ```sh
-   pip install 'anthropic[bedrock]'
-   ```
-
-2. Set the environment variable to enable Bedrock:
+1. Set the environment variable to enable Bedrock:
 
    ```sh
    export CLAUDE_CODE_USE_BEDROCK=1
    ```
 
-3. Configure your AWS credentials using any standard method (environment
+2. Configure your AWS credentials using any standard method (environment
    variables, `~/.aws/credentials`, IAM role, etc.).
 
 When Bedrock is enabled, `ANTHROPIC_API_KEY` is not needed -- authentication
