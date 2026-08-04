@@ -115,7 +115,7 @@ class TestSmokeTests:
         prd_file.write_text("# Smoke Feature\nA description for smoke test.")
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
-            result = cli_runner.invoke(main, ["new", "smoke_feature"])
+            result = cli_runner.invoke(main, ["new", str(prd_file)])
 
         # Auto-init should have created .specs/ and campaign.yaml
         assert (isolated_dir / ".specs").is_dir(), (

@@ -36,7 +36,7 @@ class TestAutoInitHappyPaths:
         prd_file.write_text("# My Feature\nA feature description.")
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
-            result = cli_runner.invoke(main, ["new", "my_feature"])
+            result = cli_runner.invoke(main, ["new", str(prd_file)])
 
         assert (isolated_dir / ".specs").is_dir()
         campaign_yaml = isolated_dir / ".specs" / "campaign.yaml"
@@ -71,7 +71,7 @@ class TestAutoInitHappyPaths:
         prd_file.write_text("# My Feature\n")
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
-            result = cli_runner.invoke(main, ["new", "my_feature"])
+            result = cli_runner.invoke(main, ["new", str(prd_file)])
 
         # campaign.yaml should not be modified
         assert campaign_yaml.stat().st_mtime == original_mtime
@@ -101,7 +101,7 @@ class TestAutoInitHappyPaths:
         prd_file.write_text("# My Feature\n")
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
-            result = cli_runner.invoke(main, ["new", "my_feature"])
+            result = cli_runner.invoke(main, ["new", str(prd_file)])
 
         campaign_yaml = specs_dir / "campaign.yaml"
         assert campaign_yaml.exists()
@@ -138,7 +138,7 @@ class TestAutoInitLegacyIgnored:
         prd_file.write_text("# My Feature\n")
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
-            result = cli_runner.invoke(main, ["new", "my_feature"])
+            result = cli_runner.invoke(main, ["new", str(prd_file)])
 
         # .specs/ is created
         assert (isolated_dir / ".specs").is_dir()
@@ -173,7 +173,7 @@ class TestAutoInitErrorPaths:
 
         # Simulate permission error during auto-init directory creation.
         # The auto-init code must catch this and surface a clear message.
-        result = cli_runner.invoke(main, ["new", "my_feature"])
+        result = cli_runner.invoke(main, ["new", str(prd_file)])
 
         # The auto-init code path should have created .specs/. If it
         # didn't exist, the auto-init logic was not executed.
@@ -203,7 +203,7 @@ class TestAutoInitErrorPaths:
         # After the new implementation, spec new must write campaign.yaml
         # in the auto-init step. Verify that the auto-init step exists
         # by checking that campaign.yaml is created (or an error about it).
-        result = cli_runner.invoke(main, ["new", "my_feature"])
+        result = cli_runner.invoke(main, ["new", str(prd_file)])
 
         # If auto-init ran, .specs/campaign.yaml should exist
         campaign_yaml = isolated_dir / ".specs" / "campaign.yaml"
@@ -233,7 +233,7 @@ class TestAutoInitErrorPaths:
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
             result = cli_runner.invoke(
-                main, ["--spec-dir", str(custom_dir), "new", "my_feature"]
+                main, ["--spec-dir", str(custom_dir), "new", str(prd_file)]
             )
 
         assert custom_dir.is_dir()

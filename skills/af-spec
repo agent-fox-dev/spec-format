@@ -22,7 +22,7 @@ Follow the steps below **in order**. Do not skip steps.
 
 ## Project Steering Directives
 
-If `.agent-fox/steering.md` exists in the project root, read it and follow any
+If `.specs/steering.md` exists in the project root, read it and follow any
 directives it contains before proceeding. These project-level directives apply
 to all agents and skills working on this project.
 
@@ -214,10 +214,10 @@ the complete set of spec documents once all are written.
 Analyze the contents of the current working directory. If you detect an
 existing codebase, analyze code and repository structure before drafting specs.
 
-Look for existing specifications in `.agent-fox/specs/`. Specification folders use a
+Look for existing specifications in `.specs/`. Specification folders use a
 **numbered prefix** indicating creation sequence.
 
-Also check `.agent-fox/steering.md` for project-level directives so the
+Also check `.specs/steering.md` for project-level directives so the
 generated tasks fit the required execution workflow.
 
 ### Specification Folder Naming
@@ -384,7 +384,7 @@ to validation.
 
 If the spec involves complex design decisions, multiple modules, or non-trivial
 data flows, create an architecture document manually at
-`.agent-fox/specs/<spec_dir>/architecture.md`.
+`.specs/<spec_dir>/architecture.md`.
 
 Simple specs may omit this file.
 
@@ -493,21 +493,21 @@ When a new spec replaces an existing one:
 > This spec is retained for historical reference only.
 ```
 
-3. **Move** the old spec folder into `.agent-fox/specs/archive/`:
+3. **Move** the old spec folder into `.specs/archive/`:
 
 ```bash
-mkdir -p .agent-fox/specs/archive
-git mv .agent-fox/specs/09_bundled_templates .agent-fox/specs/archive/09_bundled_templates
+mkdir -p .specs/archive
+git mv .specs/09_bundled_templates .specs/archive/09_bundled_templates
 ```
 
 ---
 
 ## Output Directory
 
-All spec files live under `.agent-fox/specs/NN_specification_name/`:
+All spec files live under `.specs/NN_specification_name/`:
 
 ```
-.agent-fox/specs/NN_specification_name/
+.specs/NN_specification_name/
   prd.md              # PRD with YAML frontmatter (required)
   requirements.json   # EARS requirements as JSON (required)
   test_spec.json      # Test contracts as JSON (required)

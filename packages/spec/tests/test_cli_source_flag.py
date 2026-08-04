@@ -126,7 +126,7 @@ class TestSourceFlagPropagation:
         prd_file.write_text("# My Feature\n")
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
-            cli_runner.invoke(main, ["--source", str(src_dir), "new", "my_feature"])
+            cli_runner.invoke(main, ["--source", str(src_dir), "new", str(prd_file)])
 
         # Verify Campaign.new_spec was called with source=Path(src_dir)
         assert mock_campaign_new_spec.called
@@ -160,7 +160,7 @@ class TestSourceFlagPropagation:
         prd_file.write_text("# My Feature\n")
 
         with patch("agentspec.campaign.Campaign.open", mock_campaign_open):
-            cli_runner.invoke(main, ["new", "my_feature"])
+            cli_runner.invoke(main, ["new", str(prd_file)])
 
         # Verify Campaign.new_spec was called with source=Path(".")
         assert mock_campaign_new_spec.called, (

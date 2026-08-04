@@ -21,7 +21,7 @@ passed directly to `/af-spec <path>` or `spec new <path>`.
 
 ## Project Steering Directives
 
-If `.agent-fox/steering.md` exists in the project root, read it and follow any
+If `.specs/steering.md` exists in the project root, read it and follow any
 directives it contains before proceeding. These project-level directives apply
 to all agents and skills working on this project.
 
@@ -156,8 +156,8 @@ If you are working inside an existing codebase:
 
 1. Read `README.md` and any project documentation.
 2. Scan the project structure to understand existing components.
-3. Check `.agent-fox/steering.md` for project-level directives.
-4. Look at existing specs in `.agent-fox/specs/` to understand naming conventions,
+3. Check `.specs/steering.md` for project-level directives.
+4. Look at existing specs in `{{SPEC_ROOT}}/` to understand naming conventions,
    existing functionality, and potential overlaps or dependencies.
 
 Use this context to ask better questions and avoid proposing behaviors that
