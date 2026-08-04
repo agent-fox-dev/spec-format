@@ -851,75 +851,39 @@ def status_cmd(ctx: click.Context, spec: str) -> None:
 
 
 @main.command("campaign")
-@click.argument("action", type=click.Choice(["create", "open", "new-spec"]))
 @click.option(
-    "--path", "-p", type=click.Path(), default=".", help="Campaign directory path"
+    "--path",
+    "-p",
+    required=True,
+    type=click.Path(),
+    help="Campaign directory path",
 )
-@click.option("--name", "-n", default=None, help="Campaign or spec name")
+@click.option("--name", "-n", required=True, help="Campaign name")
 @click.option("--description", default="", help="Campaign description")
-@click.option(
-    "--prd",
-    type=click.Path(exists=True),
-    default=None,
-    help="PRD file path (for new-spec)",
-)
 @click.pass_context
 def campaign_cmd(
     ctx: click.Context,
-    action: str,
     path: str,
-    name: str | None,
+    name: str,
     description: str,
-    prd: str | None,
 ) -> None:
-    """Manage spec campaigns.
+    """Create a campaign at a non-default location.
 
-    Actions:
-
-    \b
-      create    Create a new campaign directory
-      open      Open an existing campaign and list its specs
-      new-spec  Add a new spec to a campaign
+    --path governs where the campaign is created; this is independent
+    of the global --spec-dir flag which governs spec resolution for
+    other commands.  The two flags do not interact.
     """
     from agentspec.campaign import Campaign
     from agentspec.errors import CampaignError
 
-    target = Path(path)
-
     try:
-        if action == "create":
-            if name is None:
-                raise click.ClickException("--name is required for 'create'")
-            camp = Campaign.create(target, name, description)
-            emit_ok(action="created", path=str(camp.path), name=camp.metadata.name)
-
-        elif action == "open":
-            camp = Campaign.open(target)
-            specs = [s.name for s in camp.specs()]
-            emit_ok(
-                action="opened",
-                name=camp.metadata.name,
-                description=camp.metadata.description,
-                specs=specs,
-            )
-
-        elif action == "new-spec":
-            if name is None:
-                raise click.ClickException("--name is required for 'new-spec'")
-            camp = Campaign.open(target)
-            prd_arg: str | Path = Path(prd) if prd else ""
-            if not prd_arg:
-                raise click.ClickException("--prd is required for 'new-spec'")
-            session = camp.new_spec(name, prd_arg)
-            emit_ok(
-                action="new-spec",
-                spec_dir=session._spec_dir.name,
-                state=session.state.value,
-            )
-
+        Campaign.create(path=Path(path), name=name, description=description)
     except CampaignError as exc:
-        emit({"ok": False, "error": str(exc)})
+        click.echo(str(exc), err=True)
         ctx.exit(1)
+        return
+
+    click.echo(f"Campaign '{name}' created at {path}", err=True)
 
 
 cli = main

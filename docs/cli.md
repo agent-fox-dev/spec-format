@@ -208,40 +208,23 @@ spec status 01_auth_redesign
 
 ### campaign
 
-Manage spec campaigns -- groups of related specs in a shared directory with a `campaign.yaml` manifest.
+Create a campaign at a non-default location. The `--path` flag governs where the campaign is created; this is independent of the global `--spec-dir` flag which governs spec resolution for other commands.
 
 ```
-spec campaign [OPTIONS] {create|open|new-spec}
+spec campaign [OPTIONS]
 ```
-
-**Actions:**
-
-| Action | Description |
-|--------|-------------|
-| `create` | Create a new campaign directory |
-| `open` | Open an existing campaign and list its specs |
-| `new-spec` | Add a new spec to a campaign |
-
-**Options:**
 
 | Option | Description |
 |--------|-------------|
-| `-p, --path PATH` | Campaign directory path |
-| `-n, --name TEXT` | Campaign or spec name |
-| `--description TEXT` | Campaign description |
-| `--prd PATH` | PRD file path (for `new-spec`) |
+| `-p, --path PATH` | Campaign directory path (required) |
+| `-n, --name TEXT` | Campaign name (required) |
+| `--description TEXT` | Campaign description (default: empty string) |
 
 **Example:**
 
 ```bash
-# Create a campaign
-spec campaign create -n "Q3 Auth Overhaul" --description "Auth system redesign" -p campaigns/q3-auth
-
-# List specs in a campaign
-spec campaign open -p campaigns/q3-auth
-
-# Add a spec to a campaign
-spec campaign new-spec -p campaigns/q3-auth -n session-tokens --prd docs/session-tokens.md
+spec campaign --path campaigns/q3-auth --name "Q3 Auth Overhaul" --description "Auth system redesign"
+spec campaign -p campaigns/q3-auth -n "Q3 Auth Overhaul"
 ```
 
 ## Exit Codes

@@ -39,7 +39,7 @@ spec list
 | `spec lint [--all]` | Lint all spec packs for validation errors |
 | `spec render SPEC [--combined] [--json]` | Render spec as markdown (or JSON with `--json`) |
 | `spec status SPEC` | Query session state (read-only) |
-| `spec campaign create\|open\|new-spec` | Manage spec campaigns |
+| `spec campaign --path P --name N [--description D]` | Create a campaign at a non-default location |
 
 ## Global Options
 
