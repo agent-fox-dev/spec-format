@@ -11,11 +11,7 @@ This monorepo contains the following packages, managed as a
 
 ## Dependency graph
 
-```
-spec ──▶ agentspec ──▶ afspec
-              │
-              └────────┘
-```
+TBD
 
 `afspec` has no internal dependencies and can be used independently.
 

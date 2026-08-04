@@ -21,3 +21,8 @@ build/
 
 # Claude
 .claude/worktrees/
+
+# own files
+stuff.md
+prompts.md
+hack/*

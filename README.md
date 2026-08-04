@@ -8,10 +8,6 @@ machine-readable package that turns design intent into verifiable contracts.
 Every requirement maps to a test, every test maps to a task — nothing is
 specified without verification and nothing is built without a requirement.
 
-The format is the foundation of the [Agent Fox](https://github.com/agent-fox-dev/agent-fox)
-toolchain: it is what the `spec` CLI produces, what the libraries validate, and
-what AI agents consume to generate and verify code.
-
 ## Overview
 
 A specification package ("spec") is the durable artifact that captures design
@@ -48,21 +44,6 @@ The full specification — field-level schemas, EARS pattern definitions, ID
 formats, validation rules, subtask state machine, and rendering — is at
 **[spec-format.md](spec-format.md)**.
 
-## Implementation
-
-The spec format is implemented by three Python packages in the
-[`agent-fox`](https://github.com/agent-fox-dev/agent-fox) monorepo (under
-`packages/`):
-
-- **[afspec](https://github.com/agent-fox-dev/agent-fox/tree/main/packages/afspec)** —
-  standalone library for loading, validating, rendering, and mutating spec
-  packages. No AI dependencies.
-- **[agentspec](https://github.com/agent-fox-dev/agent-fox/tree/main/packages/agentspec)** —
-  AI-powered spec creation. Drives PRD assessment, refinement, and artifact
-  generation using Claude models. Depends on afspec.
-- **[spec CLI](https://github.com/agent-fox-dev/agent-fox/tree/main/packages/spec_cli)** —
-  command-line wrapper around agentspec for working with specs locally.
-
 ## Creating a Spec Package
 
 The `spec` CLI creates a spec package from a PRD in three steps. Run all
@@ -88,3 +69,63 @@ spec validate 01_my_feature        # schema + cross-file integrity checks
 spec render 01_my_feature --combined   # render as a single markdown document
 spec status                        # show session state for all specs
 ```
+
+## Installation
+
+Install all three CLIs:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agent-fox-dev/spec-format/refs/heads/main/install.sh | sh
+```
+
+## Development
+
+The repository is a [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/)
+with five packages:
+
+| Package | Description |
+|---------|-------------|
+| `packages/afspec/` | Standalone library for the agent-fox specification format (v1.2) |
+| `packages/agentspec/` | AI-powered spec creation library |
+| `packages/spec/` | CLI for AI-powered spec creation (`spec` command) |
+
+
+```bash
+uv sync                      # install all packages in editable mode
+```
+
+| Command | What it does |
+|---------|-------------|
+| `make check` | Lint + all tests (use before committing) |
+| `make test` | All tests |
+| `make lint` | Check lint + formatting |
+| `make format` | Auto-format code |
+
+Changes are immediately reflected via editable install. To run the local
+version explicitly (rather than a globally installed release):
+
+```bash
+uv run af <command>
+```
+
+## Using packages as standalone libraries
+
+`agentspec`, and `afspec` are designed for reuse outside the CLI tools.
+Install any package directly from git:
+
+```bash
+pip install "agentspec @ git+https://github.com/agent-fox-dev/agent-fox.git@v4.2.0#subdirectory=packages/agentfox"
+pip install "afspec @ git+https://github.com/agent-fox-dev/agent-fox.git@v4.2.0#subdirectory=packages/afspec"
+```
+
+- **agentspec** — core library: TBD
+- **afspec** — load, validate, mutate, and render spec packs. See
+  [`packages/afspec/README.md`](packages/afspec/README.md) for the full API
+  reference.
+
+## Documentation
+
+Full documentation lives in [`docs/`](docs/README.md):
+
+- [CLI Reference](docs/cli-reference.md) — all commands, flags, and exit codes
+TBD
