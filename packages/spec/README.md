@@ -14,21 +14,25 @@ pip install "spec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#
 ## Quick Start
 
 ```bash
-# 1. Create a spec from a PRD
-spec new docs/my-feature.md --name my-feature
+# 1. Create a new spec (auto-initialises .specs/ if needed)
+spec new my_feature --prd docs/my-feature.md
 
 # 2. Refine the PRD through iterative AI review
 spec refine 01_my_feature
 
 # 3. Generate JSON artifacts (requirements, tests, tasks)
 spec generate 01_my_feature
+
+# List all specs and their states
+spec list
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `spec new PRD_FILE [--name TEXT]` | Create a new spec from a PRD file |
+| `spec new SPEC_NAME [--prd PATH]` | Create a new spec (auto-initialises campaign) |
+| `spec list` | List all specs with session states (JSON output) |
 | `spec refine SPEC [--answers TEXT] [--force]` | Assess PRD, submit answers, refine iteratively |
 | `spec generate SPEC [--force]` | Generate JSON artifacts from accepted PRD |
 | `spec validate [SPEC] [--cross]` | Run schema and cross-file validation checks |
@@ -41,7 +45,7 @@ spec generate 01_my_feature
 
 | Option | Description |
 |--------|-------------|
-| `-d, --spec-dir PATH` | Override spec directory (default: `.spec/specs`) |
+| `-d, --spec-dir PATH` | Override spec directory (default: `.specs`) |
 | `-q, --quiet` | Suppress progress output on stderr |
 | `--version` | Show version and exit |
 
@@ -51,6 +55,7 @@ spec generate 01_my_feature
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | API key for Anthropic (required for `new`, `refine`, `generate`) |
 | `AF_SPEC_MODEL` | Override the default model used for AI calls |
+| `SPEC_DIR` | Override the default spec root directory (`.specs`). `--spec-dir` flag takes precedence. |
 
 ## Requirements
 

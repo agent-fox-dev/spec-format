@@ -6,7 +6,7 @@ The `spec` command is the CLI entry point for AI-powered spec creation. It manag
 
 | Option | Description |
 |--------|-------------|
-| `-d, --spec-dir PATH` | Spec directory (default: `.spec/specs`) |
+| `-d, --spec-dir PATH` | Spec directory (default: `.specs`). Can also be set via `SPEC_DIR` env var; CLI flag takes precedence. |
 | `-q, --quiet` | Suppress progress output |
 | `--version` | Show the version and exit |
 | `--help` | Show help and exit |
@@ -19,21 +19,52 @@ spec [OPTIONS] [COMMAND] [ARGS]...
 
 ### new
 
-Create a new spec from a PRD file. Initializes a numbered spec directory and copies the PRD into it.
+Create a new spec. Auto-initialises the spec root directory and a default campaign if they do not already exist, then delegates to Campaign.new_spec.
+
+When the spec root (`.specs/` by default) does not exist, it is created along with a `campaign.yaml` containing `name: default` and `description: default campaign`. If the directory exists but `campaign.yaml` is absent, only the YAML file is written. If both exist, auto-init is skipped (idempotent).
 
 ```
-spec new [OPTIONS] PRD_FILE
+spec new [OPTIONS] SPEC_NAME
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--name TEXT` | Spec name (default: derived from filename) |
+| `--prd PATH` | PRD file path (optional) |
 
 **Example:**
 
 ```bash
-spec new docs/my-feature.md
-spec new --name auth-redesign docs/auth-prd.md
+spec new my_feature
+spec new my_feature --prd docs/my-feature.md
+```
+
+### list
+
+List all specs in the spec root with their session states. Outputs a JSON object containing `spec_dir` and a `specs` array. Each entry has the directory name and the session state read from `_session.json` (or `"no_session"` if absent or malformed). Always exits with status 0.
+
+```
+spec list
+```
+
+No additional options.
+
+**Example:**
+
+```bash
+spec list
+spec --spec-dir /path/to/specs list
+```
+
+**Output format:**
+
+```json
+{
+  "spec_dir": ".specs",
+  "specs": [
+    {"name": "01_my_feature", "state": "generated"},
+    {"name": "02_auth_flow", "state": "assessing"}
+  ]
+}
 ```
 
 ### refine
@@ -225,3 +256,4 @@ spec campaign new-spec -p campaigns/q3-auth -n session-tokens --prd docs/session
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | **Required** for `new`, `refine`, and `generate` commands. Anthropic API key used to call Claude for PRD assessment, refinement, and artifact generation. |
 | `AF_SPEC_MODEL` | Override the default Claude model used for AI operations. |
+| `SPEC_DIR` | Override the default spec root directory (`.specs`). The `--spec-dir` CLI flag takes precedence over this env var. |

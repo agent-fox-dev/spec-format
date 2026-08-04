@@ -11,12 +11,10 @@ import asyncio
 import json
 import re
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import click
-import yaml
 from afspec.discovery import parse_spec_dir_name
 from agentspec.errors import AgentError
 from agentspec.session import SessionState, SpecSession
@@ -26,7 +24,7 @@ from spec.io import SpecGroup, StatusSpinner, emit, emit_ok
 from spec.ui import create_theme, render_banner
 
 _SPEC_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-_DEFAULT_SPEC_DIR = ".spec/specs"
+_DEFAULT_SPEC_DIR = ".specs"
 
 
 class _SpecGroup(SpecGroup):
@@ -42,7 +40,7 @@ class _SpecGroup(SpecGroup):
     """
 
     # Subcommands whose output is always JSON, even without ``--json``.
-    _JSON_SUBCOMMANDS = frozenset({"validate", "status"})
+    _JSON_SUBCOMMANDS = frozenset({"validate", "status", "list"})
 
     def invoke(self, ctx: click.Context) -> None:
         # Peek at unconsumed args.  ``_protected_args`` holds the
@@ -117,6 +115,36 @@ def _derive_spec_name(filename: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", stem.lower()).strip("_")
 
 
+def _ensure_default_campaign(spec_dir: Path) -> None:
+    """Auto-initialise a default campaign at *spec_dir* if needed.
+
+    * If *spec_dir* does not exist → create it and write ``campaign.yaml``.
+    * If *spec_dir* exists but ``campaign.yaml`` is absent → write it.
+    * If ``campaign.yaml`` is already present → no-op (idempotent).
+
+    ``campaign.yaml`` is written with ``name: "default"`` and
+    ``description: "default campaign"``.
+
+    Raises ``SystemExit(1)`` on ``PermissionError`` or any other
+    ``OSError``, surfacing the error message to stderr.  No partial-state
+    cleanup is attempted.
+    """
+    campaign_yaml = spec_dir / "campaign.yaml"
+    try:
+        if not spec_dir.exists():
+            spec_dir.mkdir(parents=True)
+        if not campaign_yaml.exists():
+            campaign_yaml.write_text(
+                "name: default\ndescription: default campaign\n"
+            )
+    except PermissionError as exc:
+        click.echo(f"Permission denied: {exc}", err=True)
+        raise SystemExit(1) from exc
+    except OSError as exc:
+        click.echo(str(exc), err=True)
+        raise SystemExit(1) from exc
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -159,50 +187,76 @@ def main(ctx: click.Context, spec_dir: str, quiet: bool) -> None:
 
 
 @main.command("new")
-@click.argument("prd_file", type=click.Path(exists=True))
-@click.option("--name", default=None, help="Spec name (default: derived from filename)")
+@click.argument("spec_name")
+@click.option(
+    "--prd",
+    type=click.Path(exists=True),
+    default=None,
+    help="PRD file path",
+)
 @click.pass_context
-def new_cmd(ctx: click.Context, prd_file: str, name: str | None) -> None:
-    """Create a new spec from a PRD file."""
+def new_cmd(ctx: click.Context, spec_name: str, prd: str | None) -> None:
+    """Create a new spec.
+
+    Auto-initialises the spec root directory and a default campaign
+    if they do not already exist, then delegates to Campaign.new_spec.
+    """
+    from agentspec.campaign import Campaign
+
     spec_dir: Path = ctx.obj["spec_dir"]
-    prd_path = Path(prd_file)
-    prd_content = prd_path.read_text()
 
-    if name is None:
-        name = _derive_spec_name(prd_path.name)
-
-    if not _SPEC_NAME_RE.match(name):
+    if not _SPEC_NAME_RE.match(spec_name):
         raise click.ClickException(
-            f"Invalid spec name {name!r}: must match [a-z][a-z0-9_]* "
+            f"Invalid spec name {spec_name!r}: must match [a-z][a-z0-9_]* "
             "(start with lowercase letter, only lowercase letters, digits, underscores)"
         )
 
-    spec_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_default_campaign(spec_dir)
 
-    prefix = _next_prefix(spec_dir)
-    spec_id = f"{prefix:02d}"
-    dir_name = f"{spec_id}_{name}"
-    target = spec_dir / dir_name
-    target.mkdir()
+    campaign = Campaign.open(spec_dir)
+    prd_arg: str | Path = Path(prd) if prd else ""
+    session = campaign.new_spec(spec_name, prd_arg, mode="interactive")
 
-    now = datetime.now(UTC).isoformat()
-    frontmatter = {
-        "spec_id": spec_id,
-        "spec_name": name,
-        "title": name.replace("_", " ").title(),
-        "status": "draft",
-        "created_at": now,
-        "updated_at": now,
-        "owner": "",
-        "source": "interactive",
-        "schema_version": 1,
-    }
-    frontmatter_yaml = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-    (target / "prd.md").write_text(f"---\n{frontmatter_yaml}---\n{prd_content}\n")
+    emit_ok(spec_dir=session._spec_dir.name, state=session.state.value)
 
-    SpecSession._create(target)
 
-    emit_ok(spec_dir=dir_name, state="init")
+# ---------------------------------------------------------------------------
+# list
+# ---------------------------------------------------------------------------
+
+
+@main.command("list")
+@click.pass_context
+def list_cmd(ctx: click.Context) -> None:
+    """List all specs in the spec root with their session states.
+
+    Outputs a JSON object with ``spec_dir`` and a ``specs`` array.
+    Each entry contains the directory name and the session state read
+    from ``_session.json`` (or ``"no_session"`` if absent/malformed).
+    Always exits with status 0.
+    """
+    spec_dir: Path = ctx.obj["spec_dir"]
+    spec_dir_str = str(spec_dir)
+
+    specs: list[dict[str, str]] = []
+    if spec_dir.exists():
+        for entry in sorted(spec_dir.iterdir()):
+            if not entry.is_dir():
+                continue
+            parsed = parse_spec_dir_name(entry.name)
+            if parsed is None:
+                continue
+            session_file = entry / "_session.json"
+            state = "no_session"
+            if session_file.exists():
+                try:
+                    session_data = json.loads(session_file.read_text())
+                    state = session_data.get("state", "no_session")
+                except (json.JSONDecodeError, OSError):
+                    state = "no_session"
+            specs.append({"name": entry.name, "state": state})
+
+    emit({"spec_dir": spec_dir_str, "specs": specs})
 
 
 # ---------------------------------------------------------------------------
