@@ -1,7 +1,7 @@
 # afspec
 
 Standalone Python library for the agent-fox specification format (v1.3). Load,
-validate, mutate, and render spec packs — the structured artifact format used by
+validate, mutate, and render specs — the structured artifact format used by
 [spec-format](https://github.com/agent-fox-dev/spec-format) for spec-driven
 development.
 
@@ -18,7 +18,7 @@ pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git#subdi
 Pin to a release tag:
 
 ```bash
-pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/afspec"
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.3#subdirectory=packages/afspec"
 ```
 
 In `pyproject.toml`:
@@ -26,13 +26,13 @@ In `pyproject.toml`:
 ```toml
 [project]
 dependencies = [
-    "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/afspec",
+    "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.3#subdirectory=packages/afspec",
 ]
 ```
 
 ## Spec Format Overview
 
-A spec pack is a directory (`NN_name/`) containing four required artifacts and
+A spec is a directory (`NN_name/`) containing four required artifacts and
 one optional:
 
 | File | Format | Purpose |
@@ -50,7 +50,7 @@ from pathlib import Path
 from afspec import load_spec, validate, discover_specs, Status
 
 # Load a single spec
-spec = load_spec(Path(".spec/specs/01_foundation"))
+spec = load_spec(Path(".specs/01_foundation"))
 print(spec.prd.frontmatter.title)  # "Foundation"
 print(spec.prd.frontmatter.status)  # Status.DRAFT
 print(len(spec.requirements.requirements))  # number of requirements
@@ -63,7 +63,7 @@ if result.errors:
         print(f"{err.file}:{err.path} — {err.message}")
 
 # Discover all specs in a directory
-metas = discover_specs(Path(".spec/specs"))
+metas = discover_specs(Path(".specs"))
 for meta in metas:
     print(f"{meta.spec_id}: {meta.spec_name} ({meta.status})")
 ```
@@ -95,7 +95,7 @@ All symbols are importable from the top-level package: `from afspec import <symb
 | `Tasks` | `spec_id`, `spec_name`, `test_commands: TestCommands`, `dependencies`, `task_groups: list[TaskGroup]`, `traceability` |
 | `TaskGroup` | `id: int`, `kind: TaskGroupKind`, `title`, `subtasks: list[Subtask]`, `verification` |
 | `Subtask` | `id`, `title`, `details`, `test_spec_refs`, `requirement_refs`, `state: SubtaskState`, `optional: bool` |
-| `SpecMeta` | `spec_id`, `spec_name`, `status: Status`, `dir: Path` — lightweight metadata for discovery |
+| `SpecMeta` | `spec_id`, `spec_name`, `status: Status`, `dir: str` — lightweight metadata for discovery |
 | `UserStory` | `role`, `goal`, `benefit` |
 | `ExternalAPI` | `package`, `version`, `symbols: list[ExternalAPISymbol]` |
 | `ExternalAPISymbol` | `name`, `import_path`, `signature`, `notes` |
@@ -109,6 +109,8 @@ All symbols are importable from the top-level package: `from afspec import <symb
 | `VerificationSubtask` | `id`, `checks: list[str]` |
 | `TaskDependency` | `depends_on_spec`, `from_group`, `to_group`, `relationship`, `sentinel` |
 | `TraceabilityEntry` | `requirement_id`, `test_spec_id`, `task_id`, `test_path` |
+| `Coverage` | `requirements_covered`, `properties_covered`, `paths_covered`, `gaps` |
+| `DependencyEdge` | `from_spec`, `to_spec`, `from_group`, `to_group`, `relationship` |
 
 ### Enums
 
@@ -123,55 +125,67 @@ All symbols are importable from the top-level package: `from afspec import <symb
 
 | Symbol | Signature | Description |
 |--------|-----------|-------------|
-| `validate` | `(spec: Spec) -> ValidationResult` | Full validation (schema + cross-file). |
-| `validate_schema` | `(spec: Spec) -> ValidationResult` | Schema-only validation against bundled JSON Schemas. |
-| `validate_cross_file` | `(spec: Spec) -> ValidationResult` | Cross-file consistency (dangling refs, coverage gaps). |
-| `ValidationResult` | `.errors: list[ValidationError]`, `.warnings: list[ValidationWarning]` | Validation outcome. |
-| `ValidationError` | `.file`, `.path`, `.message`, `.rule` | A validation failure. |
-| `ValidationWarning` | `.message`, `.entity_id` | A non-blocking warning. |
+| `validate` | `(spec: Spec) -> ValidationResult` | Full validation (schema + cross-file + wiring semantics). |
+| `validate_schema` | `(spec: Spec) -> list[ValidationError]` | Schema-only validation against bundled JSON Schemas plus EARS constraints and task group structure. |
+| `validate_cross_file` | `(spec: Spec) -> list[ValidationError]` | Cross-file consistency checks (dangling refs, coverage gaps, glossary, ID formats). |
+| `validate_cross_spec` | `(specs: dict[str, Spec], graph: DependencyGraph) -> list[ValidationError]` | Cross-spec interface consistency (API symbols, glossary conflicts, contract mismatches). |
+| `validate_structured` | `(spec: Spec) -> dict[str, Any]` | Full validation reshaped as a categorised dict for CLI consumption. |
+| `ValidationResult` | `.valid: bool`, `.errors: list[ValidationError]`, `.warnings: list[ValidationWarning]` | Validation outcome. `valid` is `True` when `errors` is empty, regardless of warnings. |
+| `ValidationError` | `.file`, `.path`, `.message`, `.rule`, `.value` | A validation failure. |
+| `ValidationWarning` | `.message`, `.entity_id` | A non-blocking warning (sizing, complexity, vague language). |
 
 ### Lifecycle
 
 | Symbol | Signature | Description |
 |--------|-----------|-------------|
-| `transition` | `(spec: Spec, target: Status) -> Spec` | Transition lifecycle state. Raises `LifecycleError` for invalid transitions. |
+| `transition` | `(spec: Spec, target: Status, dir: str \| Path) -> Spec` | Transition lifecycle state and persist to disk. Raises `LifecycleError` for invalid transitions. |
 | `valid_transition` | `(current: Status, target: Status) -> bool` | Check if a transition is allowed. |
-| `supersede` | `(old: Spec, new_spec: Spec) -> tuple[Spec, Spec]` | Supersede one spec with another. |
-| `move_to_archive` | `(spec_dir: Path, archive_dir: Path) -> None` | Move a spec directory to the archive. |
+| `supersede` | `(spec: Spec, superseding_spec_id: str, dir: str \| Path) -> Spec` | Mark a sealed spec as superseded, prepend deprecation banner, and persist. |
+| `move_to_archive` | `(spec_dir: str \| Path, root: str \| Path) -> None` | Transition to archived (if needed) and move the spec directory to `{root}/archive/`. |
 
 ### Discovery and Dependencies
 
 | Symbol | Signature | Description |
 |--------|-----------|-------------|
-| `discover_specs` | `(specs_dir: Path) -> list[SpecMeta]` | Find all spec directories and return lightweight metadata. |
-| `build_dependency_graph` | `(metas: list[SpecMeta], specs: dict[str, Spec]) -> DependencyGraph` | Build the inter-spec dependency graph. |
-| `DependencyGraph` | `.topological_order() -> list[str]`, `.dependencies(spec_id) -> list[DependencyEdge]` | Queryable dependency graph. |
+| `discover_specs` | `(root: str \| Path) -> list[SpecMeta]` | Find all spec directories and return lightweight metadata from `prd.md` frontmatter. |
+| `build_dependency_graph` | `(metas: list[SpecMeta], root: str \| Path) -> DependencyGraph` | Build the inter-spec dependency graph from `tasks.json` declarations. |
+| `DependencyGraph` | `.edges()`, `.dependencies(spec_id)`, `.dependents(spec_id)`, `.topological_sort()` | Queryable directed dependency graph. |
+| `is_spec_dir_name` | `(name: str) -> bool` | Check whether a name matches the canonical `{NN}_{snake_case}` pattern. |
+| `parse_spec_dir_name` | `(name: str) -> tuple[int, str] \| None` | Parse a spec directory name into `(prefix, spec_name)`, or `None`. |
+| `load_spec_landscape` | `(spec_root: str \| Path, *, include_archive: bool, current_spec_id: str \| None) -> list[dict]` | Collect metadata for all specs (active and optionally archived) for landscape views. |
 
 ### Subtask Mutation
 
 | Symbol | Signature | Description |
 |--------|-----------|-------------|
-| `transition_subtask` | `(spec: Spec, group_id: int, subtask_id: str, target: SubtaskState) -> Spec` | Transition a single subtask's state. |
-| `complete_subtask_states` | `(spec: Spec, group_id: int) -> Spec` | Mark all subtasks in a group as `done`. |
-| `reset_subtask_states` | `(spec: Spec, group_id: int) -> Spec` | Reset all subtasks in a group to `pending`. |
+| `transition_subtask` | `(tasks: Tasks, subtask_id: str, target: SubtaskState) -> Tasks` | Transition a single subtask's state via the state machine. |
+| `complete_subtask_states` | `(tasks: Tasks, group_ids: list[int]) -> Tasks` | Mark all subtasks in the specified groups as `done` (bypasses state machine). |
+| `reset_subtask_states` | `(tasks: Tasks, group_ids: list[int]) -> Tasks` | Reset all subtasks in the specified groups to `pending`. |
 
 ### Rendering
 
 | Symbol | Signature | Description |
 |--------|-----------|-------------|
-| `render_requirements` | `(spec: Spec) -> str` | Render requirements as Markdown. |
-| `render_test_spec` | `(spec: Spec) -> str` | Render test spec as Markdown. |
-| `render_tasks` | `(spec: Spec) -> str` | Render tasks as Markdown. |
+| `render_requirements` | `(req: Requirements) -> str` | Render requirements as Markdown. |
+| `render_test_spec` | `(ts: TestSpec) -> str` | Render test spec as Markdown. |
+| `render_tasks` | `(t: Tasks) -> str` | Render tasks as Markdown with checkbox-formatted subtasks. |
 | `render_combined` | `(spec: Spec) -> str` | Render all artifacts as a single Markdown document. |
 | `render_individual` | `(spec: Spec) -> dict[str, str]` | Render each artifact separately. |
+| `render_individual_scoped` | `(spec: Spec, target_group: int) -> dict[str, str]` | Render each artifact scoped to a target task group's refs. |
 | `render_ears_sentence` | `(criterion: Criterion) -> str` | Render a single EARS criterion as a natural-language sentence. |
 
 ### EARS Criterion Builders
 
 Convenience constructors for creating `Criterion` objects:
 
-`ubiquitous_criterion`, `event_driven_criterion`, `complex_event_criterion`,
-`state_driven_criterion`, `unwanted_criterion`, `optional_criterion`
+| Builder | Signature |
+|---------|-----------|
+| `ubiquitous_criterion` | `(id, system, action) -> Criterion` |
+| `event_driven_criterion` | `(id, trigger, system, action) -> Criterion` |
+| `complex_event_criterion` | `(id, trigger, condition, system, action) -> Criterion` |
+| `state_driven_criterion` | `(id, state, system, action) -> Criterion` |
+| `unwanted_criterion` | `(id, error_condition, system, action) -> Criterion` |
+| `optional_criterion` | `(id, feature, system, action) -> Criterion` |
 
 ### Exceptions
 
@@ -181,15 +195,15 @@ Convenience constructors for creating `Criterion` objects:
 | `LoadError` | `SpecError` | Missing files, malformed JSON/YAML |
 | `SaveError` | `SpecError` | Write failures |
 | `LifecycleError` | `SpecError` | Invalid lifecycle transitions, mutation guards |
-| `IntentError` | `SpecError` | Intent hash mismatch on active specs |
+| `IntentError` | `SpecError` | Missing `## Intent` section in PRD body |
 | `BootstrapError` | `SpecError` | Spec bootstrapping failures |
 
 ### Other
 
-| Symbol | Description |
-|--------|-------------|
-| `schemas` | `() -> dict[str, bytes]` — Returns bundled JSON Schema files for external validation. |
-| `compute_intent_hash` | `(spec: Spec) -> str` — SHA-256 of the requirements content for change detection. |
-| `compute_coverage` | `(spec: Spec) -> Coverage` — Compute test coverage metrics from traceability data. |
-| `create_spec` | `(name, title, ...) -> Spec` — Create a new spec with default structure. |
-| `BootstrapSpec` | Dataclass for bootstrapping new specs from templates. |
+| Symbol | Signature | Description |
+|--------|-----------|-------------|
+| `schemas` | `() -> dict[str, bytes]` | Returns bundled JSON Schema files for external validation. |
+| `compute_intent_hash` | `(body: str) -> str` | SHA-256 of the normalized `## Intent` section from a PRD body. Raises `IntentError` if section is missing. |
+| `compute_coverage` | `(ts: TestSpec, req: Requirements) -> Coverage` | Compute test coverage by scanning test entries against requirements, properties, and paths. |
+| `create_spec` | `(spec_id: str, spec_name: str) -> Spec` | Create a new Spec with initialized sub-artifacts in draft state. |
+| `BootstrapSpec` | Class: `__init__(spec_id, spec_name)` | Incremental spec population with deferred cross-file validation via `finalize()`. |

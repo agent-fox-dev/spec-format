@@ -44,10 +44,10 @@ file-based configuration.
 
 ### Override via config file
 
-Add a `[spec_tool]` section to your TOML config file:
+Add a `[model]` section to your TOML config file:
 
 ```toml
-[spec_tool]
+[model]
 model = "ADVANCED"
 ```
 
@@ -81,7 +81,7 @@ To use Claude through Google Cloud Vertex AI:
 2. Configure your Google Cloud project and region in your TOML config file:
 
    ```toml
-   [spec_tool]
+   [provider]
    vertex_project = "my-gcp-project"
    vertex_region = "us-east5"
    ```
@@ -125,8 +125,8 @@ The tool reads TOML configuration from two locations, checked in order:
 
 | Location | Scope |
 |----------|-------|
-| `.spec/config.toml` (relative to working directory) | Project-local |
-| `~/.spec/config.toml` | Global (user-wide) |
+| `.specs/config.toml` (relative to working directory) | Project-local |
+| `~/.specs/config.toml` | Global (user-wide) |
 
 The first file found is used. Project-local settings take precedence over
 global settings.
@@ -134,24 +134,28 @@ global settings.
 #### Example config file
 
 ```toml
-[spec_tool]
+[model]
 model = "ADVANCED"
+
+[provider]
 auth_method = ""
 vertex_project = "my-gcp-project"
 vertex_region = "us-east5"
-
-[theme]
-# CLI display settings (banner, colors)
 ```
 
-The `[spec_tool]` section controls LLM configuration. The `[theme]` section
-controls CLI banner and display settings and is unrelated to the LLM provider.
+The `[model]` section controls which Claude model is used. The `[provider]`
+section controls authentication and cloud provider settings.
 
-#### Available `[spec_tool]` fields
+#### Available `[model]` fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `model` | string | `"STANDARD"` | Model tier or model ID |
+
+#### Available `[provider]` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
 | `auth_method` | string | `""` | Authentication method hint |
 | `vertex_project` | string | `""` | Google Cloud project ID for Vertex AI |
 | `vertex_region` | string | `""` | Google Cloud region for Vertex AI |
@@ -165,9 +169,9 @@ that provides a value wins:
    model resolution is skipped entirely (auth fields from config files are still
    applied if available).
 
-2. **Explicit `[spec_tool]` section in TOML config** -- if the section exists in
-   `.spec/config.toml` or `~/.spec/config.toml`, its values are used
-   with no further fallback.
+2. **`[model]` section in TOML config** -- if the section exists in
+   `.specs/config.toml` or `~/.specs/config.toml`, its `model` value is used.
+   Auth fields are read from the `[provider]` section of the same file.
 
 3. **Hardcoded default** -- `model = "STANDARD"`, which resolves to
    `claude-sonnet-4-6`.

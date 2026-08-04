@@ -8,7 +8,7 @@ this repository. Treat this file as mandatory policy for every coding session.
 Before making any changes, orient yourself:
 
 1. **Read `README.md`** for project overview and quick-start.
-2. **Read `.agent-fox/steering.md`** if it exists — project-level directives that
+2. **Read `.specs/steering.md`** if it exists — project-level directives that
    apply to all agents and skills. Follow any instructions found there.
 3. **Read ADRs and errata** in `docs/` for architectural context.
 4. **Explore the codebase:** `<main_package>/` is the main package, `<test_directory>/` has
@@ -28,14 +28,14 @@ Do not implement anything before completing these steps.
 <main_package>/         # Main package
 <test_directory>/       # Tests directory
 docs/                   # Documentation
-.spec/specs/                 # Specs to be implemented
-.spec/specs/archive/         # Old specs. Ignore for coding tasks, except for reference
+.specs/                 # Specs to be implemented
+.specs/archive/         # Old specs. Ignore for coding tasks, except for reference
 ```
 
 ## Spec-Driven Workflow
 
 This project uses spec-driven development. Specifications live in
-`.spec/specs/NN_name/` (numbered by creation order) and contain:
+`.specs/NN_name/` (numbered by creation order) and contain:
 
 - `prd.md` — product requirements, goals, tech stack, high-level design
 - `requirements.json` — EARS-syntax acceptance criteria, execution paths, external API contracts, glossary
@@ -94,7 +94,7 @@ make check
 
 A session is not complete until:
 
-1. `make check` or `make test` passes (no regressions).
+1. `make lint` and `make test` passes (no regressions).
 2. Changes are committed with a clear conventional commit message.
 3. Changes are merged into `main` locally.
 4. `git status` shows a clean working tree.

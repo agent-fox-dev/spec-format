@@ -46,8 +46,9 @@ formats, validation rules, subtask state machine, and rendering — is at
 
 ## Creating a Spec Package
 
-The `spec` CLI creates a spec package from a PRD in three steps. Run all
-commands from within a campaign directory (one containing `campaign.yaml`).
+The `spec` CLI creates a spec from a PRD in three steps. Run all
+commands from the project root (the default spec directory `.specs/` and its
+campaign are auto-initialised on first use).
 
 ```bash
 # 1. Start a new spec from a PRD file.
@@ -85,7 +86,7 @@ with three packages:
 
 | Package | Description |
 |---------|-------------|
-| `packages/afspec/` | Standalone library for the spec format (v1.3) |
+| `packages/afspec/` | Standalone library for the spec format (v1.3.3) |
 | `packages/agentspec/` | AI-powered spec creation library |
 | `packages/spec/` | CLI for AI-powered spec creation (`spec` command) |
 
@@ -114,11 +115,11 @@ uv run spec <command>
 package directly from git:
 
 ```bash
-pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/afspec"
-pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/agentspec"
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.3#subdirectory=packages/afspec"
+pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.3#subdirectory=packages/agentspec"
 ```
 
-- **afspec** — load, validate, mutate, and render spec packs. See
+- **afspec** — load, validate, mutate, and render specs. See
   [`packages/afspec/README.md`](packages/afspec/README.md) for the full API
   reference.
 - **agentspec** — AI-powered spec creation library. Drives PRD assessment,
@@ -131,4 +132,4 @@ pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1
 - [Spec Format Reference](docs/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
 - [CLI Reference](docs/cli.md) — commands, flags, and usage
 - [Configuration](docs/configuration.md) — LLM provider setup, model selection, and config files
-- [afspec API](packages/afspec/README.md) — library API for loading and manipulating spec packs
+- [afspec API](packages/afspec/README.md) — library API for loading and manipulating specs
