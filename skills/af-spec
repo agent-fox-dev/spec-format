@@ -10,7 +10,7 @@ You are a requirements engineer and software architect. Your job is to take a
 product requirements document (PRD) or a product idea and produce a complete
 specification package using the `spec` CLI tool.
 
-The `spec` CLI creates and manages specifications in the **v1.2 JSON format**:
+The `spec` CLI creates and manages specifications in the **v1.3 JSON format**:
 
 1. **PRD** (`prd.md` with YAML frontmatter)
 2. **Requirements** (`requirements.json` — EARS-patterned criteria as JSON)
@@ -19,6 +19,22 @@ The `spec` CLI creates and manages specifications in the **v1.2 JSON format**:
 5. **Architecture** (`architecture.md` — optional, for complex designs)
 
 Follow the steps below **in order**. Do not skip steps.
+
+## Prerequisites
+
+The AI-powered commands (`new`, `refine`, `generate`) require an Anthropic API
+key:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+Optional environment variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `AF_SPEC_MODEL` | Override the default Claude model (tier name or model ID) |
+| `SPEC_DIR` | Override the default spec directory (`.specs`); `--spec-dir` flag takes precedence |
 
 ## Project Steering Directives
 
@@ -285,7 +301,7 @@ create the spec directory structure.
    spec new /tmp/prd_<spec_name>.md --name <spec_name>
    ```
 
-3. Parse the JSON output to get the spec directory name (e.g. `{"spec_dir": "136_my_feature", "state": "init"}`).
+3. Parse the JSON output to get the spec directory name (e.g. `{"ok": true, "spec_dir": "136_my_feature", "state": "init"}`).
 
 4. Edit the generated `prd.md` to add:
    - The `## Dependencies` section from Step 2 (if any)
@@ -320,13 +336,17 @@ step catches gaps that may have been missed during the manual review in Step 1.
    spec refine <spec_dir_name> --answers /tmp/answers_<spec_name>.json
    ```
 
-5. Repeat until the assessment returns `quality: "ready"`, but **do not
+5. If the refinement cycle needs to restart from scratch, use
+   `spec refine --force <spec_dir_name>` to reset the session state,
+   discarding all assessments, answers, and generated artifacts.
+
+6. Repeat until the assessment returns `quality: "ready"`, but **do not
    exceed 5 refinement iterations**. If after 5 rounds the quality is still
    not `"ready"`, accept the current state and proceed to Step 5. Five
    iterations is sufficient to surface and resolve material gaps; further
    rounds yield diminishing returns.
 
-6. **Verify incorporation.** After refinement with answers, re-read the
+7. **Verify incorporation.** After refinement with answers, re-read the
    generated `prd.md` to confirm the answers were actually incorporated into
    the PRD body and that YAML frontmatter fields (e.g. `owner`) were updated
    if applicable.
@@ -353,7 +373,8 @@ This generates:
 
 The command outputs JSON listing the generated artifacts. If generation fails
 partway through, re-run with the same command — it resumes from where it
-left off.
+left off. To regenerate from scratch (deleting existing artifacts), use
+`spec generate --force <spec_dir_name>`.
 
 ### Post-generation language audit
 
@@ -428,6 +449,13 @@ Run validation to check all generated artifacts:
 spec validate <spec_dir_name>
 ```
 
+When SPEC is omitted, validates all specs in the spec directory. Use `--cross`
+to also run cross-spec interface consistency checks:
+
+```bash
+spec validate --cross
+```
+
 If the output shows `"valid": false`, review the errors and fix the affected
 artifacts. The most common issues are:
 
@@ -472,6 +500,8 @@ To preview the spec as readable markdown:
 ```bash
 spec render <spec_dir_name> --combined
 ```
+
+Use `--json` to get a JSON envelope instead of raw markdown output.
 
 ---
 
