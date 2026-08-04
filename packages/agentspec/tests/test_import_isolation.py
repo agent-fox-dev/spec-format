@@ -38,7 +38,9 @@ def test_ts10_p1_import_independence() -> None:
     try:
         import agentspec  # noqa: F811
 
-        assert "click" not in sys.modules, "importing agentspec should not pull in click"
+        assert "click" not in sys.modules, (
+            "importing agentspec should not pull in click"
+        )
         assert "rich" not in sys.modules, "importing agentspec should not pull in rich"
         # Verify public symbols are accessible
         assert hasattr(agentspec, "SpecSession")
@@ -65,7 +67,9 @@ def test_ts10_p4_module_placement_uniqueness() -> None:
     # All three packages must exist under packages/
     expected_packages = ["afspec", "agentspec", "spec"]
     for pkg in expected_packages:
-        assert (packages_dir / pkg).is_dir(), f"Package directory missing: packages/{pkg}"
+        assert (packages_dir / pkg).is_dir(), (
+            f"Package directory missing: packages/{pkg}"
+        )
 
     # Collect all module names across packages and check uniqueness
     modules: dict[str, str] = {}
@@ -76,7 +80,18 @@ def test_ts10_p4_module_placement_uniqueness() -> None:
             # Skip test files, __pycache__, venvs, and build artifacts
             parts = py_file.relative_to(pkg_dir).parts
             if any(
-                p in ("tests", "__pycache__", "build", "dist", ".eggs", ".venv", ".tox", ".nox", "node_modules")
+                p
+                in (
+                    "tests",
+                    "__pycache__",
+                    "build",
+                    "dist",
+                    ".eggs",
+                    ".venv",
+                    ".tox",
+                    ".nox",
+                    "node_modules",
+                )
                 for p in parts
             ):
                 continue

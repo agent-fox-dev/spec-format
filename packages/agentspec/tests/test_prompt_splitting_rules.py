@@ -62,7 +62,9 @@ class TestTestSpecRefsCeiling:
         content = _load_prompt_content()
         section = _find_rule_section(content)
         lower = section.lower()
-        assert "test_spec_refs" in lower, "The splitting rules section must reference 'test_spec_refs'"
+        assert "test_spec_refs" in lower, (
+            "The splitting rules section must reference 'test_spec_refs'"
+        )
         assert "split" in lower, "The splitting rules section must mention 'split'"
 
     def test_15_and_test_spec_refs_in_proximity(self) -> None:
@@ -71,8 +73,12 @@ class TestTestSpecRefsCeiling:
         content = _load_prompt_content()
         # Find all paragraphs (blocks separated by blank lines)
         paragraphs = re.split(r"\n\s*\n", content)
-        found = any("15" in para and "test_spec_refs" in para.lower() for para in paragraphs)
-        assert found, "'15' and 'test_spec_refs' must appear in the same paragraph to form a coherent ceiling rule"
+        found = any(
+            "15" in para and "test_spec_refs" in para.lower() for para in paragraphs
+        )
+        assert found, (
+            "'15' and 'test_spec_refs' must appear in the same paragraph to form a coherent ceiling rule"
+        )
 
 
 # ===================================================================
@@ -120,7 +126,9 @@ class TestSubtaskCountCeiling:
         section = _find_rule_section(content)
         lower = section.lower()
 
-        assert "6" in section, "generation_user_tasks.md must contain '6' as the subtask count ceiling"
+        assert "6" in section, (
+            "generation_user_tasks.md must contain '6' as the subtask count ceiling"
+        )
         assert "subtask" in lower, "The rules section must mention 'subtask'"
         assert "split" in lower, "The rules section must mention 'split'"
 
@@ -204,8 +212,13 @@ class TestComplexityWeighting:
 
         # '4' must appear in a complexity-related rule context
         paragraphs = re.split(r"\n\s*\n", content)
-        found = any("4" in para and "complex" in para.lower() and "split" in para.lower() for para in paragraphs)
-        assert found, "The prompt must state that 4 or more complex subtasks triggers splitting"
+        found = any(
+            "4" in para and "complex" in para.lower() and "split" in para.lower()
+            for para in paragraphs
+        )
+        assert found, (
+            "The prompt must state that 4 or more complex subtasks triggers splitting"
+        )
 
 
 # ===================================================================
@@ -242,14 +255,20 @@ class TestComplexityIndependent:
 
         # Find the paragraph with the complexity rule
         complexity_paras = [
-            para for para in paragraphs if "complex" in para.lower() and "4" in para and "split" in para.lower()
+            para
+            for para in paragraphs
+            if "complex" in para.lower() and "4" in para and "split" in para.lower()
         ]
-        assert len(complexity_paras) >= 1, "Must have a paragraph that links '4', 'complex', and 'split'"
+        assert len(complexity_paras) >= 1, (
+            "Must have a paragraph that links '4', 'complex', and 'split'"
+        )
 
         # At least one such paragraph should mention independence from
         # numeric thresholds
         has_independence = any(
-            "even if" in para.lower() or "regardless" in para.lower() or "independent" in para.lower()
+            "even if" in para.lower()
+            or "regardless" in para.lower()
+            or "independent" in para.lower()
             for para in complexity_paras
         )
         assert has_independence, (
@@ -273,7 +292,9 @@ class TestGroupByRequirement:
         section = _find_rule_section(content)
         lower = section.lower()
 
-        assert "requirement" in lower, "The splitting strategy must reference 'requirement'"
+        assert "requirement" in lower, (
+            "The splitting strategy must reference 'requirement'"
+        )
 
     def test_distinct_requirement_coverage(self) -> None:
         """TS-08-9: Each resulting group should cover a distinct set of
@@ -296,8 +317,13 @@ class TestGroupByRequirement:
         context of how to split."""
         content = _load_prompt_content()
         paragraphs = re.split(r"\n\s*\n", content)
-        found = any("requirement" in para.lower() and "group" in para.lower() for para in paragraphs)
-        assert found, "'requirement' and 'group' must appear in the same paragraph within the splitting strategy"
+        found = any(
+            "requirement" in para.lower() and "group" in para.lower()
+            for para in paragraphs
+        )
+        assert found, (
+            "'requirement' and 'group' must appear in the same paragraph within the splitting strategy"
+        )
 
 
 # ===================================================================
@@ -380,7 +406,9 @@ class TestIdRenumbering:
         has_non_test = "non-test" in lower or "non test" in lower
         has_shift = "shift" in lower or "follow" in lower or "after" in lower
 
-        assert has_non_test, "The prompt must reference 'non-test' groups in the ID renumbering rules"
+        assert has_non_test, (
+            "The prompt must reference 'non-test' groups in the ID renumbering rules"
+        )
         assert has_shift, (
             "The prompt must describe ID shifting/ordering for non-test groups (e.g. 'shift', 'follow', 'after')"
         )
@@ -402,9 +430,15 @@ class TestComplexityThresholdBoundary:
 
         # Find paragraphs that discuss complexity and splitting
         paragraphs = re.split(r"\n\s*\n", content)
-        complexity_paras = [para for para in paragraphs if "complex" in para.lower() and "split" in para.lower()]
+        complexity_paras = [
+            para
+            for para in paragraphs
+            if "complex" in para.lower() and "split" in para.lower()
+        ]
 
-        assert len(complexity_paras) >= 1, "Must have at least one paragraph discussing complexity and splitting"
+        assert len(complexity_paras) >= 1, (
+            "Must have at least one paragraph discussing complexity and splitting"
+        )
 
         # The threshold in those paragraphs should mention 4, not 3
         for para in complexity_paras:

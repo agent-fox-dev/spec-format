@@ -216,7 +216,9 @@ class TestRefinementUserPromptLandscape:
             summary="Needs work",
             gaps=[],
             questions=[
-                Question(id="q1", text="What?", context="Ctx", options=[], required=True),
+                Question(
+                    id="q1", text="What?", context="Ctx", options=[], required=True
+                ),
             ],
         )
 
@@ -246,7 +248,9 @@ class TestRefinementUserPromptNoLandscape:
             summary="Needs work",
             gaps=[],
             questions=[
-                Question(id="q1", text="What?", context="Ctx", options=[], required=True),
+                Question(
+                    id="q1", text="What?", context="Ctx", options=[], required=True
+                ),
             ],
         )
 
@@ -348,11 +352,16 @@ class TestPromptBackwardCompatibility:
         "prd_text,spec_name",
         [
             ("# Simple PRD\nSome content", "simple_spec"),
-            ("# Complex PRD\n## Intent\nDo something\n## Goals\n- Goal 1", "complex_spec"),
+            (
+                "# Complex PRD\n## Intent\nDo something\n## Goals\n- Goal 1",
+                "complex_spec",
+            ),
             ("# Minimal\nX", "min_spec"),
         ],
     )
-    def test_assessment_default_matches_none(self, prd_text: str, spec_name: str) -> None:
+    def test_assessment_default_matches_none(
+        self, prd_text: str, spec_name: str
+    ) -> None:
         result_default = assessment_user_prompt(prd_text, spec_name)
         result_none = assessment_user_prompt(prd_text, spec_name, spec_landscape=None)
 
@@ -378,7 +387,9 @@ class TestPromptBackwardCompatibility:
         answers = {"q1": "A"}
 
         result_default = refinement_user_prompt(prd_text, answers, prev)
-        result_none = refinement_user_prompt(prd_text, answers, prev, spec_landscape=None)
+        result_none = refinement_user_prompt(
+            prd_text, answers, prev, spec_landscape=None
+        )
 
         assert result_default == result_none
         assert "## Existing Spec Landscape" not in result_default

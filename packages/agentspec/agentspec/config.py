@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         spec_tool: _SpecToolLike
         _spec_tool_explicit: bool
 
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "STANDARD"

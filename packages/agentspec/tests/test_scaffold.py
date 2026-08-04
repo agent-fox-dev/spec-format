@@ -16,9 +16,13 @@ class TestProjectStructure:
         agentspec_pyproject = PROJECT_ROOT / "packages" / "agentspec" / "pyproject.toml"
         with open(agentspec_pyproject, "rb") as f:
             agentspec_toml = tomllib.load(f)
-        agentspec_deps = " ".join(agentspec_toml.get("project", {}).get("dependencies", [])).lower()
+        agentspec_deps = " ".join(
+            agentspec_toml.get("project", {}).get("dependencies", [])
+        ).lower()
         assert "afspec" in agentspec_deps, "afspec must be an agentspec dependency"
-        assert "anthropic" in agentspec_deps, "anthropic must be an agentspec dependency"
+        assert "anthropic" in agentspec_deps, (
+            "anthropic must be an agentspec dependency"
+        )
         assert "pyyaml" in agentspec_deps, "pyyaml must be an agentspec dependency"
 
     def test_dev_deps(self) -> None:
@@ -44,7 +48,9 @@ class TestProjectStructure:
         with open(pyproject, "rb") as f:
             toml = tomllib.load(f)
         requires_python = toml.get("project", {}).get("requires-python", "")
-        assert requires_python == ">=3.12", f"requires-python must be '>=3.12', got '{requires_python}'"
+        assert requires_python == ">=3.12", (
+            f"requires-python must be '>=3.12', got '{requires_python}'"
+        )
 
     def test_make_check(self) -> None:
         """make check runs linter and tests."""
@@ -61,7 +67,9 @@ class TestProjectStructure:
         makefile = PROJECT_ROOT / "Makefile"
         assert makefile.exists(), "Makefile must exist"
         content = makefile.read_text()
-        assert "uv run pytest" in content, "Makefile test target must run 'uv run pytest'"
+        assert "uv run pytest" in content, (
+            "Makefile test target must run 'uv run pytest'"
+        )
 
 
 class TestExceptionHierarchy:

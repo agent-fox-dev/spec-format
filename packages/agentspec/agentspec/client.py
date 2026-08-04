@@ -39,9 +39,15 @@ class ModelEntry:
 
 
 MODEL_REGISTRY: dict[str, ModelEntry] = {
-    "claude-haiku-4-5": ModelEntry("claude-haiku-4-5", ModelTier.SIMPLE, variant="standard"),
-    "claude-sonnet-4-6": ModelEntry("claude-sonnet-4-6", ModelTier.STANDARD, variant="standard"),
-    "claude-opus-4-6": ModelEntry("claude-opus-4-6", ModelTier.ADVANCED, variant="standard"),
+    "claude-haiku-4-5": ModelEntry(
+        "claude-haiku-4-5", ModelTier.SIMPLE, variant="standard"
+    ),
+    "claude-sonnet-4-6": ModelEntry(
+        "claude-sonnet-4-6", ModelTier.STANDARD, variant="standard"
+    ),
+    "claude-opus-4-6": ModelEntry(
+        "claude-opus-4-6", ModelTier.ADVANCED, variant="standard"
+    ),
 }
 
 TIER_DEFAULTS: dict[ModelTier, str] = {
@@ -110,7 +116,10 @@ def _inject_cache_control(
     if isinstance(system, str):
         total_len = len(system)
     else:
-        total_len = sum(len(block.get("text", "")) if isinstance(block, dict) else 0 for block in system)
+        total_len = sum(
+            len(block.get("text", "")) if isinstance(block, dict) else 0
+            for block in system
+        )
 
     threshold = _CACHE_TOKEN_THRESHOLDS.get(model, _DEFAULT_THRESHOLD)
     if (total_len // 4) < threshold:
@@ -221,7 +230,9 @@ async def ai_call(
     """
     model_id = resolve_model(model_tier)
 
-    modified_system = _inject_cache_control(system, model=model_id, cache_policy=cache_policy)
+    modified_system = _inject_cache_control(
+        system, model=model_id, cache_policy=cache_policy
+    )
 
     async def _call() -> Any:
         client = _create_async_client()
@@ -239,7 +250,9 @@ async def ai_call(
                 return await stream.get_final_message()
         except anthropic.BadRequestError as exc:
             if "cache_control" in str(exc).lower() and modified_system is not system:
-                logger.warning("cache_control caused API error; retrying without caching")
+                logger.warning(
+                    "cache_control caused API error; retrying without caching"
+                )
                 fallback_kwargs: dict[str, Any] = dict(
                     model=model_id,
                     max_tokens=max_tokens,

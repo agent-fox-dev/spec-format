@@ -62,7 +62,9 @@ SUBMIT_ASSESSMENT_TOOL: dict[str, Any] = {
                         },
                         "required": {
                             "type": "boolean",
-                            "description": ("Whether the user must answer this question."),
+                            "description": (
+                                "Whether the user must answer this question."
+                            ),
                         },
                     },
                 },
@@ -81,7 +83,9 @@ SUBMIT_PRD_UPDATE_TOOL: dict[str, Any] = {
         "properties": {
             "updated_prd": {
                 "type": "string",
-                "description": ("The full updated PRD text (body only, no frontmatter)."),
+                "description": (
+                    "The full updated PRD text (body only, no frontmatter)."
+                ),
             },
         },
     },

@@ -25,6 +25,7 @@ _FRONTMATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*\n", re.DOTALL)
 def _strip_frontmatter(content: str) -> str:
     return _FRONTMATTER_RE.sub("", content, count=1)
 
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PROMPTS_DIR: Path = Path(__file__).resolve().parent / "_templates" / "prompts"

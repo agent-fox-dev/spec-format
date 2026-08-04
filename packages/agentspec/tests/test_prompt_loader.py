@@ -123,7 +123,9 @@ def test_frontmatter_stripping(tmp_path: Path) -> None:
     """YAML frontmatter is stripped from loaded prompts."""
     prompts_dir = tmp_path / ".agent-fox" / "prompts"
     prompts_dir.mkdir(parents=True)
-    (prompts_dir / "assessment_system.md").write_text("---\ntitle: test\ntype: prompt\n---\nActual content here")
+    (prompts_dir / "assessment_system.md").write_text(
+        "---\ntitle: test\ntype: prompt\n---\nActual content here"
+    )
 
     content = load_prompt("assessment_system", project_dir=tmp_path)
     assert "---" not in content
@@ -150,7 +152,9 @@ def test_safe_substitute_leaves_unknown(tmp_path: Path) -> None:
     """Unrecognized $variables pass through unchanged."""
     prompts_dir = tmp_path / ".agent-fox" / "prompts"
     prompts_dir.mkdir(parents=True)
-    (prompts_dir / "assessment_system.md").write_text("Known: $known, Unknown: $unknown_var")
+    (prompts_dir / "assessment_system.md").write_text(
+        "Known: $known, Unknown: $unknown_var"
+    )
 
     content = load_prompt_template(
         "assessment_system",

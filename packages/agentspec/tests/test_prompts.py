@@ -121,7 +121,9 @@ def test_refinement_user_prompt_contains_answers():
         quality="needs_refinement",
         summary="Needs work",
         gaps=[],
-        questions=[Question(id="q1", text="What?", context="Ctx", options=[], required=True)],
+        questions=[
+            Question(id="q1", text="What?", context="Ctx", options=[], required=True)
+        ],
     )
     prompt = refinement_user_prompt(
         prd_text="# Original PRD",
@@ -134,5 +136,7 @@ def test_refinement_user_prompt_contains_answers():
 
 def test_generation_user_prompt_contains_artifact_name():
     """Verify generation_user_prompt includes the artifact name."""
-    prompt = generation_user_prompt(prd_text="# Test PRD", artifact_name="test_spec", prior_artifacts={})
+    prompt = generation_user_prompt(
+        prd_text="# Test PRD", artifact_name="test_spec", prior_artifacts={}
+    )
     assert "test_spec" in prompt

@@ -91,7 +91,9 @@ def _resolve_spec(spec_dir: Path, spec_arg: str) -> Path:
 
     if candidates:
         available = "\n".join(f"  {p.name}" for _, p in candidates)
-        raise click.ClickException(f"Spec '{spec_arg}' not found. Available:\n{available}")
+        raise click.ClickException(
+            f"Spec '{spec_arg}' not found. Available:\n{available}"
+        )
     raise click.ClickException(f"Spec '{spec_arg}' not found. No specs in {spec_dir}")
 
 
@@ -128,7 +130,9 @@ def _derive_spec_name(filename: str) -> str:
     envvar="SPEC_DIR",
     help=f"Spec directory (default: {_DEFAULT_SPEC_DIR})",
 )
-@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress progress output")
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False, help="Suppress progress output"
+)
 @click.version_option(package_name="spec")
 @click.pass_context
 def main(ctx: click.Context, spec_dir: str, quiet: bool) -> None:
@@ -237,7 +241,11 @@ def _serialize_assessment(assessment: Any) -> dict[str, Any]:
     default=None,
     help="JSON file with answers, or '-' to read from stdin.",
 )
-@click.option("--force", is_flag=True, help="Discard previous assessments and start a fresh refine cycle")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Discard previous assessments and start a fresh refine cycle",
+)
 @click.pass_context
 def refine_cmd(ctx: click.Context, spec: str, answers: str | None, force: bool) -> None:
     """Assess PRD, submit answers, and refine.
@@ -325,7 +333,11 @@ def refine_cmd(ctx: click.Context, spec: str, answers: str | None, force: bool) 
 
 @main.command("generate")
 @click.argument("spec")
-@click.option("--force", is_flag=True, help="Delete existing artifacts and regenerate from scratch")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Delete existing artifacts and regenerate from scratch",
+)
 @click.pass_context
 def generate_cmd(ctx: click.Context, spec: str, force: bool) -> None:
     """Generate JSON artifacts from accepted PRD."""
@@ -348,7 +360,11 @@ def generate_cmd(ctx: click.Context, spec: str, force: bool) -> None:
 
     with StatusSpinner("Generating artifacts...", quiet=quiet) as spinner:
         result = asyncio.run(session.generate())
-        artifacts = result.artifacts if hasattr(result, "artifacts") else result.get("artifacts", [])
+        artifacts = (
+            result.artifacts
+            if hasattr(result, "artifacts")
+            else result.get("artifacts", [])
+        )
         for artifact in artifacts:
             spinner.log(f"  {artifact}")
 
@@ -401,9 +417,13 @@ def _render_available_artifacts(target: Path) -> tuple[dict[str, str], list[str]
 @main.command("render")
 @click.argument("spec")
 @click.option("--combined", is_flag=True, help="Render as single combined document")
-@click.option("--json", "output_json", is_flag=True, default=False, help="Output JSON envelope")
+@click.option(
+    "--json", "output_json", is_flag=True, default=False, help="Output JSON envelope"
+)
 @click.pass_context
-def render_cmd(ctx: click.Context, spec: str, combined: bool, output_json: bool) -> None:
+def render_cmd(
+    ctx: click.Context, spec: str, combined: bool, output_json: bool
+) -> None:
     """Render spec as markdown."""
     spec_dir: Path = ctx.obj["spec_dir"]
 
@@ -432,7 +452,9 @@ def render_cmd(ctx: click.Context, spec: str, combined: bool, output_json: bool)
         target = _resolve_spec(spec_dir, spec)
         session = SpecSession.resume(target)
     except (click.ClickException, Exception) as exc:
-        msg = exc.format_message() if isinstance(exc, click.ClickException) else str(exc)
+        msg = (
+            exc.format_message() if isinstance(exc, click.ClickException) else str(exc)
+        )
         emit({"ok": False, "error": msg})
         ctx.exit(1)
         return
@@ -443,7 +465,9 @@ def render_cmd(ctx: click.Context, spec: str, combined: bool, output_json: bool)
         try:
             merged = session.render(combined=True)
             assert isinstance(merged, str)
-            sections = [n for n, f in _RENDER_ARTIFACT_FILES.items() if (target / f).exists()]
+            sections = [
+                n for n, f in _RENDER_ARTIFACT_FILES.items() if (target / f).exists()
+            ]
             emit_ok(format="markdown", content=merged, sections=sections)
         except Exception:
             # Partial render: merge what we can
@@ -471,7 +495,9 @@ def render_cmd(ctx: click.Context, spec: str, combined: bool, output_json: bool)
     else:
         # --json (per-artifact): artifacts map + optional warnings
         # Check which artifact files exist to decide strategy
-        missing = [n for n, f in _RENDER_ARTIFACT_FILES.items() if not (target / f).exists()]
+        missing = [
+            n for n, f in _RENDER_ARTIFACT_FILES.items() if not (target / f).exists()
+        ]
         if not missing:
             # All artifacts present – use the full session render
             result = session.render(combined=False)
@@ -591,7 +617,13 @@ def _run_cross_spec_checks(spec_dir: Path) -> list[dict[str, Any]]:
 
 @main.command("validate")
 @click.argument("spec", required=False, default=None)
-@click.option("--cross", "cross_check", is_flag=True, default=False, help="Run cross-spec interface consistency checks")
+@click.option(
+    "--cross",
+    "cross_check",
+    is_flag=True,
+    default=False,
+    help="Run cross-spec interface consistency checks",
+)
 @click.pass_context
 def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> None:
     """Run schema and cross-file checks.
@@ -611,7 +643,17 @@ def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> Non
             metas = []
 
         if not metas:
-            emit({"valid": False, "errors": [{"category": "io", "message": f"No spec packs found in {spec_dir}"}]})
+            emit(
+                {
+                    "valid": False,
+                    "errors": [
+                        {
+                            "category": "io",
+                            "message": f"No spec packs found in {spec_dir}",
+                        }
+                    ],
+                }
+            )
             ctx.exit(1)
             return
 
@@ -661,7 +703,13 @@ def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> Non
 
 
 @main.command("lint")
-@click.option("--all", "lint_all", is_flag=True, default=False, help="Include fully-implemented specs")
+@click.option(
+    "--all",
+    "lint_all",
+    is_flag=True,
+    default=False,
+    help="Include fully-implemented specs",
+)
 @click.pass_context
 def lint_cmd(ctx: click.Context, lint_all: bool) -> None:
     """Lint spec packs for validation errors.
@@ -738,10 +786,17 @@ def status_cmd(ctx: click.Context, spec: str) -> None:
 
 @main.command("campaign")
 @click.argument("action", type=click.Choice(["create", "open", "new-spec"]))
-@click.option("--path", "-p", type=click.Path(), default=".", help="Campaign directory path")
+@click.option(
+    "--path", "-p", type=click.Path(), default=".", help="Campaign directory path"
+)
 @click.option("--name", "-n", default=None, help="Campaign or spec name")
 @click.option("--description", default="", help="Campaign description")
-@click.option("--prd", type=click.Path(exists=True), default=None, help="PRD file path (for new-spec)")
+@click.option(
+    "--prd",
+    type=click.Path(exists=True),
+    default=None,
+    help="PRD file path (for new-spec)",
+)
 @click.pass_context
 def campaign_cmd(
     ctx: click.Context,

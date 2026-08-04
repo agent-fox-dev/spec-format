@@ -97,7 +97,9 @@ class TestConfigEdgeCases:
         settings_yaml: Path,
     ) -> None:
         """Unknown keys in spec_tool are silently ignored."""
-        settings_yaml.write_text("spec_tool:\n  unknown_key: value\n  model: test-model\n")
+        settings_yaml.write_text(
+            "spec_tool:\n  unknown_key: value\n  model: test-model\n"
+        )
         from agentspec.config import load_config
 
         config = load_config()

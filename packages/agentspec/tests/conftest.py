@@ -31,7 +31,9 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     Ensures test isolation from host environment variables that could
     affect configuration loading or client creation.
     """
-    keys_to_remove = [k for k in os.environ if k.startswith("AF_SPEC_") or k == "ANTHROPIC_API_KEY"]
+    keys_to_remove = [
+        k for k in os.environ if k.startswith("AF_SPEC_") or k == "ANTHROPIC_API_KEY"
+    ]
     for key in keys_to_remove:
         monkeypatch.delenv(key, raising=False)
 

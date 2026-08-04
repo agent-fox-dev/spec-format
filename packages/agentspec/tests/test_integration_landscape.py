@@ -190,9 +190,7 @@ class TestOverlapDetectionBlocksReady:
         agent = SpecAgent("STANDARD")
 
         prd_text = (
-            "# New PRD\n"
-            "## Intent\n"
-            "Provide core foundation utilities for the project.\n"
+            "# New PRD\n## Intent\nProvide core foundation utilities for the project.\n"
         )
 
         # Mock LLM returns an assessment with overlap gap and question —

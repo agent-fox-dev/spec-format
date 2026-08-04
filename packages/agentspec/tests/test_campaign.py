@@ -300,7 +300,9 @@ class TestCampaignProperties:
         max_examples=10,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_ts02_p4_property_create_atomic(self, name: str, desc: str, tmp_path: Path) -> None:
+    def test_ts02_p4_property_create_atomic(
+        self, name: str, desc: str, tmp_path: Path
+    ) -> None:
         """TS-02-P4: Campaign.create is atomic w.r.t. campaign.yaml.
 
         Property 4: After a successful create, campaign.yaml exists and

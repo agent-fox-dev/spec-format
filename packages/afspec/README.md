@@ -51,10 +51,10 @@ from afspec import load_spec, validate, discover_specs, Status
 
 # Load a single spec
 spec = load_spec(Path(".agent-fox/specs/01_foundation"))
-print(spec.prd.frontmatter.title)       # "Foundation"
-print(spec.prd.frontmatter.status)      # Status.DRAFT
+print(spec.prd.frontmatter.title)  # "Foundation"
+print(spec.prd.frontmatter.status)  # Status.DRAFT
 print(len(spec.requirements.requirements))  # number of requirements
-print(len(spec.tasks.task_groups))       # number of task groups
+print(len(spec.tasks.task_groups))  # number of task groups
 
 # Validate a spec (schema + cross-file consistency)
 result = validate(spec)

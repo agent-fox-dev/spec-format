@@ -192,7 +192,9 @@ class TestStateTransitions:
             try:
                 _run_sync(session.generate())
             except SessionError:
-                pytest.fail("Legal transition prd_accepted->generate raised SessionError")
+                pytest.fail(
+                    "Legal transition prd_accepted->generate raised SessionError"
+                )
             except Exception:
                 pass
 
@@ -214,7 +216,9 @@ class TestStateTransitions:
         assert "init" in error_msg
         assert "prd_accepted" in error_msg
 
-    def test_ts02_13_accept_prd_from_assessing_and_refining(self, tmp_path: Path) -> None:
+    def test_ts02_13_accept_prd_from_assessing_and_refining(
+        self, tmp_path: Path
+    ) -> None:
         """TS-02-13: accept_prd() works from both assessing and refining states.
 
         Requirement: 02-REQ-4.4
@@ -288,7 +292,9 @@ class TestSessionValidateRender:
             patch("agentspec.session.afspec") as mock_afspec,
         ):
             mock_afspec.load_spec.return_value = mock_spec
-            mock_afspec.validate.return_value = MagicMock(valid=True, errors=[], warnings=[])
+            mock_afspec.validate.return_value = MagicMock(
+                valid=True, errors=[], warnings=[]
+            )
 
             result = session.validate()
 
@@ -427,7 +433,9 @@ _LEGAL_TRANSITIONS: dict[tuple[str, str], str] = {
 }
 
 # All four required artifacts for validate/render
-_REQUIRED_ARTIFACTS = frozenset({"prd.md", "requirements.json", "test_spec.json", "tasks.json"})
+_REQUIRED_ARTIFACTS = frozenset(
+    {"prd.md", "requirements.json", "test_spec.json", "tasks.json"}
+)
 
 
 class TestSessionProperties:
@@ -469,7 +477,9 @@ class TestSessionProperties:
                                 else:
                                     _run_sync(getattr(session, method_name)())
                             except SessionError:
-                                pytest.fail(f"Legal transition {key} raised SessionError")
+                                pytest.fail(
+                                    f"Legal transition {key} raised SessionError"
+                                )
                             except Exception:
                                 pass
                         else:
@@ -521,7 +531,9 @@ class TestSessionProperties:
 
             resumed = SpecSession.resume(session.spec_dir)
 
-            assert resumed.state == original_state, f"Resumed state {resumed.state} != original {original_state}"
+            assert resumed.state == original_state, (
+                f"Resumed state {resumed.state} != original {original_state}"
+            )
             assert resumed.spec_dir == original_dir
 
     @given(
@@ -532,7 +544,9 @@ class TestSessionProperties:
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_ts02_p5_property_artifacts_required(self, subset_bits: int, tmp_path: Path) -> None:
+    def test_ts02_p5_property_artifacts_required(
+        self, subset_bits: int, tmp_path: Path
+    ) -> None:
         """TS-02-P5: validate() and render() require all four artifacts.
 
         Property 5: For any strict subset of the four required artifacts,
@@ -559,7 +573,9 @@ class TestSessionProperties:
         # prd.md is always created by new_spec, add the rest from subset
         for artifact in subset:
             if artifact != "prd.md":
-                (session.spec_dir / artifact).write_text(f'{{"placeholder": "{artifact}"}}')
+                (session.spec_dir / artifact).write_text(
+                    f'{{"placeholder": "{artifact}"}}'
+                )
 
         missing = _REQUIRED_ARTIFACTS - subset - {"prd.md"}
 
@@ -661,7 +677,9 @@ class TestSessionSmokeTests:
 
         with patch("agentspec.session.afspec") as mock_afspec:
             mock_afspec.load_spec.return_value = mock_spec
-            mock_afspec.validate.return_value = MagicMock(valid=True, errors=[], warnings=[])
+            mock_afspec.validate.return_value = MagicMock(
+                valid=True, errors=[], warnings=[]
+            )
             mock_afspec.render_combined.return_value = "# Combined Output"
             mock_afspec.render_individual.return_value = {
                 "prd": "# PRD",
@@ -828,7 +846,9 @@ class TestPendingQuestions:
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_answer_template_key_parity(self, question_ids: list[str], tmp_path: Path) -> None:
+    def test_answer_template_key_parity(
+        self, question_ids: list[str], tmp_path: Path
+    ) -> None:
         """TS-06-P1: Answer template keys match question IDs exactly.
 
         Property 1 from design.md.
@@ -1043,7 +1063,9 @@ def _mock_agent_for_refine(
         ],
     )
     mock_agent_instance = MagicMock()
-    mock_agent_instance.refine_prd = AsyncMock(return_value=(updated_prd, new_assessment))
+    mock_agent_instance.refine_prd = AsyncMock(
+        return_value=(updated_prd, new_assessment)
+    )
     return mock_agent_instance
 
 
@@ -1306,7 +1328,9 @@ class TestQAExchangeProperties:
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_ts07_p1_exchange_count_matches_refine_count(self, n: int, tmp_path: Path) -> None:
+    def test_ts07_p1_exchange_count_matches_refine_count(
+        self, n: int, tmp_path: Path
+    ) -> None:
         """TS-07-P1: Exchange count matches refine count.
 
         Property 1 from design.md.
@@ -1472,7 +1496,9 @@ class TestQAExchangeSmoke:
     """Integration smoke test for QA exchange recording — TS-07-SMOKE-1."""
 
     @pytest.mark.asyncio
-    async def test_ts07_smoke_1_full_refine_records_qa_exchange(self, tmp_path: Path) -> None:
+    async def test_ts07_smoke_1_full_refine_records_qa_exchange(
+        self, tmp_path: Path
+    ) -> None:
         """TS-07-SMOKE-1: Full refine records exchange in persisted session.
 
         Execution Path: Path 1 from design.md.

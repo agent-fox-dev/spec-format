@@ -99,9 +99,7 @@ def discover_specs(
         if not has_tasks:
             logger.warning("Spec folder '%s' has no tasks.json", entry.name)
 
-        specs.append(
-            SpecInfo(name=entry.name, prefix=prefix, path=entry, has_tasks=has_tasks, has_prd=has_prd)
-        )
+        specs.append(SpecInfo(name=entry.name, prefix=prefix, path=entry, has_tasks=has_tasks, has_prd=has_prd))
 
     if not specs:
         if not found_candidates:

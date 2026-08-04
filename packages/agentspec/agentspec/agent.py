@@ -119,7 +119,9 @@ class SpecAgent:
             raise AgentError("PRD text must not be empty", category="validation")
 
         system = assessment_system_prompt()
-        user_msg = assessment_user_prompt(prd_text, spec_name, spec_landscape=spec_landscape)
+        user_msg = assessment_user_prompt(
+            prd_text, spec_name, spec_landscape=spec_landscape
+        )
         messages: list[dict[str, str]] = [
             {"role": "user", "content": user_msg},
         ]
@@ -164,7 +166,10 @@ class SpecAgent:
         """
         # Validate answers not empty (03-REQ-2.E1)
         if not answers:
-            raise AgentError("Refinement requires answers; no answers provided", category="validation")
+            raise AgentError(
+                "Refinement requires answers; no answers provided",
+                category="validation",
+            )
 
         # Validate answer IDs match assessment questions (03-REQ-2.E2)
         valid_ids = {q.id for q in previous_assessment.questions}
@@ -176,7 +181,9 @@ class SpecAgent:
             )
 
         system = refinement_system_prompt()
-        user_msg = refinement_user_prompt(prd_text, answers, previous_assessment, spec_landscape=spec_landscape)
+        user_msg = refinement_user_prompt(
+            prd_text, answers, previous_assessment, spec_landscape=spec_landscape
+        )
         messages: list[dict[str, str]] = [
             {"role": "user", "content": user_msg},
         ]
@@ -276,7 +283,9 @@ class SpecAgent:
             ]
             tools = artifact_tool(artifact_name)
 
-            response = await self._call_api(messages, tools, system=system, temperature=0.2)
+            response = await self._call_api(
+                messages, tools, system=system, temperature=0.2
+            )
 
             tool_name = f"submit_{artifact_name}"
             tool_input = self._extract_tool_call(response, tool_name)
@@ -296,7 +305,15 @@ class SpecAgent:
                 ) from exc
 
             artifact_model = await self._repair_if_needed(
-                artifact_name, artifact_model, results, system, tools, tool_name, model_cls, spec_id, spec_name
+                artifact_name,
+                artifact_model,
+                results,
+                system,
+                tools,
+                tool_name,
+                model_cls,
+                spec_id,
+                spec_name,
             )
 
             results[artifact_name] = artifact_model
@@ -335,7 +352,11 @@ class SpecAgent:
             schema_errors = afspec_validate_schema(mini_spec)
             if artifact_name == "requirements":
                 schema_errors.extend(afspec_validate_cross_file(mini_spec))
-            relevant = [e for e in schema_errors if artifact_name in e.file or artifact_name.replace("_", "") in e.file]
+            relevant = [
+                e
+                for e in schema_errors
+                if artifact_name in e.file or artifact_name.replace("_", "") in e.file
+            ]
             if not relevant:
                 return artifact_model
 
@@ -354,7 +375,9 @@ class SpecAgent:
                 {"role": "user", "content": user_msg},
             ]
 
-            response = await self._call_api(messages, tools, system=system, temperature=0.2)
+            response = await self._call_api(
+                messages, tools, system=system, temperature=0.2
+            )
             tool_input = self._extract_tool_call(response, tool_name)
             content: dict[str, Any] = tool_input["content"]
 
@@ -365,7 +388,11 @@ class SpecAgent:
             try:
                 artifact_model = model_cls.model_validate(content)
             except PydanticValidationError:
-                logger.warning("Repair attempt %d for '%s' failed Pydantic validation", attempt + 1, artifact_name)
+                logger.warning(
+                    "Repair attempt %d for '%s' failed Pydantic validation",
+                    attempt + 1,
+                    artifact_name,
+                )
                 break
 
         return artifact_model
@@ -399,7 +426,11 @@ class SpecAgent:
         """
         context: dict[str, Any] = {}
         for name, value in results.items():
-            full = value.model_dump(by_alias=True, exclude_none=True) if hasattr(value, "model_dump") else dict(value)
+            full = (
+                value.model_dump(by_alias=True, exclude_none=True)
+                if hasattr(value, "model_dump")
+                else dict(value)
+            )
 
             if name == "requirements":
                 slim: dict[str, Any] = {}
@@ -427,9 +458,7 @@ class SpecAgent:
                         {"id": p.get("id", "")} for p in full["properties"]
                     ]
                 if "paths" in full:
-                    slim["paths"] = [
-                        {"id": p.get("id", "")} for p in full["paths"]
-                    ]
+                    slim["paths"] = [{"id": p.get("id", "")} for p in full["paths"]]
                 context[name] = slim
 
             elif name == "test_spec":
@@ -459,7 +488,9 @@ class SpecAgent:
         Used as a fallback when the refinement response did not include
         the ``submit_assessment`` tool call alongside the PRD update.
         """
-        logger.debug("submit_assessment missing from refinement response; making a follow-up API call")
+        logger.debug(
+            "submit_assessment missing from refinement response; making a follow-up API call"
+        )
         messages: list[dict[str, str]] = [
             {
                 "role": "user",
@@ -594,7 +625,10 @@ class SpecAgent:
                 contains no matching tool_use blocks.
         """
         for block in response.content:
-            if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == tool_name:
+            if (
+                getattr(block, "type", None) == "tool_use"
+                and getattr(block, "name", None) == tool_name
+            ):
                 return block.input  # type: ignore[no-any-return]
 
         logger.debug(
@@ -622,7 +656,10 @@ class SpecAgent:
         Raises:
             AgentError: If required fields are missing or invalid.
         """
-        from agentspec.session import Assessment, Question  # lazy: avoid circular import
+        from agentspec.session import (
+            Assessment,
+            Question,
+        )  # lazy: avoid circular import
 
         # Validate quality enum (03-REQ-1.2)
         valid_qualities = {"ready", "needs_refinement", "incomplete"}

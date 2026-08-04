@@ -40,6 +40,7 @@ from agentspec.errors import AgentError, SessionError
 
 logger = logging.getLogger(__name__)
 
+
 def _parse_spec_dir_name(name: str) -> tuple[str, str]:
     """Split a spec directory name into (spec_id, spec_name).
 
@@ -53,7 +54,9 @@ def _parse_spec_dir_name(name: str) -> tuple[str, str]:
 
     parsed = parse_spec_dir_name(name)
     if parsed is None:
-        raise SessionError(f"Invalid spec directory name '{name}' — expected format NN_snake_case (e.g. 01_basic_svc)")
+        raise SessionError(
+            f"Invalid spec directory name '{name}' — expected format NN_snake_case (e.g. 01_basic_svc)"
+        )
     prefix, spec_name = parsed
     # Return zero-padded prefix string to match original behavior
     return f"{prefix:02d}", spec_name
@@ -89,7 +92,9 @@ def _update_frontmatter(prd_text: str, spec_dir_name: str) -> str:
 _SESSION_FILE = "_session.json"
 
 # The four required artifacts for validate() and render()
-_REQUIRED_ARTIFACTS = frozenset({"prd.md", "requirements.json", "test_spec.json", "tasks.json"})
+_REQUIRED_ARTIFACTS = frozenset(
+    {"prd.md", "requirements.json", "test_spec.json", "tasks.json"}
+)
 
 
 class SessionState(enum.StrEnum):
@@ -149,7 +154,9 @@ class GenerateResult:
     """Result of generating spec artifacts."""
 
     artifacts: list[str] = field(default_factory=list)
-    validation: ValidationResult = field(default_factory=lambda: ValidationResult(valid=True))
+    validation: ValidationResult = field(
+        default_factory=lambda: ValidationResult(valid=True)
+    )
     warnings: list[str] = field(default_factory=list)
 
 
@@ -245,7 +252,11 @@ class SpecSession:
         if isinstance(last_error, dict):
             session._last_error = last_error
         elif isinstance(last_error, str):
-            session._last_error = {"message": last_error, "category": "internal", "retryable": False}
+            session._last_error = {
+                "message": last_error,
+                "category": "internal",
+                "retryable": False,
+            }
         return session
 
     async def assess(self) -> Assessment:
@@ -272,14 +283,18 @@ class SpecSession:
 
         landscape: list[dict[str, Any]] | None = None
         try:
-            landscape = load_spec_landscape(self._spec_dir.parent, current_spec_id=spec_id)
+            landscape = load_spec_landscape(
+                self._spec_dir.parent, current_spec_id=spec_id
+            )
         except Exception:
             landscape = None
 
         agent = _create_agent()
 
         try:
-            assessment = await agent.assess_prd(prd_text, spec_name, spec_landscape=landscape)
+            assessment = await agent.assess_prd(
+                prd_text, spec_name, spec_landscape=landscape
+            )
         except AgentError as exc:
             self._last_error = _error_to_dict(exc)
             self._persist()
@@ -324,7 +339,9 @@ class SpecSession:
 
         landscape: list[dict[str, Any]] | None = None
         try:
-            landscape = load_spec_landscape(self._spec_dir.parent, current_spec_id=spec_id)
+            landscape = load_spec_landscape(
+                self._spec_dir.parent, current_spec_id=spec_id
+            )
         except Exception:
             landscape = None
 
@@ -400,7 +417,9 @@ class SpecSession:
                 produce structured output, or an artifact fails schema
                 validation.
         """
-        self._check_transition("generate", required_states=("prd_accepted", "generating"))
+        self._check_transition(
+            "generate", required_states=("prd_accepted", "generating")
+        )
 
         # Transition to GENERATING immediately for partial-failure
         # support (03-REQ-6.E1)
@@ -422,7 +441,9 @@ class SpecSession:
 
         landscape: list[dict[str, Any]] | None = None
         try:
-            landscape = load_spec_landscape(self._spec_dir.parent, current_spec_id=spec_id)
+            landscape = load_spec_landscape(
+                self._spec_dir.parent, current_spec_id=spec_id
+            )
         except Exception:
             landscape = None
 
@@ -546,8 +567,12 @@ class SpecSession:
         """
         prd_text = (self._spec_dir / "prd.md").read_text()
 
-        req = Requirements.model_validate_json((self._spec_dir / "requirements.json").read_text())
-        ts = TestSpec.model_validate_json((self._spec_dir / "test_spec.json").read_text())
+        req = Requirements.model_validate_json(
+            (self._spec_dir / "requirements.json").read_text()
+        )
+        ts = TestSpec.model_validate_json(
+            (self._spec_dir / "test_spec.json").read_text()
+        )
         t = Tasks.model_validate_json((self._spec_dir / "tasks.json").read_text())
 
         req_md = afspec.render_requirements(req)
@@ -587,14 +612,22 @@ class SpecSession:
         frontmatter).  Infers spec_id/spec_name from the JSON artifacts
         so cross-file validation doesn't report false mismatches.
         """
-        req = Requirements.model_validate_json((self._spec_dir / "requirements.json").read_text())
-        ts = TestSpec.model_validate_json((self._spec_dir / "test_spec.json").read_text())
+        req = Requirements.model_validate_json(
+            (self._spec_dir / "requirements.json").read_text()
+        )
+        ts = TestSpec.model_validate_json(
+            (self._spec_dir / "test_spec.json").read_text()
+        )
         t = Tasks.model_validate_json((self._spec_dir / "tasks.json").read_text())
 
         spec_id = req.spec_id or ts.spec_id or t.spec_id
         spec_name = req.spec_name or ts.spec_name or t.spec_name
 
-        prd_body = (self._spec_dir / "prd.md").read_text() if (self._spec_dir / "prd.md").exists() else ""
+        prd_body = (
+            (self._spec_dir / "prd.md").read_text()
+            if (self._spec_dir / "prd.md").exists()
+            else ""
+        )
         prd = PRDDocument(
             frontmatter=PRDFrontmatter(spec_id=spec_id, spec_name=spec_name),
             body=prd_body,
@@ -683,9 +716,15 @@ class SpecSession:
             SessionError: If any required artifact is missing,
                 listing the missing artifact names.
         """
-        missing = [name for name in sorted(_REQUIRED_ARTIFACTS) if not (self._spec_dir / name).exists()]
+        missing = [
+            name
+            for name in sorted(_REQUIRED_ARTIFACTS)
+            if not (self._spec_dir / name).exists()
+        ]
         if missing:
-            msg = f"Missing required artifacts in {self._spec_dir}: {', '.join(missing)}"
+            msg = (
+                f"Missing required artifacts in {self._spec_dir}: {', '.join(missing)}"
+            )
             raise SessionError(msg)
 
     def _persist(self) -> None:

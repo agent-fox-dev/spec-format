@@ -163,7 +163,9 @@ async def test_session_refine_delegates_to_agent(tmp_path: Path) -> None:
     )
 
     mock_agent_instance = MagicMock()
-    mock_agent_instance.refine_prd = AsyncMock(return_value=("# Updated PRD\n## Goals\n1. REST API", new_assessment))
+    mock_agent_instance.refine_prd = AsyncMock(
+        return_value=("# Updated PRD\n## Goals\n1. REST API", new_assessment)
+    )
 
     with (
         patch("agentspec.session._create_agent", return_value=mock_agent_instance),
@@ -284,7 +286,9 @@ async def test_assessment_history_accumulates(tmp_path: Path) -> None:
 
     mock_agent_instance = MagicMock()
     mock_agent_instance.assess_prd = AsyncMock(return_value=assessment_1)
-    mock_agent_instance.refine_prd = AsyncMock(return_value=("# Updated PRD", assessment_2))
+    mock_agent_instance.refine_prd = AsyncMock(
+        return_value=("# Updated PRD", assessment_2)
+    )
 
     with (
         patch("agentspec.session._create_agent", return_value=mock_agent_instance),
@@ -306,15 +310,19 @@ async def test_assessment_history_accumulates(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_partial_generation_preserves_artifacts(tmp_path: Path, mock_ai_call) -> None:
+async def test_partial_generation_preserves_artifacts(
+    tmp_path: Path, mock_ai_call
+) -> None:
     """TS-03-E13: When generation fails on second artifact, the first
     artifact remains on disk and session stays in 'generating'."""
     session = _create_test_session(tmp_path, SessionState.PRD_ACCEPTED)
 
-    mock_ai_call.side_effect = _ai_call_side_effects([
-        make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
-        make_bad_request_error(),
-    ])
+    mock_ai_call.side_effect = _ai_call_side_effects(
+        [
+            make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
+            make_bad_request_error(),
+        ]
+    )
 
     from agentspec.agent import SpecAgent as _SA
 
@@ -348,10 +356,12 @@ async def test_resume_after_partial_generation(tmp_path: Path, mock_ai_call) -> 
     (session.spec_dir / "requirements.json").write_text(marshal_json(req_model))
 
     # Mock ai_call returns only 2 responses (for the missing artifacts)
-    mock_ai_call.side_effect = _ai_call_side_effects([
-        make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
-        make_artifact_response("tasks", SAMPLE_TASKS_JSON),
-    ])
+    mock_ai_call.side_effect = _ai_call_side_effects(
+        [
+            make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
+            make_artifact_response("tasks", SAMPLE_TASKS_JSON),
+        ]
+    )
 
     from agentspec.agent import SpecAgent as _SA
 
@@ -382,7 +392,9 @@ class TestPropertyPartialArtifacts:
         max_examples=3,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_property_partial_artifacts_preserved(self, failure_point: int, tmp_path: Path) -> None:
+    def test_property_partial_artifacts_preserved(
+        self, failure_point: int, tmp_path: Path
+    ) -> None:
         """TS-03-P5: For any generation failure at artifact N,
         artifacts 1..N-1 remain on disk."""
         import asyncio
@@ -397,19 +409,26 @@ class TestPropertyPartialArtifacts:
         session = _create_test_session(tmp_path, SessionState.PRD_ACCEPTED)
 
         side_effects = _ai_call_side_effects(
-            [make_artifact_response(artifact_names[i], artifact_jsons[i]) for i in range(failure_point)]
+            [
+                make_artifact_response(artifact_names[i], artifact_jsons[i])
+                for i in range(failure_point)
+            ]
             + [make_bad_request_error()]
         )
 
         from agentspec.agent import SpecAgent as _SA
 
-        with patch("agentspec.client.ai_call", new_callable=AsyncMock, side_effect=side_effects):
+        with patch(
+            "agentspec.client.ai_call", new_callable=AsyncMock, side_effect=side_effects
+        ):
             with patch("agentspec.session._create_agent", return_value=_SA("STANDARD")):
                 with pytest.raises(AgentError):
                     asyncio.run(session.generate())
 
         for i in range(failure_point):
-            assert (session.spec_dir / f"{artifact_names[i]}.json").exists(), f"{artifact_names[i]}.json should exist"
+            assert (session.spec_dir / f"{artifact_names[i]}.json").exists(), (
+                f"{artifact_names[i]}.json should exist"
+            )
 
         assert session.state != SessionState.GENERATED
 

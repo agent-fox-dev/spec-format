@@ -49,7 +49,9 @@ def _format_qa_block(
     parts: list[str] = []
     for q in previous_assessment.questions:
         answer_text = answers.get(q.id, "(no answer provided)")
-        parts.append(f"- {q.id}: {q.text}\n  Context: {q.context}\n  Answer: {answer_text}")
+        parts.append(
+            f"- {q.id}: {q.text}\n  Context: {q.context}\n  Answer: {answer_text}"
+        )
     return "\n".join(parts)
 
 
@@ -95,7 +97,11 @@ def _format_spec_landscape(landscape: list[dict[str, Any]] | None) -> str:
             glossary_terms = entry.get("glossary_terms", [])
             if glossary_terms:
                 terms_str = ", ".join(glossary_terms[:10])
-                intent = f"{intent} (Terms: {terms_str})" if intent else f"Terms: {terms_str}"
+                intent = (
+                    f"{intent} (Terms: {terms_str})"
+                    if intent
+                    else f"Terms: {terms_str}"
+                )
             parts.append(f"| {spec} | {title} | {status} | {intent} |")
         parts.append("")
 
@@ -113,7 +119,9 @@ def _format_spec_landscape(landscape: list[dict[str, Any]] | None) -> str:
     return "\n".join(parts)
 
 
-def _format_dependent_interfaces(dependent_interfaces: list[dict[str, Any]] | None) -> str:
+def _format_dependent_interfaces(
+    dependent_interfaces: list[dict[str, Any]] | None,
+) -> str:
     """Format dependent spec interfaces into a markdown section."""
     if not dependent_interfaces:
         return ""

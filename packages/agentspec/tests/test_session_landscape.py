@@ -362,14 +362,20 @@ class TestAgentAssessPrdLandscape:
             from agentspec.prompts import assessment_user_prompt as real_fn
 
             # Forward without spec_landscape to get a valid prompt
-            return real_fn(args[0], args[1], **{k: v for k, v in kwargs.items() if k != "spec_landscape"})
+            return real_fn(
+                args[0],
+                args[1],
+                **{k: v for k, v in kwargs.items() if k != "spec_landscape"},
+            )
 
         with (
             patch(
                 "agentspec.agent.assessment_user_prompt",
                 side_effect=_capture_assessment_user_prompt,
             ),
-            patch.object(agent, "_call_api", new_callable=AsyncMock, return_value=fake_response),
+            patch.object(
+                agent, "_call_api", new_callable=AsyncMock, return_value=fake_response
+            ),
         ):
             result = await agent.assess_prd(
                 "# PRD\nContent",
@@ -454,14 +460,21 @@ class TestAgentRefinePrdLandscape:
             captured_kwargs.update(kwargs)
             from agentspec.prompts import refinement_user_prompt as real_fn
 
-            return real_fn(args[0], args[1], args[2], **{k: v for k, v in kwargs.items() if k != "spec_landscape"})
+            return real_fn(
+                args[0],
+                args[1],
+                args[2],
+                **{k: v for k, v in kwargs.items() if k != "spec_landscape"},
+            )
 
         with (
             patch(
                 "agentspec.agent.refinement_user_prompt",
                 side_effect=_capture_refinement_user_prompt,
             ),
-            patch.object(agent, "_call_api", new_callable=AsyncMock, return_value=fake_response),
+            patch.object(
+                agent, "_call_api", new_callable=AsyncMock, return_value=fake_response
+            ),
         ):
             result = await agent.refine_prd(
                 "# PRD\nContent",
@@ -508,10 +521,6 @@ class TestAfSpecSkillUpdate:
             "SKILL.md must mention 'automatically' or 'automatic' for landscape injection"
         )
         # Must reference spec refine
-        assert "spec refine" in content, (
-            "SKILL.md must reference 'spec refine'"
-        )
+        assert "spec refine" in content, "SKILL.md must reference 'spec refine'"
         # Must mention Dependencies section
-        assert "Dependencies" in content, (
-            "SKILL.md must mention 'Dependencies'"
-        )
+        assert "Dependencies" in content, "SKILL.md must mention 'Dependencies'"

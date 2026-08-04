@@ -146,7 +146,9 @@ async def test_ready_assessment_empty_questions(mock_ai_call):
         )
     )
     agent = SpecAgent("STANDARD")
-    result = await agent.assess_prd("# PRD\n## Intent\n## Goals\n## Non-Goals\n## Background", "test_spec")
+    result = await agent.assess_prd(
+        "# PRD\n## Intent\n## Goals\n## Non-Goals\n## Background", "test_spec"
+    )
 
     assert result.quality == "ready"
     assert result.questions == []
@@ -158,7 +160,9 @@ async def test_ready_assessment_empty_questions(mock_ai_call):
 
 
 @pytest.mark.asyncio
-async def test_refine_prd_returns_updated_prd_and_assessment(mock_ai_call, sample_assessment):
+async def test_refine_prd_returns_updated_prd_and_assessment(
+    mock_ai_call, sample_assessment
+):
     """TS-03-6: refine_prd sends answers and returns an updated PRD
     with a new assessment."""
     mock_ai_call.return_value = _ai_call_response(
@@ -168,7 +172,9 @@ async def test_refine_prd_returns_updated_prd_and_assessment(mock_ai_call, sampl
         )
     )
     agent = SpecAgent("STANDARD")
-    updated, assessment = await agent.refine_prd("# Original PRD", {"q1": "Build a REST API"}, sample_assessment)
+    updated, assessment = await agent.refine_prd(
+        "# Original PRD", {"q1": "Build a REST API"}, sample_assessment
+    )
 
     assert "REST API" in updated
     assert isinstance(assessment, Assessment)
@@ -212,9 +218,7 @@ async def test_refine_prd_returns_body_only(mock_ai_call, sample_assessment):
     """TS-03-8: The updated PRD from the agent contains body-only content.
     The caller (SpecSession) is responsible for re-attaching frontmatter."""
     mock_ai_call.return_value = _ai_call_response(
-        make_refinement_response(
-            updated_prd="## Intent\nUpdated body", quality="ready"
-        )
+        make_refinement_response(updated_prd="## Intent\nUpdated body", quality="ready")
     )
     agent = SpecAgent("STANDARD")
     updated, _ = await agent.refine_prd(
@@ -235,11 +239,13 @@ async def test_refine_prd_returns_body_only(mock_ai_call, sample_assessment):
 async def test_generate_three_artifacts_in_order(mock_ai_call):
     """TS-03-9: generate_artifacts makes three API calls and returns
     all three artifacts."""
-    mock_ai_call.side_effect = _ai_call_side_effects([
-        make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
-        make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
-        make_artifact_response("tasks", SAMPLE_TASKS_JSON),
-    ])
+    mock_ai_call.side_effect = _ai_call_side_effects(
+        [
+            make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
+            make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
+            make_artifact_response("tasks", SAMPLE_TASKS_JSON),
+        ]
+    )
     agent = SpecAgent("STANDARD")
 
     result = await agent.generate_artifacts("# Accepted PRD", "03", "agent_pipeline")
@@ -258,11 +264,13 @@ async def test_generate_returns_model_instances(mock_ai_call):
     """TS-03-10: Each artifact value is an afspec Pydantic model."""
     from afspec import Requirements, Tasks, TestSpec
 
-    mock_ai_call.side_effect = _ai_call_side_effects([
-        make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
-        make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
-        make_artifact_response("tasks", SAMPLE_TASKS_JSON),
-    ])
+    mock_ai_call.side_effect = _ai_call_side_effects(
+        [
+            make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
+            make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
+            make_artifact_response("tasks", SAMPLE_TASKS_JSON),
+        ]
+    )
     agent = SpecAgent("STANDARD")
 
     result = await agent.generate_artifacts("# PRD", "03", "test")
@@ -343,11 +351,13 @@ async def test_validation_failure_aborts_generation(mock_ai_call):
 async def test_test_spec_includes_requirements_context(mock_ai_call):
     """TS-03-13: The test_spec generation prompt includes the generated
     requirements content."""
-    mock_ai_call.side_effect = _ai_call_side_effects([
-        make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
-        make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
-        make_artifact_response("tasks", SAMPLE_TASKS_JSON),
-    ])
+    mock_ai_call.side_effect = _ai_call_side_effects(
+        [
+            make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
+            make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
+            make_artifact_response("tasks", SAMPLE_TASKS_JSON),
+        ]
+    )
     agent = SpecAgent("STANDARD")
 
     await agent.generate_artifacts("# PRD", "03", "test")
@@ -367,11 +377,13 @@ async def test_test_spec_includes_requirements_context(mock_ai_call):
 async def test_tasks_includes_both_prior_artifacts(mock_ai_call):
     """TS-03-14: The tasks generation prompt includes both requirements
     and test_spec content."""
-    mock_ai_call.side_effect = _ai_call_side_effects([
-        make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
-        make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
-        make_artifact_response("tasks", SAMPLE_TASKS_JSON),
-    ])
+    mock_ai_call.side_effect = _ai_call_side_effects(
+        [
+            make_artifact_response("requirements", SAMPLE_REQUIREMENTS_JSON),
+            make_artifact_response("test_spec", SAMPLE_TEST_SPEC_JSON),
+            make_artifact_response("tasks", SAMPLE_TASKS_JSON),
+        ]
+    )
     agent = SpecAgent("STANDARD")
 
     await agent.generate_artifacts("# PRD", "03", "test")
@@ -594,7 +606,9 @@ async def test_empty_answers_raises_agent_error(mock_ai_call, sample_assessment)
 
 
 @pytest.mark.asyncio
-async def test_unrecognized_question_ids_raises_agent_error(mock_ai_call, sample_assessment):
+async def test_unrecognized_question_ids_raises_agent_error(
+    mock_ai_call, sample_assessment
+):
     """TS-03-E5: AgentError when answer IDs don't match assessment questions."""
     agent = SpecAgent("STANDARD")
 
@@ -608,7 +622,9 @@ async def test_unrecognized_question_ids_raises_agent_error(mock_ai_call, sample
 
 
 @pytest.mark.asyncio
-async def test_missing_assessment_in_refinement_response(mock_ai_call, sample_assessment):
+async def test_missing_assessment_in_refinement_response(
+    mock_ai_call, sample_assessment
+):
     """TS-03-E6: AgentError when agent returns PRD update but no assessment."""
     from conftest_agent import FakeMessage, FakeToolUseBlock
 
@@ -758,7 +774,9 @@ class TestPropertyQualityEnum:
         assert assessment.quality == quality
 
     @given(
-        quality=st.text(min_size=1, max_size=30).filter(lambda q: q not in ["ready", "needs_refinement", "incomplete"])
+        quality=st.text(min_size=1, max_size=30).filter(
+            lambda q: q not in ["ready", "needs_refinement", "incomplete"]
+        )
     )
     @settings(max_examples=10)
     def test_property_invalid_quality_rejected(self, quality: str) -> None:
@@ -875,7 +893,9 @@ class TestPropertyErrorWrapping:
             (make_auth_error, "auth"),
         ],
     )
-    async def test_error_wrapping(self, mock_ai_call, error_factory, expected_category) -> None:
+    async def test_error_wrapping(
+        self, mock_ai_call, error_factory, expected_category
+    ) -> None:
         """Errors from ai_call are wrapped as AgentError with correct category."""
         mock_ai_call.side_effect = error_factory()
         agent = SpecAgent("STANDARD")
@@ -1127,7 +1147,9 @@ async def test_end_turn_stop_reason_passes_through(mock_ai_call):
     ],
 )
 @pytest.mark.asyncio
-async def test_stop_reason_error_messages_are_distinct(mock_ai_call, stop_reason, expected_keyword):
+async def test_stop_reason_error_messages_are_distinct(
+    mock_ai_call, stop_reason, expected_keyword
+):
     """TS-NS-5: Each non-end_turn stop reason carries a distinct,
     human-readable message that does NOT contain the generic
     'tool was not called' phrasing."""

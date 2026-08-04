@@ -323,16 +323,18 @@ def _validate_id_formats(spec: Spec) -> list[ValidationError]:
                 ValidationError(
                     file=file,
                     path=entity_id,
-                    message=(
-                        f"{entity_type} ID '{entity_id}' does not match "
-                        f"expected pattern {pattern.pattern}"
-                    ),
+                    message=(f"{entity_type} ID '{entity_id}' does not match expected pattern {pattern.pattern}"),
                     rule="id-format",
                 )
             )
         # Check spec_id prefix where applicable
         if pattern and entity_type in (
-            "requirement", "criterion", "edge_case", "property", "path", "error",
+            "requirement",
+            "criterion",
+            "edge_case",
+            "property",
+            "path",
+            "error",
         ):
             for marker in ("-REQ-", "-PROP-", "-PATH-", "-ERR-"):
                 idx = entity_id.find(marker)
@@ -354,7 +356,10 @@ def _validate_id_formats(spec: Spec) -> list[ValidationError]:
                     )
                 )
         elif pattern and entity_type in (
-            "test_case", "property_test", "edge_case_test", "smoke_test",
+            "test_case",
+            "property_test",
+            "edge_case_test",
+            "smoke_test",
         ):
             # These IDs have format TS-{spec_id}-{N} or TS-{spec_id}-SMOKE-{N}
             remainder = entity_id[3:] if entity_id.startswith("TS-") else ""
@@ -369,26 +374,24 @@ def _validate_id_formats(spec: Spec) -> list[ValidationError]:
                 if last_dash > 0:
                     ts_prefix = remainder[:last_dash]
             if ts_prefix and ts_prefix != spec_id:
-                    errors.append(
-                        ValidationError(
-                            file=file,
-                            path=entity_id,
-                            message=(
-                                f"{entity_type} ID '{entity_id}' has spec_id prefix "
-                                f"'{ts_prefix}' but artifact spec_id is '{spec_id}'"
-                            ),
-                            rule="id-format",
-                        )
+                errors.append(
+                    ValidationError(
+                        file=file,
+                        path=entity_id,
+                        message=(
+                            f"{entity_type} ID '{entity_id}' has spec_id prefix "
+                            f"'{ts_prefix}' but artifact spec_id is '{spec_id}'"
+                        ),
+                        rule="id-format",
                     )
+                )
         # Duplicate check
         if entity_id in seen:
             errors.append(
                 ValidationError(
                     file=file,
                     path=entity_id,
-                    message=(
-                        f"Duplicate {entity_type} ID '{entity_id}'"
-                    ),
+                    message=(f"Duplicate {entity_type} ID '{entity_id}'"),
                     rule="id-format",
                 )
             )
@@ -484,48 +487,33 @@ def _validate_wiring_semantics(spec: Spec) -> list[ValidationError]:
                 file="tasks.json",
                 path=f"task_groups[{idx}].subtasks",
                 message=(
-                    "Wiring verification group has no subtask with "
-                    "test_spec_refs; wiring checks must reference tests"
+                    "Wiring verification group has no subtask with test_spec_refs; wiring checks must reference tests"
                 ),
                 rule="wiring-1",
             )
         )
 
-    has_smoke = any(
-        _SMOKE_TEST_RE.match(ref)
-        for st in wiring.subtasks
-        for ref in st.test_spec_refs
-    )
+    has_smoke = any(_SMOKE_TEST_RE.match(ref) for st in wiring.subtasks for ref in st.test_spec_refs)
     if not has_smoke:
         errors.append(
             ValidationError(
                 file="tasks.json",
                 path=f"task_groups[{idx}].subtasks",
-                message=(
-                    "Wiring verification group has no smoke test "
-                    "reference (expected pattern TS-*-SMOKE-*)"
-                ),
+                message=("Wiring verification group has no smoke test reference (expected pattern TS-*-SMOKE-*)"),
                 rule="wiring-1",
             )
         )
 
-    has_stub = any(
-        _STUB_AUDIT_RE.search(text)
-        for st in wiring.subtasks
-        for text in [st.title] + list(st.details)
-    )
+    has_stub = any(_STUB_AUDIT_RE.search(text) for st in wiring.subtasks for text in [st.title] + list(st.details))
     if not has_stub and wiring.verification:
-        has_stub = any(
-            _STUB_AUDIT_RE.search(c) for c in wiring.verification.checks
-        )
+        has_stub = any(_STUB_AUDIT_RE.search(c) for c in wiring.verification.checks)
     if not has_stub:
         errors.append(
             ValidationError(
                 file="tasks.json",
                 path=f"task_groups[{idx}]",
                 message=(
-                    "Wiring verification group has no subtask or "
-                    "verification check referencing stub/dead-code audit"
+                    "Wiring verification group has no subtask or verification check referencing stub/dead-code audit"
                 ),
                 rule="wiring-1",
             )
@@ -1263,9 +1251,7 @@ def _check_error_path_return_contract(spec: Spec) -> list[ValidationWarning]:
             if criterion.return_contract is not None:
                 continue
             has_error_keywords = _ERROR_PATH_RE.search(criterion.action)
-            has_error_condition = bool(
-                criterion.error_condition and criterion.error_condition.strip()
-            )
+            has_error_condition = bool(criterion.error_condition and criterion.error_condition.strip())
             if has_error_keywords or has_error_condition:
                 warnings.append(
                     ValidationWarning(
@@ -1324,10 +1310,7 @@ def _check_vague_language(spec: Spec) -> list[ValidationWarning]:
         if match:
             warnings.append(
                 ValidationWarning(
-                    message=(
-                        f"Error handling {eh.id} field 'behavior' "
-                        f"contains vague language: '{match.group()}'"
-                    ),
+                    message=(f"Error handling {eh.id} field 'behavior' contains vague language: '{match.group()}'"),
                     entity_id=eh.id,
                 )
             )
@@ -1349,10 +1332,7 @@ def _check_scope_limit(spec: Spec) -> list[ValidationWarning]:
     if count > 10:
         return [
             ValidationWarning(
-                message=(
-                    f"Spec has {count} requirements (recommended maximum "
-                    f"is 10) — consider splitting"
-                ),
+                message=(f"Spec has {count} requirements (recommended maximum is 10) — consider splitting"),
                 entity_id=spec.requirements.spec_id,
             )
         ]

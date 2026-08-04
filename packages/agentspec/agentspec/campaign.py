@@ -247,7 +247,9 @@ class Campaign:
             "source": "interactive",
             "schema_version": 1,
         }
-        frontmatter_yaml = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+        frontmatter_yaml = yaml.dump(
+            frontmatter, default_flow_style=False, sort_keys=False
+        )
         prd_text = f"---\n{frontmatter_yaml}---\n{prd_content}\n"
         (spec_dir / "prd.md").write_text(prd_text)
 

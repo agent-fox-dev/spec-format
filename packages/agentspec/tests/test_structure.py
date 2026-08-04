@@ -70,8 +70,12 @@ def test_ts10_2_no_cli_dependencies() -> None:
     config = _load_agentspec_pyproject()
     deps = config["project"]["dependencies"]
 
-    assert not any("click" in d.lower() for d in deps), "click should not be in agentspec dependencies"
-    assert not any("rich" in d.lower() for d in deps), "rich should not be in agentspec dependencies"
+    assert not any("click" in d.lower() for d in deps), (
+        "click should not be in agentspec dependencies"
+    )
+    assert not any("rich" in d.lower() for d in deps), (
+        "rich should not be in agentspec dependencies"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -134,4 +138,6 @@ def test_ts10_e7_no_spec_cli_imports_in_agentspec_tests() -> None:
     import_re = re.compile(r"^\s*(?:from\s+spec_cli\b|import\s+spec_cli\b)")
     for test_file in test_dir.glob("*.py"):
         for lineno, line in enumerate(test_file.read_text().splitlines(), start=1):
-            assert not import_re.match(line), f"{test_file.name}:{lineno} imports from spec_cli: {line.strip()!r}"
+            assert not import_re.match(line), (
+                f"{test_file.name}:{lineno} imports from spec_cli: {line.strip()!r}"
+            )

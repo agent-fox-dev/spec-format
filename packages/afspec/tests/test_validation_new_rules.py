@@ -323,9 +323,7 @@ def _build_wiring_spec(
             requirements=[req],
             execution_paths=list(execution_paths_list or []),
         ),
-        test_spec=TestSpec(
-            spec_id="99", spec_name="99", test_cases=[tc], smoke_tests=list(smoke_tests_list or [])
-        ),
+        test_spec=TestSpec(spec_id="99", spec_name="99", test_cases=[tc], smoke_tests=list(smoke_tests_list or [])),
         tasks=Tasks(
             spec_id="99",
             spec_name="99",
@@ -354,7 +352,9 @@ class TestWiring1NoSmokeRef:
 class TestWiring1NoStubAudit:
     def test_no_stub_audit_produces_error(self) -> None:
         smoke = SmokeTest(id="TS-99-SMOKE-1", execution_path_id="99-PATH-1", description="s")
-        path = ExecutionPath(id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")])
+        path = ExecutionPath(
+            id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")]
+        )
         result = validate(
             _build_wiring_spec(
                 wiring_test_spec_refs=["TS-99-SMOKE-1"],
@@ -369,7 +369,9 @@ class TestWiring1NoStubAudit:
 class TestWiring1FullyValid:
     def test_valid_wiring_no_errors(self) -> None:
         smoke = SmokeTest(id="TS-99-SMOKE-1", execution_path_id="99-PATH-1", description="s")
-        path = ExecutionPath(id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")])
+        path = ExecutionPath(
+            id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")]
+        )
         result = validate(
             _build_wiring_spec(
                 wiring_test_spec_refs=["TS-99-SMOKE-1"],
@@ -383,7 +385,9 @@ class TestWiring1FullyValid:
 
     def test_stub_in_verification_checks_passes(self) -> None:
         smoke = SmokeTest(id="TS-99-SMOKE-1", execution_path_id="99-PATH-1", description="s")
-        path = ExecutionPath(id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")])
+        path = ExecutionPath(
+            id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")]
+        )
         result = validate(
             _build_wiring_spec(
                 wiring_test_spec_refs=["TS-99-SMOKE-1"],
@@ -397,7 +401,9 @@ class TestWiring1FullyValid:
 
     def test_stub_in_details_passes(self) -> None:
         smoke = SmokeTest(id="TS-99-SMOKE-1", execution_path_id="99-PATH-1", description="s")
-        path = ExecutionPath(id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")])
+        path = ExecutionPath(
+            id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")]
+        )
         result = validate(
             _build_wiring_spec(
                 wiring_test_spec_refs=["TS-99-SMOKE-1"],
@@ -413,7 +419,9 @@ class TestWiring1FullyValid:
 class TestWiring1DeadCodeVariant:
     def test_dead_code_keyword_passes(self) -> None:
         smoke = SmokeTest(id="TS-99-SMOKE-1", execution_path_id="99-PATH-1", description="s")
-        path = ExecutionPath(id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")])
+        path = ExecutionPath(
+            id="99-PATH-1", title="p", steps=[PathStep(actor="User", action="invoke"), PathStep(actor="S", action="a")]
+        )
         result = validate(
             _build_wiring_spec(
                 wiring_test_spec_refs=["TS-99-SMOKE-1"],
