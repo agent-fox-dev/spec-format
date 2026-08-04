@@ -1,0 +1,1091 @@
+{
+  "$schema": null,
+  "spec_id": "01",
+  "spec_name": "cli_campaign_config",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "pytest -q -k 'spec_01 or test_spec_01' --tb=short",
+    "all_tests": "pytest -q",
+    "linter": "ruff check packages/"
+  },
+  "dependencies": [],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write tests: default spec root, auto-init campaign, and --source flag",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write tests for _DEFAULT_SPEC_DIR constant and --spec-dir / SPEC_DIR override",
+          "details": [
+            "Create test file `packages/spec/tests/test_cli_spec_root.py`",
+            "Test that `_DEFAULT_SPEC_DIR` equals `.specs` (TS-01-1)",
+            "Test that `--spec-dir` flag overrides the default (TS-01-2)",
+            "Test that `SPEC_DIR` env var overrides the default (TS-01-3)",
+            "Use Click's `CliRunner` and `monkeypatch` for env var injection"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-2",
+            "TS-01-3"
+          ],
+          "requirement_refs": [
+            "01-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write tests for auto-init campaign happy paths",
+          "details": [
+            "Create test file `packages/spec/tests/test_auto_init_campaign.py`",
+            "Test: `.specs/` absent \u2192 directory and `campaign.yaml` created (TS-01-4)",
+            "Test: `.specs/` present with `campaign.yaml` \u2192 skip auto-init, proceed (TS-01-5)",
+            "Test: `.specs/` present without `campaign.yaml` \u2192 write `campaign.yaml` only (TS-01-6)",
+            "Mock `Campaign.create` and filesystem operations with `tmp_path` fixture"
+          ],
+          "test_spec_refs": [
+            "TS-01-4",
+            "TS-01-5",
+            "TS-01-6"
+          ],
+          "requirement_refs": [
+            "01-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write tests for auto-init campaign error paths",
+          "details": [
+            "Test: `.specs/` is read-only \u2192 abort with user-facing permission error message (TS-01-7)",
+            "Test: disk-full / other I/O error during write \u2192 abort with OS-level error message",
+            "Test: old `.spec/` exists alongside `.specs/` \u2192 `.spec/` is silently ignored",
+            "Use `tmp_path`, `os.chmod`, and `OSError` side-effects to simulate failures"
+          ],
+          "test_spec_refs": [
+            "TS-01-7"
+          ],
+          "requirement_refs": [
+            "01-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.4",
+          "title": "Write tests for --source / -s global flag",
+          "details": [
+            "Create test file `packages/spec/tests/test_cli_source_flag.py`",
+            "Test: `--source` flag is accepted by the `main` group and stored in `ctx.obj['source']` as a `Path` (TS-01-8)",
+            "Test: `-s` short alias works identically (TS-01-9)",
+            "Test: passing a non-existent path raises a Click error (TS-01-10)",
+            "Test: default value is `Path('.')` when flag is omitted",
+            "Use `CliRunner` with `catch_exceptions=False` and `tmp_path` for existing-dir checks"
+          ],
+          "test_spec_refs": [
+            "TS-01-8",
+            "TS-01-9",
+            "TS-01-10"
+          ],
+          "requirement_refs": [
+            "01-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.5",
+          "title": "Write tests for --source propagation through Campaign.new_spec call chain",
+          "details": [
+            "Test that `spec new` passes `ctx.obj['source']` as the `source` kwarg to `Campaign.new_spec`",
+            "Mock `Campaign.new_spec` and assert it is called with the correct `source=Path(...)` argument",
+            "Test that `Campaign.new_spec` forwards `source` to `SpecSession._create`",
+            "Verify `self._source` is set on the returned `SpecSession` instance"
+          ],
+          "test_spec_refs": [
+            "TS-01-8",
+            "TS-01-9"
+          ],
+          "requirement_refs": [
+            "01-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.6",
+          "title": "Write tests for simplified spec campaign command",
+          "details": [
+            "Create test file `packages/spec/tests/test_cli_campaign_cmd.py`",
+            "Test: `spec campaign --path P --name N` creates campaign via `Campaign.create(Path(P), N, '')` (TS-01-11)",
+            "Test: `--description` optional arg is forwarded to `Campaign.create` (TS-01-12)",
+            "Test: `spec campaign open` is no longer a valid subcommand \u2192 Click error (TS-01-13)",
+            "Test: `spec campaign new-spec` is no longer a valid subcommand \u2192 Click error (TS-01-14)",
+            "Test: duplicate campaign at `--path` \u2192 non-zero exit with message `'campaign already exists at <path>'`",
+            "Mock `Campaign.create` to raise the expected error for the duplicate case"
+          ],
+          "test_spec_refs": [
+            "TS-01-11",
+            "TS-01-12",
+            "TS-01-13",
+            "TS-01-14"
+          ],
+          "requirement_refs": [
+            "01-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All newly written test files are collected by pytest without import errors: `pytest --collect-only packages/spec/tests/test_cli_spec_root.py packages/spec/tests/test_auto_init_campaign.py packages/spec/tests/test_cli_source_flag.py packages/spec/tests/test_cli_campaign_cmd.py`",
+          "Tests fail (red) because implementation does not yet exist \u2014 confirms tests are exercising real behaviour",
+          "No linter warnings in new test files: `ruff check packages/spec/tests/`",
+          "Requirements 01-REQ-1, 01-REQ-2, 01-REQ-3, 01-REQ-4 acceptance criteria are fully covered by test assertions"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write tests: spec list command and config restructuring",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write tests for spec list happy paths",
+          "details": [
+            "Create test file `packages/spec/tests/test_cli_list_cmd.py`",
+            "Test: spec root with valid spec dirs \u2192 JSON output with `spec_dir` and `specs` array (TS-01-15)",
+            "Test: each spec entry has `name` (full dir name) and `state` from `_session.json` (TS-01-16)",
+            "Test: `spec_dir` in output is the relative path as configured, never absolute (TS-01-17)",
+            "Test: non-matching directories (e.g. `archive/`, plain files) are silently skipped (TS-01-18)",
+            "Use `tmp_path` to create realistic spec directory trees with `_session.json` files"
+          ],
+          "test_spec_refs": [
+            "TS-01-15",
+            "TS-01-16",
+            "TS-01-17",
+            "TS-01-18"
+          ],
+          "requirement_refs": [
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for spec list edge cases and error handling",
+          "details": [
+            "Test: spec root does not exist \u2192 `{spec_dir: '...', specs: []}` with exit code 0 (TS-01-19)",
+            "Test: spec root exists but is empty \u2192 empty specs array, exit code 0",
+            "Test: `_session.json` absent \u2192 `state: 'no_session'`",
+            "Test: `_session.json` present but invalid JSON \u2192 `state: 'no_session'`",
+            "Test: `_session.json` present but missing `state` field \u2192 `state: 'no_session'`",
+            "Assert output is valid JSON parseable with `json.loads`"
+          ],
+          "test_spec_refs": [
+            "TS-01-19"
+          ],
+          "requirement_refs": [
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for config path changes (load_config reads from .specs/)",
+          "details": [
+            "Create test file `packages/agentspec/tests/test_config_paths.py`",
+            "Test: `load_config()` reads project-local config from `.specs/config.toml` (TS-01-20)",
+            "Test: `load_config()` reads global config from `~/.specs/config.toml` (TS-01-21)",
+            "Test: `.spec/config.toml` (old path) is NOT read when `.specs/config.toml` exists",
+            "Use `tmp_path` and `monkeypatch` to control home directory and cwd"
+          ],
+          "test_spec_refs": [
+            "TS-01-20",
+            "TS-01-21"
+          ],
+          "requirement_refs": [
+            "01-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.4",
+          "title": "Write tests for [provider] and [model] config sections",
+          "details": [
+            "Create test file `packages/agentspec/tests/test_config_sections.py`",
+            "Test: `[model].model` is read into `AgentSpecConfig.model` (TS-01-22)",
+            "Test: `[provider].auth_method`, `vertex_project`, `vertex_region` are read correctly (TS-01-23)",
+            "Test: `AF_SPEC_MODEL` env var overrides `[model].model` (TS-01-24)",
+            "Test: hardcoded default `'STANDARD'` is used when neither env var nor config key is present (TS-01-25)",
+            "Test: `[spec_tool]` section is ignored (no error, fields not populated from it)",
+            "Use `tmp_path` to write TOML fixtures and `monkeypatch` for env vars"
+          ],
+          "test_spec_refs": [
+            "TS-01-22",
+            "TS-01-23",
+            "TS-01-24",
+            "TS-01-25"
+          ],
+          "requirement_refs": [
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.5",
+          "title": "Write tests for load_theme_config hardcoded defaults and [theme] removal",
+          "details": [
+            "Test: `load_theme_config()` returns a `ThemeConfig()` instance with hardcoded defaults",
+            "Test: `load_theme_config()` does NOT read any file (mock `open` to assert it is never called)",
+            "Test: `ThemeConfig` fields (`playful`, `header`, `success`, `error`, `warning`, `info`, `tool`, `muted`) are all present with expected default values",
+            "Test: calling `load_theme_config()` with a `.specs/config.toml` containing a `[theme]` section does not raise an error and still returns defaults"
+          ],
+          "test_spec_refs": [
+            "TS-01-22"
+          ],
+          "requirement_refs": [
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.6",
+          "title": "Write smoke tests for end-to-end CLI flows",
+          "details": [
+            "Create test file `packages/spec/tests/test_smoke_01.py`",
+            "SMOKE-1: invoke `spec list` against a real temp spec root with one valid spec dir \u2192 valid JSON output",
+            "SMOKE-2: invoke `spec campaign --path P --name N` \u2192 `campaign.yaml` written at `P`",
+            "SMOKE-3: invoke `spec new` in a temp dir without `.specs/` \u2192 `.specs/campaign.yaml` auto-created before campaign creation proceeds",
+            "Use `CliRunner(mix_stderr=False)` and `tmp_path`; mock `Campaign.new_spec` to avoid real AI calls"
+          ],
+          "test_spec_refs": [
+            "TS-01-4",
+            "TS-01-11",
+            "TS-01-15"
+          ],
+          "requirement_refs": [
+            "01-REQ-2",
+            "01-REQ-4",
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All newly written test files are collected without import errors: `pytest --collect-only packages/spec/tests/test_cli_list_cmd.py packages/spec/tests/test_smoke_01.py packages/agentspec/tests/test_config_paths.py packages/agentspec/tests/test_config_sections.py`",
+          "Tests fail (red) confirming they exercise real behaviour not yet implemented",
+          "No linter warnings: `ruff check packages/spec/tests/ packages/agentspec/tests/`",
+          "Requirements 01-REQ-5, 01-REQ-6, 01-REQ-7 acceptance criteria are fully covered by test assertions",
+          "Smoke test file `test_smoke_01.py` contains at least three SMOKE test functions"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "standard",
+      "title": "Implement default spec root change and auto-init campaign",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Update _DEFAULT_SPEC_DIR constant in cli.py",
+          "details": [
+            "In `packages/spec/spec/cli.py`, change `_DEFAULT_SPEC_DIR` from `\".spec/specs\"` to `\".specs\"`",
+            "Verify `--spec-dir` / `-d` option and `SPEC_DIR` env var wiring remain unchanged",
+            "Confirm `ctx.obj['spec_dir']` is set to the resolved path (from flag, env var, or default)"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-2",
+            "TS-01-3"
+          ],
+          "requirement_refs": [
+            "01-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Implement auto-init default campaign logic in spec new",
+          "details": [
+            "In `packages/spec/spec/cli.py`, add `_ensure_default_campaign(spec_dir: Path) -> None` helper",
+            "Logic: if `spec_dir` does not exist \u2192 `spec_dir.mkdir(parents=True)` then write `campaign.yaml`",
+            "Logic: if `spec_dir` exists and `campaign.yaml` absent \u2192 write `campaign.yaml` only",
+            "Logic: if `spec_dir` exists and `campaign.yaml` present \u2192 return immediately (no-op)",
+            "`campaign.yaml` content: `name: \"default\"\\ndescription: \"default campaign\"`",
+            "Call `_ensure_default_campaign(spec_dir)` at the top of the `spec new` command handler, before `Campaign.open`"
+          ],
+          "test_spec_refs": [
+            "TS-01-4",
+            "TS-01-5",
+            "TS-01-6"
+          ],
+          "requirement_refs": [
+            "01-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Implement auto-init error handling (permission and I/O errors)",
+          "details": [
+            "Wrap `spec_dir.mkdir()` and `campaign.yaml` write in try/except `PermissionError` \u2192 `click.echo(f'Permission denied: {e}', err=True); raise SystemExit(1)`",
+            "Wrap in try/except `OSError` (catch-all for disk-full, partial write, etc.) \u2192 `click.echo(str(e), err=True); raise SystemExit(1)`",
+            "Do NOT attempt partial state cleanup on failure",
+            "Ensure old `.spec/` directory presence does not trigger any warning or branch"
+          ],
+          "test_spec_refs": [
+            "TS-01-7"
+          ],
+          "requirement_refs": [
+            "01-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "Tests TS-01-1 through TS-01-7 pass: `pytest -q packages/spec/tests/test_cli_spec_root.py packages/spec/tests/test_auto_init_campaign.py`",
+          "All existing tests still pass: `pytest -q`",
+          "No linter warnings: `ruff check packages/spec/spec/cli.py`",
+          "Requirements 01-REQ-1.1, 01-REQ-1.2, 01-REQ-1.3, 01-REQ-2.1 through 01-REQ-2.4 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "standard",
+      "title": "Implement --source flag and Campaign.new_spec / SpecSession._create wiring",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Add --source / -s global option to main CLI group",
+          "details": [
+            "In `packages/spec/spec/cli.py`, add `@main.option('--source', '-s', type=click.Path(exists=True), default='.', show_default=True)` to the `main` group",
+            "Store as `ctx.obj['source'] = Path(source)` in the group callback",
+            "Ensure the option appears alongside `--spec-dir` and `--quiet` in `--help` output"
+          ],
+          "test_spec_refs": [
+            "TS-01-8",
+            "TS-01-9",
+            "TS-01-10"
+          ],
+          "requirement_refs": [
+            "01-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Thread source parameter through spec new \u2192 Campaign.new_spec",
+          "details": [
+            "In the `spec new` command handler, pass `source=ctx.obj['source']` to `Campaign.new_spec(...)`",
+            "Update `Campaign.new_spec` signature in `packages/agentspec/agentspec/campaign.py` to accept `source: Path = Path('.')`",
+            "Forward `source` to `SpecSession._create(spec_dir, mode, source=source)`"
+          ],
+          "test_spec_refs": [
+            "TS-01-8",
+            "TS-01-9"
+          ],
+          "requirement_refs": [
+            "01-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.3",
+          "title": "Update SpecSession._create to accept and store source",
+          "details": [
+            "In `packages/agentspec/agentspec/session.py`, update `SpecSession._create` signature to `(spec_dir: Path, mode: str = 'interactive', source: Path = Path('.')) -> SpecSession`",
+            "Store as `self._source = source` on the session instance",
+            "Confirm `assess`, `refine`, and `generate` already reference `self._source` internally (no per-method signature change needed)"
+          ],
+          "test_spec_refs": [
+            "TS-01-8",
+            "TS-01-9"
+          ],
+          "requirement_refs": [
+            "01-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "Tests TS-01-8, TS-01-9, TS-01-10 pass: `pytest -q packages/spec/tests/test_cli_source_flag.py`",
+          "All existing tests still pass: `pytest -q`",
+          "No linter warnings: `ruff check packages/spec/spec/cli.py packages/agentspec/agentspec/campaign.py packages/agentspec/agentspec/session.py`",
+          "Requirements 01-REQ-3.1, 01-REQ-3.2, 01-REQ-3.3 acceptance criteria met",
+          "`spec new --help` shows `--source` / `-s` option with default `.`"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement simplified spec campaign command",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Remove ACTION choice dispatcher and open / new-spec subcommands",
+          "details": [
+            "In `packages/spec/spec/cli.py`, remove the `ACTION` argument (`click.Choice(['create', 'open', 'new-spec'])`) from the `campaign` command",
+            "Remove all handler branches for `open` and `new-spec` actions",
+            "Remove any imports or helpers used exclusively by those branches"
+          ],
+          "test_spec_refs": [
+            "TS-01-13",
+            "TS-01-14"
+          ],
+          "requirement_refs": [
+            "01-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Rewrite spec campaign as a direct campaign-creation command",
+          "details": [
+            "Replace the `campaign` command body with: `@main.command()`, options `--path / -p` (required, `click.Path()`), `--name / -n` (required), `--description` (default `''`)",
+            "Call `Campaign.create(Path(path), name, description)` directly",
+            "On success, echo a confirmation message to stdout",
+            "On `Campaign.create` raising an error with message matching `'campaign already exists'`, echo the error and `sys.exit(1)`"
+          ],
+          "test_spec_refs": [
+            "TS-01-11",
+            "TS-01-12"
+          ],
+          "requirement_refs": [
+            "01-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Verify --path is independent of global --spec-dir",
+          "details": [
+            "Add inline comment in `cli.py` documenting that `--path` governs campaign creation and `--spec-dir` governs spec resolution \u2014 they do not interact",
+            "Write a test asserting that passing both `--spec-dir X` and `--path Y` creates the campaign at `Y`, not `X`",
+            "Confirm `Campaign.create` is called with `Path(path)` (from `--path`), not `ctx.obj['spec_dir']`"
+          ],
+          "test_spec_refs": [
+            "TS-01-11",
+            "TS-01-12"
+          ],
+          "requirement_refs": [
+            "01-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "Tests TS-01-11 through TS-01-14 pass: `pytest -q packages/spec/tests/test_cli_campaign_cmd.py`",
+          "All existing tests still pass: `pytest -q`",
+          "No linter warnings: `ruff check packages/spec/spec/cli.py`",
+          "`spec campaign --help` shows `--path`, `--name`, `--description` and no ACTION argument",
+          "Requirements 01-REQ-4.1 through 01-REQ-4.4 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement spec list command",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Add spec list command skeleton to cli.py",
+          "details": [
+            "In `packages/spec/spec/cli.py`, add `@main.command('list')` decorated function `spec_list`",
+            "Read `spec_dir = ctx.obj['spec_dir']` from context",
+            "Import `parse_spec_dir_name` from `afspec.discovery`",
+            "Output JSON to stdout using `json.dumps` with `indent=2`"
+          ],
+          "test_spec_refs": [
+            "TS-01-15",
+            "TS-01-16",
+            "TS-01-17"
+          ],
+          "requirement_refs": [
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement spec list directory scanning and filtering logic",
+          "details": [
+            "If `spec_dir` path does not exist, return `{spec_dir: str(spec_dir), specs: []}` with exit 0",
+            "Iterate `sorted(Path(spec_dir).iterdir())`, filter with `parse_spec_dir_name(entry.name) is not None` and `entry.is_dir()`",
+            "For each matching dir, read `_session.json` \u2192 extract `state` field",
+            "If `_session.json` absent, unreadable, invalid JSON, or missing `state` key \u2192 use `'no_session'`",
+            "Build `specs` list of `{name: entry.name, state: state}` dicts",
+            "Output `spec_dir` as the relative path string as configured (do not call `.resolve()`)"
+          ],
+          "test_spec_refs": [
+            "TS-01-15",
+            "TS-01-16",
+            "TS-01-17",
+            "TS-01-18",
+            "TS-01-19"
+          ],
+          "requirement_refs": [
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.3",
+          "title": "Handle spec list edge cases: missing root, malformed session files",
+          "details": [
+            "Wrap `_session.json` read in try/except `(json.JSONDecodeError, KeyError, OSError)` \u2192 fall back to `'no_session'`",
+            "Ensure `archive/` and non-spec-named directories are excluded via `parse_spec_dir_name` returning `None`",
+            "Ensure plain files in spec root are skipped via `entry.is_dir()` check",
+            "All error/edge cases exit with code 0"
+          ],
+          "test_spec_refs": [
+            "TS-01-18",
+            "TS-01-19"
+          ],
+          "requirement_refs": [
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "Tests TS-01-15 through TS-01-19 pass: `pytest -q packages/spec/tests/test_cli_list_cmd.py`",
+          "All existing tests still pass: `pytest -q`",
+          "No linter warnings: `ruff check packages/spec/spec/cli.py`",
+          "`spec list --help` is available and shows the command in `spec --help` output",
+          "Requirements 01-REQ-5.1 through 01-REQ-5.5 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement config path changes and section restructuring",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Update load_config candidate paths from .spec/ to .specs/",
+          "details": [
+            "In `packages/agentspec/agentspec/config.py`, update `load_config` candidate path list",
+            "Change project-local candidate from `.spec/config.toml` to `.specs/config.toml`",
+            "Change global candidate from `~/.spec/config.toml` to `~/.specs/config.toml`",
+            "First-found-wins logic remains unchanged"
+          ],
+          "test_spec_refs": [
+            "TS-01-20",
+            "TS-01-21"
+          ],
+          "requirement_refs": [
+            "01-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Update load_config to read [model] and [provider] sections",
+          "details": [
+            "In `load_config`, replace `[spec_tool]` section reads with `[model]` and `[provider]` section reads using `tomllib`",
+            "Read `config['model']['model']` \u2192 `AgentSpecConfig.model` (with fallback to hardcoded `'STANDARD'`)",
+            "Read `config['provider']['auth_method']`, `config['provider']['vertex_project']`, `config['provider']['vertex_region']` \u2192 corresponding `AgentSpecConfig` fields",
+            "Apply precedence: `AF_SPEC_MODEL` env var > `[model].model` > `'STANDARD'`",
+            "`AgentSpecConfig` dataclass fields remain unchanged \u2014 no structural change to the dataclass"
+          ],
+          "test_spec_refs": [
+            "TS-01-22",
+            "TS-01-23",
+            "TS-01-24",
+            "TS-01-25"
+          ],
+          "requirement_refs": [
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.3",
+          "title": "Update load_theme_config to return hardcoded defaults only",
+          "details": [
+            "In `packages/spec/spec/config.py`, rewrite `load_theme_config()` to simply `return ThemeConfig()`",
+            "Remove all candidate path list construction and file-reading logic from `load_theme_config`",
+            "Keep `ThemeConfig` class and `load_theme_config` function signatures unchanged (no breaking change to callers)",
+            "Add a comment: `# [theme] section removed from config; hardcoded defaults only`"
+          ],
+          "test_spec_refs": [
+            "TS-01-22"
+          ],
+          "requirement_refs": [
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "Tests TS-01-20 through TS-01-25 pass: `pytest -q packages/agentspec/tests/test_config_paths.py packages/agentspec/tests/test_config_sections.py`",
+          "All existing tests still pass: `pytest -q`",
+          "No linter warnings: `ruff check packages/agentspec/agentspec/config.py packages/spec/spec/config.py`",
+          "Requirements 01-REQ-6.1, 01-REQ-6.2, 01-REQ-7.1 through 01-REQ-7.4 acceptance criteria met",
+          "`load_theme_config()` does not open any file (verified by test asserting `open` is never called)"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "checkpoint",
+      "title": "Integration checkpoint: all spec tests green, no regressions",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Run full test suite and confirm all tests pass",
+          "details": [
+            "Execute `pytest -q` across all packages and confirm zero failures",
+            "Confirm test count has increased relative to baseline (new tests are being collected)",
+            "Review any xfail or skip markers to ensure none mask real failures"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-2",
+            "TS-01-3",
+            "TS-01-4",
+            "TS-01-5",
+            "TS-01-6",
+            "TS-01-7",
+            "TS-01-8",
+            "TS-01-9",
+            "TS-01-10",
+            "TS-01-11",
+            "TS-01-12",
+            "TS-01-13",
+            "TS-01-14",
+            "TS-01-15"
+          ],
+          "requirement_refs": [
+            "01-REQ-1",
+            "01-REQ-2",
+            "01-REQ-3",
+            "01-REQ-4",
+            "01-REQ-5",
+            "01-REQ-6",
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Run full test suite part 2 and linter across all packages",
+          "details": [
+            "Execute `pytest -q` and confirm TS-01-16 through TS-01-25 all pass",
+            "Execute `ruff check packages/` and confirm zero warnings",
+            "Confirm no `raise NotImplementedError`, bare `pass` in non-abstract methods, or `return None` stubs remain in new code"
+          ],
+          "test_spec_refs": [
+            "TS-01-16",
+            "TS-01-17",
+            "TS-01-18",
+            "TS-01-19",
+            "TS-01-20",
+            "TS-01-21",
+            "TS-01-22",
+            "TS-01-23",
+            "TS-01-24",
+            "TS-01-25"
+          ],
+          "requirement_refs": [
+            "01-REQ-5",
+            "01-REQ-6",
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Manual CLI smoke check against a real temp workspace",
+          "details": [
+            "In a fresh temp directory, run `spec list` \u2192 confirm JSON output with empty specs array",
+            "Run `spec campaign --path ./my-campaign --name test` \u2192 confirm `campaign.yaml` written",
+            "Run `spec --source . new` (with mocked AI) \u2192 confirm `.specs/campaign.yaml` auto-created",
+            "Inspect `.specs/config.toml` with `[model]` and `[provider]` sections \u2192 confirm `load_config` reads them correctly"
+          ],
+          "test_spec_refs": [
+            "TS-01-4",
+            "TS-01-11",
+            "TS-01-15",
+            "TS-01-22"
+          ],
+          "requirement_refs": [
+            "01-REQ-2",
+            "01-REQ-4",
+            "01-REQ-5",
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "Full test suite passes with zero failures: `pytest -q`",
+          "Zero linter warnings across all packages: `ruff check packages/`",
+          "All 25 spec test cases (TS-01-1 through TS-01-25) are collected and passing",
+          "No stub markers (`raise NotImplementedError`, bare `pass` in non-abstract methods) remain in implementation files"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "wiring_verification",
+      "title": "Wiring verification: end-to-end integration and dead-code audit",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Trace execution paths: spec new \u2192 _ensure_default_campaign \u2192 Campaign.new_spec \u2192 SpecSession._create",
+          "details": [
+            "Verify `spec new` handler calls `_ensure_default_campaign(spec_dir)` before `Campaign.open`",
+            "Verify `Campaign.new_spec` is called with `source=ctx.obj['source']` (not hardcoded `Path('.')`)",
+            "Verify `Campaign.new_spec` forwards `source` to `SpecSession._create(spec_dir, mode, source=source)`",
+            "Verify `SpecSession._create` stores `source` as `self._source` \u2014 grep for `self._source` assignment in `session.py`",
+            "Confirm no stub remains in `_ensure_default_campaign`: no `raise NotImplementedError`, no bare `pass`"
+          ],
+          "test_spec_refs": [
+            "TS-01-4",
+            "TS-01-8",
+            "TS-01-9"
+          ],
+          "requirement_refs": [
+            "01-REQ-2",
+            "01-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Trace execution paths: spec list \u2192 parse_spec_dir_name \u2192 JSON output",
+          "details": [
+            "Verify `spec list` command is registered on `main` group and appears in `spec --help`",
+            "Verify `parse_spec_dir_name` from `afspec.discovery` is imported and called for each directory entry",
+            "Verify JSON output is written to stdout (not stderr) via `click.echo(json.dumps(...))`",
+            "Verify `spec_dir` in output is the relative path string, not an absolute path"
+          ],
+          "test_spec_refs": [
+            "TS-01-15",
+            "TS-01-16",
+            "TS-01-17"
+          ],
+          "requirement_refs": [
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Trace execution paths: load_config \u2192 [model] / [provider] sections \u2192 AgentSpecConfig",
+          "details": [
+            "Verify `load_config` reads from `.specs/config.toml` and `~/.specs/config.toml` (grep for these strings in `config.py`)",
+            "Verify `AF_SPEC_MODEL` env var check precedes `[model].model` read in `load_config` logic",
+            "Verify `load_theme_config` contains no file-open calls \u2014 grep for `open(` in `spec/config.py`",
+            "Verify `AgentSpecConfig` dataclass fields are unchanged: `model`, `auth_method`, `vertex_project`, `vertex_region`"
+          ],
+          "test_spec_refs": [
+            "TS-01-20",
+            "TS-01-21",
+            "TS-01-22",
+            "TS-01-23",
+            "TS-01-24",
+            "TS-01-25"
+          ],
+          "requirement_refs": [
+            "01-REQ-6",
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.4",
+          "title": "Stub and dead-code audit across all modified files",
+          "details": [
+            "Search for `raise NotImplementedError` in `packages/spec/spec/cli.py`, `packages/agentspec/agentspec/campaign.py`, `packages/agentspec/agentspec/session.py`, `packages/agentspec/agentspec/config.py`, `packages/spec/spec/config.py` \u2014 expect zero results",
+            "Search for bare `pass` in non-abstract method bodies in the same files \u2014 expect zero results",
+            "Search for `# TODO` comments introduced by this spec \u2014 resolve or document any found",
+            "Confirm `_ensure_default_campaign` is called from production code (not only from tests)"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "01-REQ-2",
+            "01-REQ-3",
+            "01-REQ-4",
+            "01-REQ-5",
+            "01-REQ-6",
+            "01-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.5",
+          "title": "Run smoke tests and verify return value propagation",
+          "details": [
+            "Run all smoke tests: `pytest -q packages/spec/tests/test_smoke_01.py -v`",
+            "Verify SMOKE-1 (`spec list` JSON output) passes with real `CliRunner` invocation",
+            "Verify SMOKE-2 (`spec campaign` creates `campaign.yaml`) passes",
+            "Verify SMOKE-3 (auto-init on `spec new`) passes with mocked `Campaign.new_spec`",
+            "Confirm `Campaign.new_spec` return value (`SpecSession`) is used by `spec new` (not discarded)",
+            "Confirm `spec list` return value from `json.dumps` is passed to `click.echo` (not silently dropped)"
+          ],
+          "test_spec_refs": [
+            "TS-01-SMOKE-1",
+            "TS-01-SMOKE-2",
+            "TS-01-SMOKE-3",
+            "TS-01-4",
+            "TS-01-11",
+            "TS-01-15"
+          ],
+          "requirement_refs": [
+            "01-REQ-2",
+            "01-REQ-4",
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.6",
+          "title": "Call-site verification: confirm all new entry points are wired into production code",
+          "details": [
+            "Verify `spec list` command is reachable from the installed `spec` CLI entry point (not just defined in tests)",
+            "Verify `spec campaign` (simplified) is reachable and `spec campaign open` / `spec campaign new-spec` are no longer reachable",
+            "Verify `--source` / `-s` appears in `spec --help` output (not just in test invocations)",
+            "Verify `_DEFAULT_SPEC_DIR = '.specs'` is the live constant used by the CLI (grep `packages/spec/spec/cli.py`)"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-8",
+            "TS-01-11",
+            "TS-01-13",
+            "TS-01-14"
+          ],
+          "requirement_refs": [
+            "01-REQ-1",
+            "01-REQ-3",
+            "01-REQ-4",
+            "01-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "All smoke tests pass: `pytest -q packages/spec/tests/test_smoke_01.py`",
+          "Full test suite passes with zero failures: `pytest -q`",
+          "Zero linter warnings: `ruff check packages/`",
+          "Stub/dead-code audit: zero `raise NotImplementedError`, zero bare `pass` in non-abstract methods, zero unresolved `# TODO` markers in modified files",
+          "Execution path verified: `spec new` \u2192 `_ensure_default_campaign` \u2192 `Campaign.new_spec(source=...)` \u2192 `SpecSession._create(source=...)` \u2192 `self._source` \u2014 no stubs in chain",
+          "`spec list` appears in `spec --help` output; `spec campaign open` does NOT appear",
+          "`load_config` reads from `.specs/config.toml` (not `.spec/config.toml`); `load_theme_config` contains no file-open calls",
+          "All 25 spec test cases TS-01-1 through TS-01-25 pass"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "01-REQ-1.1",
+      "test_spec_id": "TS-01-1",
+      "task_id": "3.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-1.2",
+      "test_spec_id": "TS-01-2",
+      "task_id": "3.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-1.3",
+      "test_spec_id": "TS-01-3",
+      "task_id": "3.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-2.1",
+      "test_spec_id": "TS-01-4",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-2.2",
+      "test_spec_id": "TS-01-5",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-2.3",
+      "test_spec_id": "TS-01-6",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-2.4",
+      "test_spec_id": "TS-01-7",
+      "task_id": "3.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-3.1",
+      "test_spec_id": "TS-01-8",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-3.2",
+      "test_spec_id": "TS-01-9",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-3.3",
+      "test_spec_id": "TS-01-10",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-4.1",
+      "test_spec_id": "TS-01-11",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-4.2",
+      "test_spec_id": "TS-01-12",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-4.3",
+      "test_spec_id": "TS-01-13",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-4.4",
+      "test_spec_id": "TS-01-14",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-5.1",
+      "test_spec_id": "TS-01-15",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-5.2",
+      "test_spec_id": "TS-01-16",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-5.3",
+      "test_spec_id": "TS-01-17",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-5.4",
+      "test_spec_id": "TS-01-18",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-5.5",
+      "test_spec_id": "TS-01-19",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-6.1",
+      "test_spec_id": "TS-01-20",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-6.2",
+      "test_spec_id": "TS-01-21",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-7.1",
+      "test_spec_id": "TS-01-22",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-7.2",
+      "test_spec_id": "TS-01-23",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-7.3",
+      "test_spec_id": "TS-01-24",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-7.4",
+      "test_spec_id": "TS-01-25",
+      "task_id": "7.2",
+      "test_path": null
+    }
+  ]
+}
