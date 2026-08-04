@@ -7,6 +7,7 @@ The `spec` command is the CLI entry point for AI-powered spec creation. It manag
 | Option | Description |
 |--------|-------------|
 | `-d, --spec-dir PATH` | Spec directory (default: `.specs`). Can also be set via `SPEC_DIR` env var; CLI flag takes precedence. |
+| `-s, --source PATH` | Source code directory for AI context analysis (default: `.`). Passed to AI-driven commands (`new`, `refine`, `generate`) as the codebase context directory. Non-AI commands accept the flag without error but do not use the value. The path must exist on the filesystem. |
 | `-q, --quiet` | Suppress progress output |
 | `--version` | Show the version and exit |
 | `--help` | Show help and exit |
@@ -36,6 +37,7 @@ spec new [OPTIONS] SPEC_NAME
 ```bash
 spec new my_feature
 spec new my_feature --prd docs/my-feature.md
+spec new my_feature --source /path/to/source
 ```
 
 ### list

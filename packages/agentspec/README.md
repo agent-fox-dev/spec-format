@@ -25,7 +25,7 @@ from agentspec import Campaign, SpecSession
 async def main():
     # Create a campaign and add a spec from a PRD
     campaign = Campaign.create(Path("./my-campaign"), "My Campaign", "Description")
-    session = campaign.new_spec("user_auth", prd=Path("prd.md"))
+    session = campaign.new_spec("user_auth", prd=Path("prd.md"), source=Path("./src"))
 
     # Assess the PRD -- returns questions for the author
     assessment = await session.assess()

@@ -195,11 +195,22 @@ class SpecSession:
         self._last_error: dict[str, Any] | None = None
 
     @staticmethod
-    def _create(spec_dir: Path, mode: str = "interactive") -> SpecSession:
+    def _create(
+        spec_dir: Path,
+        mode: str = "interactive",
+        source: Path = Path("."),
+    ) -> SpecSession:
         """Create a new session in init state and persist it.
 
         This is called by ``Campaign.new_spec()`` to create the initial
         session for a new spec directory.
+
+        Args:
+            spec_dir: Path to the spec directory.
+            mode: Session mode — ``"interactive"`` or ``"one-shot"``.
+            source: Source code directory for AI context analysis.
+                Stored as ``self._source`` for use by ``assess``,
+                ``refine``, and ``generate``.
         """
         session = SpecSession(
             spec_dir=spec_dir,
@@ -210,6 +221,7 @@ class SpecSession:
             qa_exchanges=[],
             generated_artifacts=[],
         )
+        session._source = source
         session._persist()
         return session
 

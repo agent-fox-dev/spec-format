@@ -175,6 +175,7 @@ class Campaign:
         spec_name: str,
         prd: str | Path,
         mode: str = "interactive",
+        source: Path = Path("."),
     ) -> SpecSession:
         """Create a new spec directory and return its session.
 
@@ -184,6 +185,8 @@ class Campaign:
             prd: PRD content as a string, or a ``Path`` to a file
                 containing the PRD.
             mode: Session mode — ``"interactive"`` or ``"one-shot"``.
+            source: Source code directory for AI context analysis.
+                Defaults to the current working directory.
 
         Returns:
             A ``SpecSession`` instance for the new spec.
@@ -256,7 +259,7 @@ class Campaign:
         # Write initial _session.json (02-REQ-5.3)
         from agentspec.session import SpecSession
 
-        session = SpecSession._create(spec_dir, mode=mode)
+        session = SpecSession._create(spec_dir, mode=mode, source=source)
 
         # Update campaign.yaml updated_at
         self._metadata.updated_at = now

@@ -160,14 +160,23 @@ def _ensure_default_campaign(spec_dir: Path) -> None:
     help=f"Spec directory (default: {_DEFAULT_SPEC_DIR})",
 )
 @click.option(
+    "--source",
+    "-s",
+    type=click.Path(exists=True),
+    default=".",
+    show_default=True,
+    help="Source code directory for AI context analysis",
+)
+@click.option(
     "--quiet", "-q", is_flag=True, default=False, help="Suppress progress output"
 )
 @click.version_option(package_name="spec")
 @click.pass_context
-def main(ctx: click.Context, spec_dir: str, quiet: bool) -> None:
+def main(ctx: click.Context, spec_dir: str, source: str, quiet: bool) -> None:
     """spec: AI-powered spec creation tool."""
     ctx.ensure_object(dict)
     ctx.obj["spec_dir"] = Path(spec_dir)
+    ctx.obj["source"] = Path(source)
     ctx.obj["quiet"] = quiet
     ctx.obj.setdefault("agent_mode", False)
 
@@ -215,7 +224,9 @@ def new_cmd(ctx: click.Context, spec_name: str, prd: str | None) -> None:
 
     campaign = Campaign.open(spec_dir)
     prd_arg: str | Path = Path(prd) if prd else ""
-    session = campaign.new_spec(spec_name, prd_arg, mode="interactive")
+    session = campaign.new_spec(
+        spec_name, prd_arg, mode="interactive", source=ctx.obj["source"]
+    )
 
     emit_ok(spec_dir=session._spec_dir.name, state=session.state.value)
 
