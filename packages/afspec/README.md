@@ -1,24 +1,24 @@
 # afspec
 
-Python library for the agent-fox specification format (v1.2). Load, validate,
-mutate, and render spec packs — the structured artifact format used by
-[agent-fox](https://github.com/agent-fox-dev/agent-fox) for spec-driven
+Standalone Python library for the agent-fox specification format (v1.3). Load,
+validate, mutate, and render spec packs — the structured artifact format used by
+[spec-format](https://github.com/agent-fox-dev/spec-format) for spec-driven
 development.
 
 Requires Python 3.12+. Dependencies: `pydantic`, `PyYAML`, `jsonschema`.
 
 ## Installation
 
-Install from the agent-fox monorepo via git:
+Install from git:
 
 ```bash
-pip install "afspec @ git+https://github.com/agent-fox-dev/agent-fox.git#subdirectory=packages/afspec"
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git#subdirectory=packages/afspec"
 ```
 
 Pin to a release tag:
 
 ```bash
-pip install "afspec @ git+https://github.com/agent-fox-dev/agent-fox.git@v4.2.0#subdirectory=packages/afspec"
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/afspec"
 ```
 
 In `pyproject.toml`:
@@ -26,7 +26,7 @@ In `pyproject.toml`:
 ```toml
 [project]
 dependencies = [
-    "afspec @ git+https://github.com/agent-fox-dev/agent-fox.git@v4.2.0#subdirectory=packages/afspec",
+    "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/afspec",
 ]
 ```
 

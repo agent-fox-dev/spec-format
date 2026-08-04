@@ -42,7 +42,7 @@ optional artifact:
 
 The full specification — field-level schemas, EARS pattern definitions, ID
 formats, validation rules, subtask state machine, and rendering — is at
-**[spec-format.md](spec-format.md)**.
+**[spec-format.md](docs/spec-format.md)**.
 
 ## Creating a Spec Package
 
@@ -67,12 +67,12 @@ After generation, validate and inspect the result:
 ```bash
 spec validate 01_my_feature        # schema + cross-file integrity checks
 spec render 01_my_feature --combined   # render as a single markdown document
-spec status                        # show session state for all specs
+spec status 01_my_feature          # show session state
 ```
 
 ## Installation
 
-Install all three CLIs:
+Install the `spec` CLI:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agent-fox-dev/spec-format/refs/heads/main/install.sh | sh
@@ -81,11 +81,11 @@ curl -fsSL https://raw.githubusercontent.com/agent-fox-dev/spec-format/refs/head
 ## Development
 
 The repository is a [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/)
-with five packages:
+with three packages:
 
 | Package | Description |
 |---------|-------------|
-| `packages/afspec/` | Standalone library for the agent-fox specification format (v1.2) |
+| `packages/afspec/` | Standalone library for the spec format (v1.3) |
 | `packages/agentspec/` | AI-powered spec creation library |
 | `packages/spec/` | CLI for AI-powered spec creation (`spec` command) |
 
@@ -105,27 +105,29 @@ Changes are immediately reflected via editable install. To run the local
 version explicitly (rather than a globally installed release):
 
 ```bash
-uv run af <command>
+uv run spec <command>
 ```
 
 ## Using packages as standalone libraries
 
-`agentspec`, and `afspec` are designed for reuse outside the CLI tools.
-Install any package directly from git:
+`afspec` and `agentspec` are designed for reuse outside the CLI. Install either
+package directly from git:
 
 ```bash
-pip install "agentspec @ git+https://github.com/agent-fox-dev/agent-fox.git@v4.2.0#subdirectory=packages/agentfox"
-pip install "afspec @ git+https://github.com/agent-fox-dev/agent-fox.git@v4.2.0#subdirectory=packages/afspec"
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/afspec"
+pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.0#subdirectory=packages/agentspec"
 ```
 
-- **agentspec** — core library: TBD
 - **afspec** — load, validate, mutate, and render spec packs. See
   [`packages/afspec/README.md`](packages/afspec/README.md) for the full API
   reference.
+- **agentspec** — AI-powered spec creation library. Drives PRD assessment,
+  refinement, and artifact generation via Claude (Anthropic API). Provides
+  `SpecSession` for managing the full spec lifecycle and `Campaign` for
+  organizing related specs. Depends on afspec and the Anthropic SDK.
 
 ## Documentation
 
-Full documentation lives in [`docs/`](docs/README.md):
-
-- [CLI Reference](docs/cli-reference.md) — all commands, flags, and exit codes
-TBD
+- [Spec Format Reference](docs/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
+- [CLI Reference](docs/cli.md) — commands, flags, and usage
+- [afspec API](packages/afspec/README.md) — library API for loading and manipulating spec packs
