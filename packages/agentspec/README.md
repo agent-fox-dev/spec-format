@@ -21,6 +21,7 @@ import asyncio
 from pathlib import Path
 from agentspec import Campaign, SpecSession
 
+
 async def main():
     # Create a campaign and add a spec from a PRD
     campaign = Campaign.create(Path("./my-campaign"), "My Campaign", "Description")
@@ -40,6 +41,7 @@ async def main():
     session.accept_prd()
     result = await session.generate()
     print(result.artifacts)  # ["requirements", "test_spec", "tasks"]
+
 
 asyncio.run(main())
 ```

@@ -9,14 +9,13 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any
+from typing import Any, Self
 
 import click
 from rich.console import Console
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.text import Text
-
 
 # ---------------------------------------------------------------------------
 # JSON output helpers
@@ -54,8 +53,8 @@ class SpecGroup(click.Group):
     def invoke(self, ctx: click.Context) -> None:
         try:
             ctx.ensure_object(dict)
-        except Exception:
-            pass
+        except (RuntimeError, TypeError):
+            ctx.obj = {}
 
         if not isinstance(ctx.obj, dict):
             ctx.obj = {}
@@ -106,7 +105,7 @@ class StatusSpinner:
         self._console: Console | None = None
         self._is_tty: bool = False
 
-    def __enter__(self) -> StatusSpinner:
+    def __enter__(self) -> Self:
         if self._quiet:
             return self
 

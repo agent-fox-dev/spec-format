@@ -26,10 +26,10 @@ from agentspec.session import (
 
 __all__ = [
     "AgentError",
-    "Campaign",
     "AgentSpecConfig",
     "AgentSpecError",
     "Assessment",
+    "Campaign",
     "CampaignError",
     "CampaignMetadata",
     "ConfigError",

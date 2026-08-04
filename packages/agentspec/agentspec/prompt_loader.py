@@ -17,8 +17,6 @@ import re
 from pathlib import Path
 from string import Template
 
-import re
-
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*\n", re.DOTALL)
 
 

@@ -200,9 +200,11 @@ class TestOverlapDetectionBlocksReady:
             quality="needs_refinement",
             summary="This PRD overlaps with spec 01 (core_foundation).",
             gaps=[
-                "Overlap with active spec 01_core_foundation: both specs "
-                "address core foundation utilities. Clarify whether this "
-                "spec should depend on, extend, or supersede spec 01."
+                (
+                    "Overlap with active spec 01_core_foundation: both specs "
+                    "address core foundation utilities. Clarify whether this "
+                    "spec should depend on, extend, or supersede spec 01."
+                )
             ],
             questions=[
                 {
@@ -351,9 +353,11 @@ class TestDependencySuggestion:
                 "adding a dependency on spec 01 (core_foundation)."
             ),
             gaps=[
-                "Missing dependency declaration: this spec relies on "
-                "capabilities from spec 01 (core_foundation). Add a "
-                "## Dependencies section referencing spec 01."
+                (
+                    "Missing dependency declaration: this spec relies on "
+                    "capabilities from spec 01 (core_foundation). Add a "
+                    "## Dependencies section referencing spec 01."
+                )
             ],
             questions=[
                 {

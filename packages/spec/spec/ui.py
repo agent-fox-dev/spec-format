@@ -48,7 +48,7 @@ _DEFAULT_STYLES = {
 def _validate_style(name: str) -> Style:
     try:
         return Style.parse(name)
-    except Exception:
+    except (ValueError, KeyError):
         return Style.parse(_DEFAULT_STYLES.get(name, ""))
 
 

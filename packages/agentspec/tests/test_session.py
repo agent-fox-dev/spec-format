@@ -144,7 +144,7 @@ class TestStateTransitions:
                 _run_sync(session.assess())
             except SessionError:
                 pytest.fail("Legal transition init->assess raised SessionError")
-            except Exception:
+            except (RuntimeError, AgentError):
                 pass
 
             # Illegal: init -> refining via refine()
@@ -163,7 +163,7 @@ class TestStateTransitions:
                 _run_sync(session.refine({}))
             except SessionError:
                 pytest.fail("Legal transition assessing->refine raised SessionError")
-            except Exception:
+            except (RuntimeError, AgentError):
                 pass
 
         # Legal: assessing -> prd_accepted via accept_prd()
@@ -178,7 +178,7 @@ class TestStateTransitions:
                 _run_sync(session.assess())
             except SessionError:
                 pytest.fail("Legal transition refining->assess raised SessionError")
-            except Exception:
+            except (RuntimeError, AgentError):
                 pass
 
         # Legal: refining -> prd_accepted via accept_prd()
@@ -195,7 +195,7 @@ class TestStateTransitions:
                 pytest.fail(
                     "Legal transition prd_accepted->generate raised SessionError"
                 )
-            except Exception:
+            except (RuntimeError, AgentError):
                 pass
 
         # Illegal: prd_accepted -> assess()
@@ -480,7 +480,7 @@ class TestSessionProperties:
                                 pytest.fail(
                                     f"Legal transition {key} raised SessionError"
                                 )
-                            except Exception:
+                            except (RuntimeError, AgentError):
                                 pass
                         else:
                             getattr(session, method_name)()
@@ -1295,9 +1295,9 @@ class TestQAExchangeEdgeCases:
 
         with (
             patch("agentspec.session._create_agent", return_value=mock_agent_instance),
+            pytest.raises(AgentError),
         ):
-            with pytest.raises(AgentError):
-                await session.refine({"q1": "a1"})
+            await session.refine({"q1": "a1"})
 
         assert len(session._qa_exchanges) == 0
 
@@ -1480,9 +1480,9 @@ class TestQAExchangeProperties:
         mock_agent_fail.refine_prd = AsyncMock(side_effect=AgentError("API failed"))
         with (
             patch("agentspec.session._create_agent", return_value=mock_agent_fail),
+            pytest.raises(AgentError),
         ):
-            with pytest.raises(AgentError):
-                _run_sync(session.refine({f"q{n}": "a"}))
+            _run_sync(session.refine({f"q{n}": "a"}))
 
         assert len(session._qa_exchanges) == len_before
 

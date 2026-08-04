@@ -146,9 +146,7 @@ def _is_retryable(exc: Exception) -> bool:
         return True
     if isinstance(exc, APIStatusError) and exc.status_code >= 500:
         return True
-    if isinstance(exc, OSError):
-        return True
-    return False
+    return isinstance(exc, OSError)
 
 
 async def _retry_api_call[T](

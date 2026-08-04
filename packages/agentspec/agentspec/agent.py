@@ -11,8 +11,12 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from afspec import Requirements, Spec, Tasks, TestSpec  # type: ignore[import-untyped]
-from afspec import validate_cross_file as afspec_validate_cross_file  # type: ignore[import-untyped]
-from afspec import validate_schema as afspec_validate_schema  # type: ignore[import-untyped]
+from afspec import (
+    validate_cross_file as afspec_validate_cross_file,  # type: ignore[import-untyped]
+)
+from afspec import (
+    validate_schema as afspec_validate_schema,  # type: ignore[import-untyped]
+)
 from anthropic import (
     APIConnectionError,
     APIStatusError,

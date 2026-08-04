@@ -16,7 +16,7 @@ _test_dir = str(Path(__file__).resolve().parent)
 if _test_dir not in sys.path:
     sys.path.insert(0, _test_dir)
 
-from conftest_agent import (  # noqa: E402
+from conftest_agent import (
     mock_ai_call,  # noqa: F401
     mock_client,  # noqa: F401
     sample_assessment,  # noqa: F401

@@ -238,9 +238,9 @@ async def test_agent_error_prevents_state_transition(tmp_path: Path) -> None:
 
     with (
         patch("agentspec.session._create_agent", return_value=mock_agent_instance),
+        pytest.raises(AgentError),
     ):
-        with pytest.raises(AgentError):
-            await session.assess()
+        await session.assess()
 
     # State should remain INIT
     assert session.state == SessionState.INIT
@@ -326,9 +326,11 @@ async def test_partial_generation_preserves_artifacts(
 
     from agentspec.agent import SpecAgent as _SA
 
-    with patch("agentspec.session._create_agent", return_value=_SA("STANDARD")):
-        with pytest.raises(AgentError):
-            await session.generate()
+    with (
+        patch("agentspec.session._create_agent", return_value=_SA("STANDARD")),
+        pytest.raises(AgentError),
+    ):
+        await session.generate()
 
     # requirements.json should have been written during generation
     assert (session.spec_dir / "requirements.json").exists()
@@ -418,12 +420,16 @@ class TestPropertyPartialArtifacts:
 
         from agentspec.agent import SpecAgent as _SA
 
-        with patch(
-            "agentspec.client.ai_call", new_callable=AsyncMock, side_effect=side_effects
+        with (
+            patch(
+                "agentspec.client.ai_call",
+                new_callable=AsyncMock,
+                side_effect=side_effects,
+            ),
+            patch("agentspec.session._create_agent", return_value=_SA("STANDARD")),
+            pytest.raises(AgentError),
         ):
-            with patch("agentspec.session._create_agent", return_value=_SA("STANDARD")):
-                with pytest.raises(AgentError):
-                    asyncio.run(session.generate())
+            asyncio.run(session.generate())
 
         for i in range(failure_point):
             assert (session.spec_dir / f"{artifact_names[i]}.json").exists(), (

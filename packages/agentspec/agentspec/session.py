@@ -286,7 +286,7 @@ class SpecSession:
             landscape = load_spec_landscape(
                 self._spec_dir.parent, current_spec_id=spec_id
             )
-        except Exception:
+        except (OSError, ValueError, KeyError):
             landscape = None
 
         agent = _create_agent()
@@ -342,7 +342,7 @@ class SpecSession:
             landscape = load_spec_landscape(
                 self._spec_dir.parent, current_spec_id=spec_id
             )
-        except Exception:
+        except (OSError, ValueError, KeyError):
             landscape = None
 
         frontmatter_block = _update_frontmatter(prd_text, self._spec_dir.name)
@@ -436,15 +436,15 @@ class SpecSession:
 
             spec_root = self._spec_dir.parent
             dependent_interfaces = load_dependent_interfaces(spec_id, spec_root) or None
-        except Exception:
-            pass
+        except (ImportError, OSError, ValueError, KeyError):
+            dependent_interfaces = None
 
         landscape: list[dict[str, Any]] | None = None
         try:
             landscape = load_spec_landscape(
                 self._spec_dir.parent, current_spec_id=spec_id
             )
-        except Exception:
+        except (OSError, ValueError, KeyError):
             landscape = None
 
         agent = _create_agent()
@@ -517,7 +517,7 @@ class SpecSession:
 
         try:
             spec = afspec.load_spec(self._spec_dir)
-        except Exception:
+        except (OSError, ValueError, KeyError):
             spec = self._load_spec_from_artifacts()
 
         afspec_result = afspec.validate(spec)
@@ -550,7 +550,7 @@ class SpecSession:
 
         try:
             spec = afspec.load_spec(self._spec_dir)
-        except Exception:
+        except (OSError, ValueError, KeyError):
             return self._render_from_artifacts(combined)
 
         if combined:

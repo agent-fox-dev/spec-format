@@ -18,11 +18,12 @@ from typing import Any
 import click
 import yaml
 from afspec.discovery import parse_spec_dir_name
+from agentspec.errors import AgentError
+from agentspec.session import SessionState, SpecSession
+
 from spec.config import load_theme_config
 from spec.io import SpecGroup, StatusSpinner, emit, emit_ok
 from spec.ui import create_theme, render_banner
-from agentspec.errors import AgentError
-from agentspec.session import SessionState, SpecSession
 
 _SPEC_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _DEFAULT_SPEC_DIR = ".spec/specs"
@@ -451,7 +452,7 @@ def render_cmd(
     try:
         target = _resolve_spec(spec_dir, spec)
         session = SpecSession.resume(target)
-    except (click.ClickException, Exception) as exc:
+    except (click.ClickException, OSError, ValueError, KeyError) as exc:
         msg = (
             exc.format_message() if isinstance(exc, click.ClickException) else str(exc)
         )
@@ -469,7 +470,7 @@ def render_cmd(
                 n for n, f in _RENDER_ARTIFACT_FILES.items() if (target / f).exists()
             ]
             emit_ok(format="markdown", content=merged, sections=sections)
-        except Exception:
+        except (OSError, ValueError, KeyError):
             # Partial render: merge what we can
             arts, warnings = _render_available_artifacts(target)
             prd_path = target / "prd.md"
@@ -571,7 +572,7 @@ def _validate_single_spec(target: Path) -> dict[str, Any]:
 
     try:
         spec_obj = _afspec.load_spec(target)
-    except Exception:
+    except (OSError, ValueError, KeyError):
         session = SpecSession.resume(target)
         spec_obj = session._load_spec_from_artifacts()
 
@@ -594,11 +595,11 @@ def _run_cross_spec_checks(spec_dir: Path) -> list[dict[str, Any]]:
             meta_path = Path(meta.dir)
             try:
                 loaded = _afspec.load_spec(meta_path)
-            except Exception:
+            except (OSError, ValueError, KeyError):
                 try:
                     session = SpecSession.resume(meta_path)
                     loaded = session._load_spec_from_artifacts()
-                except Exception:
+                except (OSError, ValueError, KeyError):
                     continue
             all_specs[meta.spec_id] = loaded
 
@@ -610,8 +611,8 @@ def _run_cross_spec_checks(spec_dir: Path) -> list[dict[str, Any]]:
                     "message": err.message,
                 }
             )
-    except Exception:
-        pass
+    except (OSError, ValueError, KeyError):
+        cross_spec_errors = []
     return cross_spec_errors
 
 
@@ -639,7 +640,7 @@ def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> Non
     if spec is None:
         try:
             metas = discover_specs(spec_dir)
-        except Exception:
+        except (OSError, ValueError):
             metas = []
 
         if not metas:

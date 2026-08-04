@@ -36,7 +36,7 @@ def test_ts10_p1_import_independence() -> None:
     saved_agentspec = {k: sys.modules.pop(k) for k in agentspec_mods}
 
     try:
-        import agentspec  # noqa: F811
+        import agentspec
 
         assert "click" not in sys.modules, (
             "importing agentspec should not pull in click"
@@ -153,23 +153,20 @@ def test_ts10_e4_agentspec_without_afspec() -> None:
     before agentspec is loaded, verifying that agentspec correctly fails
     with ImportError when its afspec dependency is missing.
     """
-    code = "\n".join(
-        [
-            "import sys",
-            "# Block afspec and all its sub-modules",
-            "sys.modules['afspec'] = None",
-            "try:",
-            "    import agentspec",
-            "    sys.exit(1)  # Should have raised ImportError",
-            "except ImportError:",
-            "    sys.exit(0)",
-        ]
-    )
+    code = """\
+import sys
+sys.modules['afspec'] = None
+try:
+    import agentspec
+    sys.exit(1)
+except ImportError:
+    sys.exit(0)"""
     result = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert result.returncode == 0, (
         "Expected ImportError when afspec is unavailable, but "

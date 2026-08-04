@@ -68,7 +68,7 @@ class TestConfigLoading:
     ) -> None:
         """All [spec_tool] fields are loaded."""
         config_toml.write_text(
-            '[spec_tool]\n'
+            "[spec_tool]\n"
             'model = "ADVANCED"\n'
             'auth_method = "vertex"\n'
             'vertex_project = "my-project"\n'

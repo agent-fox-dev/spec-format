@@ -79,8 +79,10 @@ def _format_spec_landscape(landscape: list[dict[str, Any]] | None) -> str:
 
     parts: list[str] = [
         "## Existing Spec Landscape\n",
-        "The following specs already exist in this project. "
-        "Check for overlaps, historical precedent, and potential dependencies.\n",
+        (
+            "The following specs already exist in this project. "
+            "Check for overlaps, historical precedent, and potential dependencies.\n"
+        ),
     ]
 
     if active:
@@ -126,8 +128,10 @@ def _format_dependent_interfaces(
 
     parts: list[str] = [
         "## Dependent Spec Interfaces\n",
-        "The following interfaces are defined by upstream specs that this spec depends on. "
-        "Use the exact names, types, and signatures below.\n",
+        (
+            "The following interfaces are defined by upstream specs that this spec depends on. "
+            "Use the exact names, types, and signatures below.\n"
+        ),
     ]
 
     for iface in dependent_interfaces:
