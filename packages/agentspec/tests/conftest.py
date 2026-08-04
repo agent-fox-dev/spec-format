@@ -47,11 +47,11 @@ def mock_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture()
 def config_toml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Create .spec/ directory in a temp working dir and return path to config.toml.
+    """Create .specs/ directory in a temp working dir and return path to config.toml.
 
     Patches cwd() so load_config() finds the local config file.
     """
-    spec_dir = tmp_path / ".spec"
+    spec_dir = tmp_path / ".specs"
     spec_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
     return spec_dir / "config.toml"

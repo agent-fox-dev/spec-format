@@ -49,7 +49,7 @@ asyncio.run(main())
 To resume an existing session:
 
 ```python
-session = SpecSession.resume(Path(".spec/specs/01_user_auth"))
+session = SpecSession.resume(Path(".specs/01_user_auth"))
 ```
 
 ## Key Types
@@ -84,8 +84,11 @@ All errors inherit from `AgentSpecError`:
 The model used for AI calls is resolved with the following precedence:
 
 1. `AF_SPEC_MODEL` environment variable (highest priority)
-2. `[spec_tool]` section in `.spec/config.toml` (local or global)
+2. `[model]` section in `.specs/config.toml` (project-local) or `~/.specs/config.toml` (global)
 3. Hardcoded default (`STANDARD`)
+
+Provider settings (`auth_method`, `vertex_project`, `vertex_region`) are read
+from the `[provider]` section in the same config file.
 
 An `ANTHROPIC_API_KEY` environment variable is required for API authentication.
 
