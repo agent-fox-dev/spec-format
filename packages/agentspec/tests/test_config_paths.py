@@ -35,9 +35,7 @@ class TestConfigPathSearch:
 
         global_config_dir = home_dir / ".specs"
         global_config_dir.mkdir()
-        (global_config_dir / "config.toml").write_text(
-            '[model]\nmodel = "ADVANCED"\n'
-        )
+        (global_config_dir / "config.toml").write_text('[model]\nmodel = "ADVANCED"\n')
 
         # No local .specs/config.toml
         work_dir = tmp_path / "work"
@@ -131,9 +129,7 @@ class TestConfigPathSearch:
         # Only legacy config exists — should be ignored
         legacy_dir = work_dir / ".spec"
         legacy_dir.mkdir()
-        (legacy_dir / "config.toml").write_text(
-            '[spec_tool]\nmodel = "LEGACY_MODEL"\n'
-        )
+        (legacy_dir / "config.toml").write_text('[spec_tool]\nmodel = "LEGACY_MODEL"\n')
 
         config = load_config()
         assert config.model == "STANDARD"
@@ -161,8 +157,7 @@ class TestConfigPathSearch:
         local_config_dir = work_dir / ".specs"
         local_config_dir.mkdir()
         (local_config_dir / "config.toml").write_text(
-            '[model]\nmodel = "LOCAL_STANDARD"\n'
-            '[provider]\nauth_method = "vertex"\n'
+            '[model]\nmodel = "LOCAL_STANDARD"\n[provider]\nauth_method = "vertex"\n'
         )
 
         config = load_config()

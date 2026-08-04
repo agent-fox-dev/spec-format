@@ -134,9 +134,7 @@ def _ensure_default_campaign(spec_dir: Path) -> None:
         if not spec_dir.exists():
             spec_dir.mkdir(parents=True)
         if not campaign_yaml.exists():
-            campaign_yaml.write_text(
-                "name: default\ndescription: default campaign\n"
-            )
+            campaign_yaml.write_text("name: default\ndescription: default campaign\n")
     except PermissionError as exc:
         click.echo(f"Permission denied: {exc}", err=True)
         raise SystemExit(1) from exc

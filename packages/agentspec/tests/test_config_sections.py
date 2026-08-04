@@ -74,9 +74,7 @@ class TestModelAndProviderSections:
 
         config_dir = work_dir / ".specs"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text(
-            '[model]\nmodel = "ADVANCED"\n'
-        )
+        (config_dir / "config.toml").write_text('[model]\nmodel = "ADVANCED"\n')
 
         monkeypatch.setenv("AF_SPEC_MODEL", "PREMIUM")
 
@@ -113,7 +111,12 @@ class TestModelAndProviderSections:
         Requirement: 01-REQ-7.4
         """
         field_names = {f.name for f in dataclasses.fields(AgentSpecConfig)}
-        assert field_names == {"model", "auth_method", "vertex_project", "vertex_region"}
+        assert field_names == {
+            "model",
+            "auth_method",
+            "vertex_project",
+            "vertex_region",
+        }
 
 
 class TestLegacySectionsIgnored:
@@ -142,9 +145,7 @@ class TestLegacySectionsIgnored:
         config_dir.mkdir()
         # Config with only legacy [spec_tool] section, no [model] or [provider]
         (config_dir / "config.toml").write_text(
-            "[spec_tool]\n"
-            'model = "LEGACY_MODEL"\n'
-            'auth_method = "vertex"\n'
+            '[spec_tool]\nmodel = "LEGACY_MODEL"\nauth_method = "vertex"\n'
         )
 
         config = load_config()
@@ -173,8 +174,7 @@ class TestLegacySectionsIgnored:
         config_dir = work_dir / ".specs"
         config_dir.mkdir()
         (config_dir / "config.toml").write_text(
-            "[theme]\nplayful = false\n\n"
-            '[model]\nmodel = "ADVANCED"\n'
+            '[theme]\nplayful = false\n\n[model]\nmodel = "ADVANCED"\n'
         )
 
         config = load_config()
@@ -201,10 +201,7 @@ class TestLegacySectionsIgnored:
 
         config_dir = work_dir / ".specs"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text(
-            "[spec_tool]\n"
-            'model = "LEGACY_MODEL"\n'
-        )
+        (config_dir / "config.toml").write_text('[spec_tool]\nmodel = "LEGACY_MODEL"\n')
 
         monkeypatch.setenv("AF_SPEC_MODEL", "ENV_OVERRIDE")
 
@@ -233,10 +230,7 @@ class TestLegacySectionsIgnored:
 
         config_dir = work_dir / ".specs"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text(
-            "[provider]\n"
-            'auth_method = "bedrock"\n'
-        )
+        (config_dir / "config.toml").write_text('[provider]\nauth_method = "bedrock"\n')
 
         config = load_config()
         assert config.auth_method == "bedrock"

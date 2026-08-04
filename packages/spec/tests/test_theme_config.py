@@ -103,8 +103,7 @@ class TestLoadThemeConfigDefaults:
         config_dir = work_dir / ".specs"
         config_dir.mkdir()
         (config_dir / "config.toml").write_text(
-            "[theme]\nplayful = false\n"
-            "[model]\nmodel = 'ADVANCED'\n"
+            "[theme]\nplayful = false\n[model]\nmodel = 'ADVANCED'\n"
         )
 
         # Should not raise

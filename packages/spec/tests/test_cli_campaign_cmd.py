@@ -161,9 +161,7 @@ class TestCampaignOptions:
         """
         from spec.cli import main
 
-        result = cli_runner.invoke(
-            main, ["campaign", "--path", str(tmp_path / "camp")]
-        )
+        result = cli_runner.invoke(main, ["campaign", "--path", str(tmp_path / "camp")])
         assert result.exit_code != 0
         assert "--name" in result.output, (
             f"Expected error about missing '--name' option. Output: {result.output}"

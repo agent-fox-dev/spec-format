@@ -165,9 +165,7 @@ class TestConfigEdgeCases:
         config_toml: Path,
     ) -> None:
         """Unknown keys in model section are silently ignored."""
-        config_toml.write_text(
-            '[model]\nunknown_key = "value"\nmodel = "test-model"\n'
-        )
+        config_toml.write_text('[model]\nunknown_key = "value"\nmodel = "test-model"\n')
         from agentspec.config import load_config
 
         config = load_config()

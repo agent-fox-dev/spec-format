@@ -120,9 +120,7 @@ class TestListHappyPaths:
         custom_dir = isolated_dir / "my_custom_specs"
         custom_dir.mkdir()
 
-        result = cli_runner.invoke(
-            main, ["--spec-dir", "my_custom_specs", "list"]
-        )
+        result = cli_runner.invoke(main, ["--spec-dir", "my_custom_specs", "list"])
         assert result.exit_code == 0, f"Exit code {result.exit_code}: {result.output}"
 
         output = json.loads(result.output)
@@ -276,9 +274,7 @@ class TestListEdgeCases:
         """
         from spec.cli import main
 
-        result = cli_runner.invoke(
-            main, ["--spec-dir", "does_not_exist", "list"]
-        )
+        result = cli_runner.invoke(main, ["--spec-dir", "does_not_exist", "list"])
         assert result.exit_code == 0
         output = json.loads(result.output)
         assert output["spec_dir"] == "does_not_exist"
