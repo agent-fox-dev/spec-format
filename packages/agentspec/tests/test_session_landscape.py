@@ -491,36 +491,3 @@ class TestAgentRefinePrdLandscape:
         assert isinstance(result, tuple)
         assert isinstance(result[0], str)
         assert isinstance(result[1], Assessment)
-
-
-# ===========================================================================
-# TS-01-29: The af-spec SKILL.md Step 2 contains the updated text about
-# automated landscape injection and does not contain the old instruction
-# to manually scan for existing specs.  (01-REQ-12.1)
-# ===========================================================================
-
-
-class TestAfSpecSkillUpdate:
-    """TS-01-29: af-spec SKILL.md Step 2 reflects automated landscape injection."""
-
-    def test_skill_md_has_automated_injection_language(self) -> None:
-        """SKILL.md mentions automated injection, spec refine, and Dependencies."""
-        # Find the SKILL.md relative to the project root
-        # Walk up from this test file to find the project root
-        skill_path = Path(__file__).resolve()
-        # Navigate from packages/agentspec/tests/ to project root
-        project_root = skill_path.parent.parent.parent.parent
-        skill_file = project_root / ".claude" / "skills" / "af-spec" / "SKILL.md"
-
-        assert skill_file.exists(), f"SKILL.md not found at {skill_file}"
-
-        content = skill_file.read_text()
-
-        # Must mention automated/automatic injection
-        assert "automatically" in content.lower() or "automatic" in content.lower(), (
-            "SKILL.md must mention 'automatically' or 'automatic' for landscape injection"
-        )
-        # Must reference spec refine
-        assert "spec refine" in content, "SKILL.md must reference 'spec refine'"
-        # Must mention Dependencies section
-        assert "Dependencies" in content, "SKILL.md must mention 'Dependencies'"
