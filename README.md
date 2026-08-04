@@ -130,4 +130,5 @@ pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1
 
 - [Spec Format Reference](docs/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
 - [CLI Reference](docs/cli.md) — commands, flags, and usage
+- [Configuration](docs/configuration.md) — LLM provider setup, model selection, and config files
 - [afspec API](packages/afspec/README.md) — library API for loading and manipulating spec packs
