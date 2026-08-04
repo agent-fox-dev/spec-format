@@ -40,22 +40,18 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture()
 def mock_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Patch Path.home() to return tmp_path for config isolation.
-
-    This ensures load_config() reads from a temp directory instead of
-    the real ~/.af/settings.yaml.
-    """
+    """Patch Path.home() to return tmp_path for config isolation."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     return tmp_path
 
 
 @pytest.fixture()
-def settings_yaml(mock_home: Path) -> Path:
-    """Create ~/.af/ directory and return path to settings.yaml.
+def config_toml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Create .spec/ directory in a temp working dir and return path to config.toml.
 
-    Write content to the returned path to set up test configuration.
-    The parent directory (~/.af/) is created automatically.
+    Patches cwd() so load_config() finds the local config file.
     """
-    af_dir = mock_home / ".af"
-    af_dir.mkdir(exist_ok=True)
-    return af_dir / "settings.yaml"
+    spec_dir = tmp_path / ".spec"
+    spec_dir.mkdir(exist_ok=True)
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    return spec_dir / "config.toml"

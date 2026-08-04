@@ -19,6 +19,11 @@ build/
 !.agent-fox/profiles/
 !.agent-fox/profiles/*
 
+# spec
+.spec/*
+!.spec/config.toml
+!.spec/specs/
+
 # Claude
 .claude/worktrees/
 

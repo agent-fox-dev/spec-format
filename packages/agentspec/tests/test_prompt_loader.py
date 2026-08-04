@@ -54,7 +54,7 @@ def test_generation_system_content() -> None:
 
 def test_project_override(tmp_path: Path) -> None:
     """Project-level prompt takes precedence over bundled default."""
-    prompts_dir = tmp_path / ".agent-fox" / "prompts"
+    prompts_dir = tmp_path / ".spec" / "prompts"
     prompts_dir.mkdir(parents=True)
     (prompts_dir / "assessment_system.md").write_text("CUSTOM ASSESSMENT")
 
@@ -74,7 +74,7 @@ def test_default_fallback(tmp_path: Path) -> None:
 def test_symlink_rejection(tmp_path: Path) -> None:
     """Symlinked prompt files are skipped; loader falls through to default."""
     project = tmp_path / "project"
-    prompts_dir = project / ".agent-fox" / "prompts"
+    prompts_dir = project / ".spec" / "prompts"
     prompts_dir.mkdir(parents=True)
 
     target = tmp_path / "external.md"
@@ -121,7 +121,7 @@ def test_missing_prompt_raises() -> None:
 
 def test_frontmatter_stripping(tmp_path: Path) -> None:
     """YAML frontmatter is stripped from loaded prompts."""
-    prompts_dir = tmp_path / ".agent-fox" / "prompts"
+    prompts_dir = tmp_path / ".spec" / "prompts"
     prompts_dir.mkdir(parents=True)
     (prompts_dir / "assessment_system.md").write_text(
         "---\ntitle: test\ntype: prompt\n---\nActual content here"
@@ -150,7 +150,7 @@ def test_template_substitution() -> None:
 
 def test_safe_substitute_leaves_unknown(tmp_path: Path) -> None:
     """Unrecognized $variables pass through unchanged."""
-    prompts_dir = tmp_path / ".agent-fox" / "prompts"
+    prompts_dir = tmp_path / ".spec" / "prompts"
     prompts_dir.mkdir(parents=True)
     (prompts_dir / "assessment_system.md").write_text(
         "Known: $known, Unknown: $unknown_var"

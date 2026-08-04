@@ -28,14 +28,14 @@ Do not implement anything before completing these steps.
 <main_package>/         # Main package
 <test_directory>/       # Tests directory
 docs/                   # Documentation
-.agent-fox/specs/                 # Specs to be implemented
-.agent-fox/specs/archive/         # Old specs. Ignore for coding tasks, except for reference
+.spec/specs/                 # Specs to be implemented
+.spec/specs/archive/         # Old specs. Ignore for coding tasks, except for reference
 ```
 
 ## Spec-Driven Workflow
 
 This project uses spec-driven development. Specifications live in
-`.agent-fox/specs/NN_name/` (numbered by creation order) and contain:
+`.spec/specs/NN_name/` (numbered by creation order) and contain:
 
 - `prd.md` — product requirements, goals, tech stack, high-level design
 - `requirements.json` — EARS-syntax acceptance criteria, execution paths, external API contracts, glossary

@@ -1,7 +1,7 @@
 """Prompt template loading for agentspec.
 
 Templates are markdown files loaded with a two-tier fallback:
-  1. ``<project_dir>/.agent-fox/prompts/<name>.md``  (project override)
+  1. ``<project_dir>/.spec/prompts/<name>.md``  (project override)
   2. ``_templates/prompts/<name>.md``                (package default)
 
 The project-level path is only checked when *project_dir* is provided.
@@ -47,7 +47,7 @@ def load_prompt(name: str, *, project_dir: Path | None = None) -> str:
     """Load a prompt template by name.
 
     Resolution order (first match wins):
-    1. ``<project_dir>/.agent-fox/prompts/<name>.md``
+    1. ``<project_dir>/.spec/prompts/<name>.md``
     2. ``_templates/prompts/<name>.md``
 
     Step 1 is skipped when *project_dir* is ``None``.
@@ -62,7 +62,7 @@ def load_prompt(name: str, *, project_dir: Path | None = None) -> str:
 
     candidates: list[Path] = []
     if project_dir is not None:
-        candidates.append(project_dir / ".agent-fox" / "prompts" / f"{name}.md")
+        candidates.append(project_dir / ".spec" / "prompts" / f"{name}.md")
     candidates.append(_DEFAULT_PROMPTS_DIR / f"{name}.md")
 
     for candidate in candidates:

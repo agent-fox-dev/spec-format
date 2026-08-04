@@ -41,7 +41,7 @@ spec generate 01_my_feature
 
 | Option | Description |
 |--------|-------------|
-| `-d, --spec-dir PATH` | Override spec directory (default: `.agent-fox/specs`) |
+| `-d, --spec-dir PATH` | Override spec directory (default: `.spec/specs`) |
 | `-q, --quiet` | Suppress progress output on stderr |
 | `--version` | Show version and exit |
 

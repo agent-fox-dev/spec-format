@@ -47,7 +47,7 @@ asyncio.run(main())
 To resume an existing session:
 
 ```python
-session = SpecSession.resume(Path(".agent-fox/specs/01_user_auth"))
+session = SpecSession.resume(Path(".spec/specs/01_user_auth"))
 ```
 
 ## Key Types
@@ -64,7 +64,7 @@ session = SpecSession.resume(Path(".agent-fox/specs/01_user_auth"))
 | `Campaign` | Campaign directory management: create, open, list specs, add new specs. |
 | `CampaignMetadata` | Metadata from `campaign.yaml` (name, description, timestamps). |
 | `AgentSpecConfig` | Resolved configuration (model, auth method, Vertex AI settings). |
-| `load_config()` | Load configuration with precedence: env var -> config file -> legacy YAML -> defaults. |
+| `load_config()` | Load configuration with precedence: env var -> config file -> defaults. |
 
 ### Error Types
 
@@ -82,9 +82,8 @@ All errors inherit from `AgentSpecError`:
 The model used for AI calls is resolved with the following precedence:
 
 1. `AF_SPEC_MODEL` environment variable (highest priority)
-2. `[spec_tool]` section in the merged config
-3. Legacy `~/.af/settings.yaml` (deprecated)
-4. Hardcoded default (`STANDARD`)
+2. `[spec_tool]` section in `.spec/config.toml` (local or global)
+3. Hardcoded default (`STANDARD`)
 
 An `ANTHROPIC_API_KEY` environment variable is required for API authentication.
 
