@@ -7,12 +7,6 @@ system used by agent-fox. It covers the file structure, the `afspec` library,
 the parsing pipeline, context assembly, validation, and the verification
 checklist.
 
-For the authoritative format specification, see
-[Spec Format Specification v1.3](../spec-format_v1.3.md). For how specs are
-structured and validated in general, see
-[Part 1: Spec Authoring](01-spec-authoring.md). For how parsed specs become
-task graphs, see [Part 2: Planning](02-planning.md).
-
 ---
 
 ## Why v1.3

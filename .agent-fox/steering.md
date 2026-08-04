@@ -26,3 +26,5 @@ session — not as a follow-up task.
 3. If a doc file listed above does not exist yet, create it with the correct
    content rather than skipping the update.
 4. Run `make check` after doc updates to ensure nothing is broken.
+
+IMPORTANT: spec-format.md is a source-of-truth, never modify it.
