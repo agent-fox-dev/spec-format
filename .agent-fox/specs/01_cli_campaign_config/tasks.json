@@ -33,7 +33,7 @@
           "requirement_refs": [
             "01-REQ-1"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -41,9 +41,9 @@
           "title": "Write tests for auto-init campaign happy paths",
           "details": [
             "Create test file `packages/spec/tests/test_auto_init_campaign.py`",
-            "Test: `.specs/` absent \u2192 directory and `campaign.yaml` created (TS-01-4)",
-            "Test: `.specs/` present with `campaign.yaml` \u2192 skip auto-init, proceed (TS-01-5)",
-            "Test: `.specs/` present without `campaign.yaml` \u2192 write `campaign.yaml` only (TS-01-6)",
+            "Test: `.specs/` absent → directory and `campaign.yaml` created (TS-01-4)",
+            "Test: `.specs/` present with `campaign.yaml` → skip auto-init, proceed (TS-01-5)",
+            "Test: `.specs/` present without `campaign.yaml` → write `campaign.yaml` only (TS-01-6)",
             "Mock `Campaign.create` and filesystem operations with `tmp_path` fixture"
           ],
           "test_spec_refs": [
@@ -54,16 +54,16 @@
           "requirement_refs": [
             "01-REQ-2"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
           "id": "1.3",
           "title": "Write tests for auto-init campaign error paths",
           "details": [
-            "Test: `.specs/` is read-only \u2192 abort with user-facing permission error message (TS-01-7)",
-            "Test: disk-full / other I/O error during write \u2192 abort with OS-level error message",
-            "Test: old `.spec/` exists alongside `.specs/` \u2192 `.spec/` is silently ignored",
+            "Test: `.specs/` is read-only → abort with user-facing permission error message (TS-01-7)",
+            "Test: disk-full / other I/O error during write → abort with OS-level error message",
+            "Test: old `.spec/` exists alongside `.specs/` → `.spec/` is silently ignored",
             "Use `tmp_path`, `os.chmod`, and `OSError` side-effects to simulate failures"
           ],
           "test_spec_refs": [
@@ -72,7 +72,7 @@
           "requirement_refs": [
             "01-REQ-2"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -94,7 +94,7 @@
           "requirement_refs": [
             "01-REQ-3"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -113,7 +113,7 @@
           "requirement_refs": [
             "01-REQ-3"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -123,9 +123,9 @@
             "Create test file `packages/spec/tests/test_cli_campaign_cmd.py`",
             "Test: `spec campaign --path P --name N` creates campaign via `Campaign.create(Path(P), N, '')` (TS-01-11)",
             "Test: `--description` optional arg is forwarded to `Campaign.create` (TS-01-12)",
-            "Test: `spec campaign open` is no longer a valid subcommand \u2192 Click error (TS-01-13)",
-            "Test: `spec campaign new-spec` is no longer a valid subcommand \u2192 Click error (TS-01-14)",
-            "Test: duplicate campaign at `--path` \u2192 non-zero exit with message `'campaign already exists at <path>'`",
+            "Test: `spec campaign open` is no longer a valid subcommand → Click error (TS-01-13)",
+            "Test: `spec campaign new-spec` is no longer a valid subcommand → Click error (TS-01-14)",
+            "Test: duplicate campaign at `--path` → non-zero exit with message `'campaign already exists at <path>'`",
             "Mock `Campaign.create` to raise the expected error for the duplicate case"
           ],
           "test_spec_refs": [
@@ -137,7 +137,7 @@
           "requirement_refs": [
             "01-REQ-4"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],
@@ -145,7 +145,7 @@
         "id": "1.V",
         "checks": [
           "All newly written test files are collected by pytest without import errors: `pytest --collect-only packages/spec/tests/test_cli_spec_root.py packages/spec/tests/test_auto_init_campaign.py packages/spec/tests/test_cli_source_flag.py packages/spec/tests/test_cli_campaign_cmd.py`",
-          "Tests fail (red) because implementation does not yet exist \u2014 confirms tests are exercising real behaviour",
+          "Tests fail (red) because implementation does not yet exist — confirms tests are exercising real behaviour",
           "No linter warnings in new test files: `ruff check packages/spec/tests/`",
           "Requirements 01-REQ-1, 01-REQ-2, 01-REQ-3, 01-REQ-4 acceptance criteria are fully covered by test assertions"
         ]
@@ -161,7 +161,7 @@
           "title": "Write tests for spec list happy paths",
           "details": [
             "Create test file `packages/spec/tests/test_cli_list_cmd.py`",
-            "Test: spec root with valid spec dirs \u2192 JSON output with `spec_dir` and `specs` array (TS-01-15)",
+            "Test: spec root with valid spec dirs → JSON output with `spec_dir` and `specs` array (TS-01-15)",
             "Test: each spec entry has `name` (full dir name) and `state` from `_session.json` (TS-01-16)",
             "Test: `spec_dir` in output is the relative path as configured, never absolute (TS-01-17)",
             "Test: non-matching directories (e.g. `archive/`, plain files) are silently skipped (TS-01-18)",
@@ -183,11 +183,11 @@
           "id": "2.2",
           "title": "Write tests for spec list edge cases and error handling",
           "details": [
-            "Test: spec root does not exist \u2192 `{spec_dir: '...', specs: []}` with exit code 0 (TS-01-19)",
-            "Test: spec root exists but is empty \u2192 empty specs array, exit code 0",
-            "Test: `_session.json` absent \u2192 `state: 'no_session'`",
-            "Test: `_session.json` present but invalid JSON \u2192 `state: 'no_session'`",
-            "Test: `_session.json` present but missing `state` field \u2192 `state: 'no_session'`",
+            "Test: spec root does not exist → `{spec_dir: '...', specs: []}` with exit code 0 (TS-01-19)",
+            "Test: spec root exists but is empty → empty specs array, exit code 0",
+            "Test: `_session.json` absent → `state: 'no_session'`",
+            "Test: `_session.json` present but invalid JSON → `state: 'no_session'`",
+            "Test: `_session.json` present but missing `state` field → `state: 'no_session'`",
             "Assert output is valid JSON parseable with `json.loads`"
           ],
           "test_spec_refs": [
@@ -266,9 +266,9 @@
           "title": "Write smoke tests for end-to-end CLI flows",
           "details": [
             "Create test file `packages/spec/tests/test_smoke_01.py`",
-            "SMOKE-1: invoke `spec list` against a real temp spec root with one valid spec dir \u2192 valid JSON output",
-            "SMOKE-2: invoke `spec campaign --path P --name N` \u2192 `campaign.yaml` written at `P`",
-            "SMOKE-3: invoke `spec new` in a temp dir without `.specs/` \u2192 `.specs/campaign.yaml` auto-created before campaign creation proceeds",
+            "SMOKE-1: invoke `spec list` against a real temp spec root with one valid spec dir → valid JSON output",
+            "SMOKE-2: invoke `spec campaign --path P --name N` → `campaign.yaml` written at `P`",
+            "SMOKE-3: invoke `spec new` in a temp dir without `.specs/` → `.specs/campaign.yaml` auto-created before campaign creation proceeds",
             "Use `CliRunner(mix_stderr=False)` and `tmp_path`; mock `Campaign.new_spec` to avoid real AI calls"
           ],
           "test_spec_refs": [
@@ -325,9 +325,9 @@
           "title": "Implement auto-init default campaign logic in spec new",
           "details": [
             "In `packages/spec/spec/cli.py`, add `_ensure_default_campaign(spec_dir: Path) -> None` helper",
-            "Logic: if `spec_dir` does not exist \u2192 `spec_dir.mkdir(parents=True)` then write `campaign.yaml`",
-            "Logic: if `spec_dir` exists and `campaign.yaml` absent \u2192 write `campaign.yaml` only",
-            "Logic: if `spec_dir` exists and `campaign.yaml` present \u2192 return immediately (no-op)",
+            "Logic: if `spec_dir` does not exist → `spec_dir.mkdir(parents=True)` then write `campaign.yaml`",
+            "Logic: if `spec_dir` exists and `campaign.yaml` absent → write `campaign.yaml` only",
+            "Logic: if `spec_dir` exists and `campaign.yaml` present → return immediately (no-op)",
             "`campaign.yaml` content: `name: \"default\"\\ndescription: \"default campaign\"`",
             "Call `_ensure_default_campaign(spec_dir)` at the top of the `spec new` command handler, before `Campaign.open`"
           ],
@@ -346,8 +346,8 @@
           "id": "3.3",
           "title": "Implement auto-init error handling (permission and I/O errors)",
           "details": [
-            "Wrap `spec_dir.mkdir()` and `campaign.yaml` write in try/except `PermissionError` \u2192 `click.echo(f'Permission denied: {e}', err=True); raise SystemExit(1)`",
-            "Wrap in try/except `OSError` (catch-all for disk-full, partial write, etc.) \u2192 `click.echo(str(e), err=True); raise SystemExit(1)`",
+            "Wrap `spec_dir.mkdir()` and `campaign.yaml` write in try/except `PermissionError` → `click.echo(f'Permission denied: {e}', err=True); raise SystemExit(1)`",
+            "Wrap in try/except `OSError` (catch-all for disk-full, partial write, etc.) → `click.echo(str(e), err=True); raise SystemExit(1)`",
             "Do NOT attempt partial state cleanup on failure",
             "Ensure old `.spec/` directory presence does not trigger any warning or branch"
           ],
@@ -397,7 +397,7 @@
         },
         {
           "id": "4.2",
-          "title": "Thread source parameter through spec new \u2192 Campaign.new_spec",
+          "title": "Thread source parameter through spec new → Campaign.new_spec",
           "details": [
             "In the `spec new` command handler, pass `source=ctx.obj['source']` to `Campaign.new_spec(...)`",
             "Update `Campaign.new_spec` signature in `packages/agentspec/agentspec/campaign.py` to accept `source: Path = Path('.')`",
@@ -489,7 +489,7 @@
           "id": "5.3",
           "title": "Verify --path is independent of global --spec-dir",
           "details": [
-            "Add inline comment in `cli.py` documenting that `--path` governs campaign creation and `--spec-dir` governs spec resolution \u2014 they do not interact",
+            "Add inline comment in `cli.py` documenting that `--path` governs campaign creation and `--spec-dir` governs spec resolution — they do not interact",
             "Write a test asserting that passing both `--spec-dir X` and `--path Y` creates the campaign at `Y`, not `X`",
             "Confirm `Campaign.create` is called with `Path(path)` (from `--path`), not `ctx.obj['spec_dir']`"
           ],
@@ -546,8 +546,8 @@
           "details": [
             "If `spec_dir` path does not exist, return `{spec_dir: str(spec_dir), specs: []}` with exit 0",
             "Iterate `sorted(Path(spec_dir).iterdir())`, filter with `parse_spec_dir_name(entry.name) is not None` and `entry.is_dir()`",
-            "For each matching dir, read `_session.json` \u2192 extract `state` field",
-            "If `_session.json` absent, unreadable, invalid JSON, or missing `state` key \u2192 use `'no_session'`",
+            "For each matching dir, read `_session.json` → extract `state` field",
+            "If `_session.json` absent, unreadable, invalid JSON, or missing `state` key → use `'no_session'`",
             "Build `specs` list of `{name: entry.name, state: state}` dicts",
             "Output `spec_dir` as the relative path string as configured (do not call `.resolve()`)"
           ],
@@ -568,7 +568,7 @@
           "id": "6.3",
           "title": "Handle spec list edge cases: missing root, malformed session files",
           "details": [
-            "Wrap `_session.json` read in try/except `(json.JSONDecodeError, KeyError, OSError)` \u2192 fall back to `'no_session'`",
+            "Wrap `_session.json` read in try/except `(json.JSONDecodeError, KeyError, OSError)` → fall back to `'no_session'`",
             "Ensure `archive/` and non-spec-named directories are excluded via `parse_spec_dir_name` returning `None`",
             "Ensure plain files in spec root are skipped via `entry.is_dir()` check",
             "All error/edge cases exit with code 0"
@@ -624,10 +624,10 @@
           "title": "Update load_config to read [model] and [provider] sections",
           "details": [
             "In `load_config`, replace `[spec_tool]` section reads with `[model]` and `[provider]` section reads using `tomllib`",
-            "Read `config['model']['model']` \u2192 `AgentSpecConfig.model` (with fallback to hardcoded `'STANDARD'`)",
-            "Read `config['provider']['auth_method']`, `config['provider']['vertex_project']`, `config['provider']['vertex_region']` \u2192 corresponding `AgentSpecConfig` fields",
+            "Read `config['model']['model']` → `AgentSpecConfig.model` (with fallback to hardcoded `'STANDARD'`)",
+            "Read `config['provider']['auth_method']`, `config['provider']['vertex_project']`, `config['provider']['vertex_region']` → corresponding `AgentSpecConfig` fields",
             "Apply precedence: `AF_SPEC_MODEL` env var > `[model].model` > `'STANDARD'`",
-            "`AgentSpecConfig` dataclass fields remain unchanged \u2014 no structural change to the dataclass"
+            "`AgentSpecConfig` dataclass fields remain unchanged — no structural change to the dataclass"
           ],
           "test_spec_refs": [
             "TS-01-22",
@@ -745,10 +745,10 @@
           "id": "8.3",
           "title": "Manual CLI smoke check against a real temp workspace",
           "details": [
-            "In a fresh temp directory, run `spec list` \u2192 confirm JSON output with empty specs array",
-            "Run `spec campaign --path ./my-campaign --name test` \u2192 confirm `campaign.yaml` written",
-            "Run `spec --source . new` (with mocked AI) \u2192 confirm `.specs/campaign.yaml` auto-created",
-            "Inspect `.specs/config.toml` with `[model]` and `[provider]` sections \u2192 confirm `load_config` reads them correctly"
+            "In a fresh temp directory, run `spec list` → confirm JSON output with empty specs array",
+            "Run `spec campaign --path ./my-campaign --name test` → confirm `campaign.yaml` written",
+            "Run `spec --source . new` (with mocked AI) → confirm `.specs/campaign.yaml` auto-created",
+            "Inspect `.specs/config.toml` with `[model]` and `[provider]` sections → confirm `load_config` reads them correctly"
           ],
           "test_spec_refs": [
             "TS-01-4",
@@ -783,12 +783,12 @@
       "subtasks": [
         {
           "id": "9.1",
-          "title": "Trace execution paths: spec new \u2192 _ensure_default_campaign \u2192 Campaign.new_spec \u2192 SpecSession._create",
+          "title": "Trace execution paths: spec new → _ensure_default_campaign → Campaign.new_spec → SpecSession._create",
           "details": [
             "Verify `spec new` handler calls `_ensure_default_campaign(spec_dir)` before `Campaign.open`",
             "Verify `Campaign.new_spec` is called with `source=ctx.obj['source']` (not hardcoded `Path('.')`)",
             "Verify `Campaign.new_spec` forwards `source` to `SpecSession._create(spec_dir, mode, source=source)`",
-            "Verify `SpecSession._create` stores `source` as `self._source` \u2014 grep for `self._source` assignment in `session.py`",
+            "Verify `SpecSession._create` stores `source` as `self._source` — grep for `self._source` assignment in `session.py`",
             "Confirm no stub remains in `_ensure_default_campaign`: no `raise NotImplementedError`, no bare `pass`"
           ],
           "test_spec_refs": [
@@ -805,7 +805,7 @@
         },
         {
           "id": "9.2",
-          "title": "Trace execution paths: spec list \u2192 parse_spec_dir_name \u2192 JSON output",
+          "title": "Trace execution paths: spec list → parse_spec_dir_name → JSON output",
           "details": [
             "Verify `spec list` command is registered on `main` group and appears in `spec --help`",
             "Verify `parse_spec_dir_name` from `afspec.discovery` is imported and called for each directory entry",
@@ -825,11 +825,11 @@
         },
         {
           "id": "9.3",
-          "title": "Trace execution paths: load_config \u2192 [model] / [provider] sections \u2192 AgentSpecConfig",
+          "title": "Trace execution paths: load_config → [model] / [provider] sections → AgentSpecConfig",
           "details": [
             "Verify `load_config` reads from `.specs/config.toml` and `~/.specs/config.toml` (grep for these strings in `config.py`)",
             "Verify `AF_SPEC_MODEL` env var check precedes `[model].model` read in `load_config` logic",
-            "Verify `load_theme_config` contains no file-open calls \u2014 grep for `open(` in `spec/config.py`",
+            "Verify `load_theme_config` contains no file-open calls — grep for `open(` in `spec/config.py`",
             "Verify `AgentSpecConfig` dataclass fields are unchanged: `model`, `auth_method`, `vertex_project`, `vertex_region`"
           ],
           "test_spec_refs": [
@@ -851,9 +851,9 @@
           "id": "9.4",
           "title": "Stub and dead-code audit across all modified files",
           "details": [
-            "Search for `raise NotImplementedError` in `packages/spec/spec/cli.py`, `packages/agentspec/agentspec/campaign.py`, `packages/agentspec/agentspec/session.py`, `packages/agentspec/agentspec/config.py`, `packages/spec/spec/config.py` \u2014 expect zero results",
-            "Search for bare `pass` in non-abstract method bodies in the same files \u2014 expect zero results",
-            "Search for `# TODO` comments introduced by this spec \u2014 resolve or document any found",
+            "Search for `raise NotImplementedError` in `packages/spec/spec/cli.py`, `packages/agentspec/agentspec/campaign.py`, `packages/agentspec/agentspec/session.py`, `packages/agentspec/agentspec/config.py`, `packages/spec/spec/config.py` — expect zero results",
+            "Search for bare `pass` in non-abstract method bodies in the same files — expect zero results",
+            "Search for `# TODO` comments introduced by this spec — resolve or document any found",
             "Confirm `_ensure_default_campaign` is called from production code (not only from tests)"
           ],
           "test_spec_refs": [],
@@ -928,7 +928,7 @@
           "Full test suite passes with zero failures: `pytest -q`",
           "Zero linter warnings: `ruff check packages/`",
           "Stub/dead-code audit: zero `raise NotImplementedError`, zero bare `pass` in non-abstract methods, zero unresolved `# TODO` markers in modified files",
-          "Execution path verified: `spec new` \u2192 `_ensure_default_campaign` \u2192 `Campaign.new_spec(source=...)` \u2192 `SpecSession._create(source=...)` \u2192 `self._source` \u2014 no stubs in chain",
+          "Execution path verified: `spec new` → `_ensure_default_campaign` → `Campaign.new_spec(source=...)` → `SpecSession._create(source=...)` → `self._source` — no stubs in chain",
           "`spec list` appears in `spec --help` output; `spec campaign open` does NOT appear",
           "`load_config` reads from `.specs/config.toml` (not `.spec/config.toml`); `load_theme_config` contains no file-open calls",
           "All 25 spec test cases TS-01-1 through TS-01-25 pass"
