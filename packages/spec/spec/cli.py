@@ -163,7 +163,7 @@ def _ensure_default_campaign(spec_dir: Path) -> None:
     type=click.Path(exists=True),
     default=".",
     show_default=True,
-    help="Source code directory for AI context analysis",
+    help="Source code directory for AI context during spec creation (used by 'new')",
 )
 @click.option(
     "--quiet", "-q", is_flag=True, default=False, help="Suppress progress output"
@@ -171,7 +171,7 @@ def _ensure_default_campaign(spec_dir: Path) -> None:
 @click.version_option(package_name="spec")
 @click.pass_context
 def main(ctx: click.Context, spec_dir: str, source: str, quiet: bool) -> None:
-    """spec: AI-powered spec creation tool."""
+    """AI-powered spec authoring and management tool."""
     ctx.ensure_object(dict)
     ctx.obj["spec_dir"] = Path(spec_dir)
     ctx.obj["source"] = Path(source)
@@ -205,8 +205,7 @@ def main(ctx: click.Context, spec_dir: str, source: str, quiet: bool) -> None:
 def new_cmd(ctx: click.Context, spec_path: str, spec_name: str | None) -> None:
     """Create a new spec from a PRD file.
 
-    Auto-initialises the spec root directory and a default campaign
-    if they do not already exist, then delegates to Campaign.new_spec.
+    Auto-initialises the spec directory if it does not already exist.
     """
     from agentspec.campaign import Campaign
 
@@ -239,12 +238,10 @@ def new_cmd(ctx: click.Context, spec_path: str, spec_name: str | None) -> None:
 @main.command("list")
 @click.pass_context
 def list_cmd(ctx: click.Context) -> None:
-    """List all specs in the spec root with their session states.
+    """List all specs with their current states.
 
-    Outputs a JSON object with ``spec_dir`` and a ``specs`` array.
-    Each entry contains the directory name and the session state read
-    from ``_session.json`` (or ``"no_session"`` if absent/malformed).
-    Always exits with status 0.
+    Outputs a JSON object containing each spec's directory name and
+    session state.
     """
     spec_dir: Path = ctx.obj["spec_dir"]
     spec_dir_str = str(spec_dir)
@@ -310,11 +307,13 @@ def _serialize_assessment(assessment: Any) -> dict[str, Any]:
 @click.option(
     "--force",
     is_flag=True,
-    help="Discard previous assessments and start a fresh refine cycle",
+    help="Reset session to initial state, discarding all assessments, answers, and generated artifacts",
 )
 @click.pass_context
 def refine_cmd(ctx: click.Context, spec: str, answers: str | None, force: bool) -> None:
     """Assess PRD, submit answers, and refine.
+
+    SPEC is a spec name (e.g. 01_my_feature) or number (e.g. 1).
 
     Without --answers: runs the initial assessment (if needed) and
     outputs the pending questions as JSON.
@@ -694,8 +693,8 @@ def _run_cross_spec_checks(spec_dir: Path) -> list[dict[str, Any]]:
 def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> None:
     """Run schema and cross-file checks.
 
-    When SPEC is given, validates that single spec pack.
-    When omitted, discovers and validates all spec packs in the spec directory.
+    When SPEC is given, validates that single spec.
+    When omitted, discovers and validates all specs in the spec directory.
     """
     from afspec.discovery import discover_specs
 
@@ -778,11 +777,10 @@ def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> Non
 )
 @click.pass_context
 def lint_cmd(ctx: click.Context, lint_all: bool) -> None:
-    """Lint spec packs for validation errors.
+    """Lint specs for validation errors.
 
-    Discovers all spec packs in the spec directory and runs afspec
-    validation on each.  Exits with code 0 when clean, 1 when
-    error-severity findings exist.
+    Discovers all specs in the spec directory and validates each.
+    Exits with code 0 when clean, 1 when errors exist.
     """
     from afspec.lint import run_lint_specs
 
@@ -867,11 +865,10 @@ def campaign_cmd(
     name: str,
     description: str,
 ) -> None:
-    """Create a campaign at a non-default location.
+    """Create a new campaign directory.
 
-    --path governs where the campaign is created; this is independent
-    of the global --spec-dir flag which governs spec resolution for
-    other commands.  The two flags do not interact.
+    Creates a campaign at the path specified by --path, independent of
+    the global --spec-dir option.
     """
     from agentspec.campaign import Campaign
     from agentspec.errors import CampaignError

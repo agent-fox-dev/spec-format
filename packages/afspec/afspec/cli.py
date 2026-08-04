@@ -16,7 +16,10 @@ from afspec.mutate import transition_subtask
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="afspec", description="afspec CLI")
+    parser = argparse.ArgumentParser(
+        prog="afspec",
+        description="Manage spec artifacts: update subtask states and transitions.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     up = sub.add_parser(
