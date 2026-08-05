@@ -25,6 +25,15 @@ format:
 
 check: lint test
 
+json-go:
+	go get github.com/atombender/go-jsonschema/...
+	go install github.com/atombender/go-jsonschema@latest
+	go-jsonschema -p afspec packages/afspec/afspec/schemas/tasks.v1.json > tasks.v1.go
+	go-jsonschema -p afspec packages/afspec/afspec/schemas/requirements.v1.json > requirements.v1.go
+	go-jsonschema -p afspec packages/afspec/afspec/schemas/test_spec.v1.json > test_spec.v1.go
+	go-jsonschema -p afspec packages/afspec/afspec/schemas/prd-frontmatter.v1.json > prd-frontmatter.v1.go
+	 
+
 install-skills:
 	@for skill in $(SKILLS_TEMPLATES_DIR)/*; do \
 		name=$$(basename "$$skill"); \
