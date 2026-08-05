@@ -14,8 +14,8 @@
       "expected": {
         "has_prd": true,
         "has_requirements": true,
-        "has_test_spec": true,
-        "has_tasks": true
+        "has_tasks": true,
+        "has_test_spec": true
       },
       "assertion_pseudocode": "spec = load_spec(dir); assert spec.prd is not None"
     }
