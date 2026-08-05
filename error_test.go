@@ -127,3 +127,87 @@ func TestErrorHierarchy_LifecycleErrorFromSave(t *testing.T) {
 		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err type = %T", err)
 	}
 }
+
+// TestErrorHierarchy_NonAfspecError verifies that a non-afspec error does
+// not satisfy errors.As(err, &SpecError{}).
+// Requirement: 01-REQ-26.1
+func TestErrorHierarchy_NonAfspecError(t *testing.T) {
+	plainErr := errors.New("not an afspec error")
+
+	var specErr *SpecError
+	if errors.As(plainErr, &specErr) {
+		t.Error("errors.As(plainErr, &SpecError{}) = true, want false for non-afspec error")
+	}
+
+	var loadErr *LoadError
+	if errors.As(plainErr, &loadErr) {
+		t.Error("errors.As(plainErr, &LoadError{}) = true, want false for non-afspec error")
+	}
+}
+
+// TestErrorHierarchy_ErrorMessages verifies that all error types produce
+// meaningful, non-empty error messages.
+// Requirement: 01-REQ-26.1
+func TestErrorHierarchy_ErrorMessages(t *testing.T) {
+	baseErr := &SpecError{Msg: "base"}
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"SpecError", &SpecError{Msg: "spec error"}},
+		{"LoadError", &LoadError{Msg: "missing file", File: "req.json", Err: baseErr}},
+		{"LoadError_NoFile", &LoadError{Msg: "parse error", Err: baseErr}},
+		{"SaveError", &SaveError{Msg: "write failed", Err: baseErr}},
+		{"LifecycleError", &LifecycleError{Msg: "invalid transition", Err: baseErr}},
+		{"IntentError", &IntentError{Msg: "no intent section", Err: baseErr}},
+		{"BootstrapError", &BootstrapError{Msg: "missing artifacts", Err: baseErr}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := tt.err.Error()
+			if msg == "" {
+				t.Error("Error() returned empty string")
+			}
+		})
+	}
+}
+
+// TestErrorHierarchy_LifecycleErrorFromTransition verifies that Transition
+// with an invalid state returns errors satisfying both LifecycleError and
+// SpecError type assertions.
+// Test Spec: TS-01-50, TS-01-51, Requirement: 01-REQ-26.1, 01-REQ-26.2
+func TestErrorHierarchy_LifecycleErrorFromTransition(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+	}
+
+	// draft → sealed is not a valid transition
+	_, err := spec.Transition("sealed", tmpDir)
+	if err == nil {
+		t.Fatal("expected error for invalid transition, got nil")
+	}
+
+	var lifecycleErr *LifecycleError
+	if !errors.As(err, &lifecycleErr) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err type = %T", err)
+	}
+
+	var specErr *SpecError
+	if !errors.As(err, &specErr) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err type = %T", err)
+	}
+}
