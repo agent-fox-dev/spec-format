@@ -1,0 +1,1612 @@
+{
+  "$schema": null,
+  "spec_id": "01",
+  "spec_name": "afspec_go",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-01-1",
+      "requirement_id": "01-REQ-1.1",
+      "kind": "unit",
+      "description": "LoadSpec with a valid spec directory reads all required artifacts and returns a populated Spec struct with nil error.",
+      "preconditions": [
+        "A valid spec directory exists at testdata/valid_spec/ containing prd.md, requirements.json, test_spec.json, and tasks.json with well-formed content"
+      ],
+      "input": "LoadSpec(\"testdata/valid_spec\")",
+      "expected": "Returns (*Spec, nil) where Spec has non-nil Requirements, TestSpec, Tasks, and PRD fields populated from the files",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/valid_spec\"); assert err == nil; assert spec != nil; assert spec.Requirements != nil; assert spec.TestSpec != nil; assert spec.Tasks != nil; assert spec.PRDBody != \"\""
+    },
+    {
+      "id": "TS-01-2",
+      "requirement_id": "01-REQ-1.2",
+      "kind": "unit",
+      "description": "LoadSpec parses YAML frontmatter from prd.md using yaml.Unmarshal and populates all frontmatter fields on the returned Spec.",
+      "preconditions": [
+        "A valid spec directory exists at testdata/valid_spec/ with a prd.md that has YAML frontmatter delimited by --- containing spec_id, spec_name, status, created_at, updated_at, owner, source, schema_version fields"
+      ],
+      "input": "LoadSpec(\"testdata/valid_spec\")",
+      "expected": "Returns (*Spec, nil) with SpecID, SpecName, Status, CreatedAt, UpdatedAt, Owner, Source, SchemaVersion fields populated from the YAML frontmatter; PRDBody contains only the Markdown body after the closing ---",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/valid_spec\"); assert err == nil; assert spec.SpecID == expectedSpecID; assert spec.SpecName == expectedSpecName; assert spec.Status == expectedStatus; assert spec.PRDBody does not contain \"---\""
+    },
+    {
+      "id": "TS-01-3",
+      "requirement_id": "01-REQ-1.3",
+      "kind": "unit",
+      "description": "LoadSpec succeeds and leaves the architecture field empty when architecture.md is absent from the directory.",
+      "preconditions": [
+        "A valid spec directory exists at testdata/no_arch_spec/ containing prd.md, requirements.json, test_spec.json, and tasks.json but NO architecture.md"
+      ],
+      "input": "LoadSpec(\"testdata/no_arch_spec\")",
+      "expected": "Returns (*Spec, nil) with all required artifacts populated and Architecture field set to empty string",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/no_arch_spec\"); assert err == nil; assert spec != nil; assert spec.Architecture == \"\""
+    },
+    {
+      "id": "TS-01-4",
+      "requirement_id": "01-REQ-2.1",
+      "kind": "integration",
+      "description": "Spec.Save writes all artifacts atomically via temp-then-rename and produces byte-for-byte identical output to the original fixture files.",
+      "preconditions": [
+        "A valid spec loaded from testdata/valid_spec/ into a Spec struct",
+        "A writable temporary directory tmpDir exists"
+      ],
+      "input": "spec.Save(tmpDir) where spec was loaded from testdata/valid_spec/",
+      "expected": "Returns nil; files in tmpDir are byte-for-byte identical to files in testdata/valid_spec/ for all artifacts; no temp files remain in tmpDir",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); err = spec.Save(tmpDir); assert err == nil; for each artifact file: diff = cmp.Diff(readFile(\"testdata/valid_spec/\"+name), readFile(tmpDir+\"/\"+name)); assert diff == \"\""
+    },
+    {
+      "id": "TS-01-5",
+      "requirement_id": "01-REQ-2.2",
+      "kind": "unit",
+      "description": "Spec.Save on a sealed Spec returns a LifecycleError without writing any files.",
+      "preconditions": [
+        "A Spec struct with Status set to 'sealed'",
+        "A writable temporary directory tmpDir exists"
+      ],
+      "input": "spec.Save(tmpDir) where spec.Status == \"sealed\"",
+      "expected": "Returns a LifecycleError (non-nil); no files are created in tmpDir; errors.As(err, &LifecycleError{}) returns true; errors.As(err, &SpecError{}) returns true",
+      "assertion_pseudocode": "spec = createSealedSpec(); err = spec.Save(tmpDir); assert err != nil; assert errors.As(err, &LifecycleError{}); assert errors.As(err, &SpecError{}); assert len(listFiles(tmpDir)) == 0"
+    },
+    {
+      "id": "TS-01-6",
+      "requirement_id": "01-REQ-3.1",
+      "kind": "unit",
+      "description": "MarshalJSON serializes struct fields in declaration order and sorts all map[string]T keys alphabetically.",
+      "preconditions": [
+        "A Requirements struct with a glossary map containing keys in non-alphabetical insertion order (e.g., 'zebra', 'apple', 'mango')"
+      ],
+      "input": "MarshalJSON(requirementsStruct) where glossary map has keys inserted as ['zebra', 'apple', 'mango']",
+      "expected": "Returns ([]byte, nil); the JSON output has glossary keys in alphabetical order: 'apple', 'mango', 'zebra'; struct fields appear in declaration order matching JSON Schema property order",
+      "assertion_pseudocode": "data, err = MarshalJSON(req); assert err == nil; parsed = jsonParse(data); keys = getKeys(parsed.glossary); assert keys == [\"apple\", \"mango\", \"zebra\"]; assert fieldOrderMatchesDeclaration(data)"
+    },
+    {
+      "id": "TS-01-7",
+      "requirement_id": "01-REQ-3.2",
+      "kind": "integration",
+      "description": "MarshalJSON produces byte-for-byte identical output to the Python library for every spec artifact type including nested structs and map fields.",
+      "preconditions": [
+        "Golden fixture files in testdata/ produced by the Python afspec library for each artifact type (requirements.json, test_spec.json, tasks.json)"
+      ],
+      "input": "MarshalJSON(artifact) for each artifact loaded from testdata/valid_spec/",
+      "expected": "The returned []byte is byte-for-byte identical to the corresponding golden fixture file content",
+      "assertion_pseudocode": "for each fixture in testdata/valid_spec: artifact = loadArtifact(fixture); data, err = MarshalJSON(artifact); assert err == nil; diff = cmp.Diff(readFile(fixture), data); assert diff == \"\""
+    },
+    {
+      "id": "TS-01-8",
+      "requirement_id": "01-REQ-4.1",
+      "kind": "unit",
+      "description": "Spec.Validate on a fully valid spec returns a ValidationResult with Valid true and empty Errors slice.",
+      "preconditions": [
+        "A Spec loaded from testdata/valid_spec/ that passes all schema and cross-file checks"
+      ],
+      "input": "spec.Validate() where spec is fully valid",
+      "expected": "Returns ValidationResult{Valid: true, Errors: []} (Errors slice is empty or nil); Warnings may be non-empty",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); result = spec.Validate(); assert result.Valid == true; assert len(result.Errors) == 0"
+    },
+    {
+      "id": "TS-01-9",
+      "requirement_id": "01-REQ-4.2",
+      "kind": "unit",
+      "description": "Spec.Validate on a spec with errors returns a ValidationResult with Valid false and a non-empty Errors slice.",
+      "preconditions": [
+        "A Spec struct with at least one schema violation (e.g., a requirement missing a required field)"
+      ],
+      "input": "spec.Validate() where spec has a schema error",
+      "expected": "Returns ValidationResult{Valid: false, Errors: [...]} where Errors has at least one entry",
+      "assertion_pseudocode": "spec = buildInvalidSpec(); result = spec.Validate(); assert result.Valid == false; assert len(result.Errors) > 0"
+    },
+    {
+      "id": "TS-01-10",
+      "requirement_id": "01-REQ-5.1",
+      "kind": "unit",
+      "description": "Spec.ValidateSchema on a structurally valid spec compiles bundled schemas via SchemeURLLoader and returns ValidationResult with Valid true.",
+      "preconditions": [
+        "A Spec loaded from testdata/valid_spec/ that conforms to all bundled JSON Schema files",
+        "Bundled schema files are embedded in the binary via //go:embed"
+      ],
+      "input": "spec.ValidateSchema() where spec is structurally valid",
+      "expected": "Returns ValidationResult{Valid: true} with no errors",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); result = spec.ValidateSchema(); assert result.Valid == true; assert len(result.Errors) == 0"
+    },
+    {
+      "id": "TS-01-11",
+      "requirement_id": "01-REQ-5.2",
+      "kind": "unit",
+      "description": "Spec.ValidateSchema maps each *jsonschema.ValidationError to a ValidationResult error entry with InstanceLocation as path, KeywordLocation as keyword, and Message as description.",
+      "preconditions": [
+        "A Spec with requirements.json that violates the JSON Schema (e.g., a requirement missing the required 'id' field)"
+      ],
+      "input": "spec.ValidateSchema() where requirements artifact fails schema validation",
+      "expected": "Returns ValidationResult{Valid: false, Errors: [{path: <InstanceLocation>, keyword: <KeywordLocation>, message: <human-readable>}]}",
+      "assertion_pseudocode": "spec = buildSchemaViolatingSpec(); result = spec.ValidateSchema(); assert result.Valid == false; assert len(result.Errors) > 0; err = result.Errors[0]; assert err.Path != \"\"; assert err.Message != \"\""
+    },
+    {
+      "id": "TS-01-12",
+      "requirement_id": "01-REQ-6.1",
+      "kind": "unit",
+      "description": "Spec.ValidateCrossFile on a spec with consistent cross-file references returns ValidationResult with Valid true.",
+      "preconditions": [
+        "A Spec loaded from testdata/valid_spec/ where all test entries reference existing requirement IDs and all IDs follow the expected format"
+      ],
+      "input": "spec.ValidateCrossFile() where all cross-file references are consistent",
+      "expected": "Returns ValidationResult{Valid: true} with no errors",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); result = spec.ValidateCrossFile(); assert result.Valid == true; assert len(result.Errors) == 0"
+    },
+    {
+      "id": "TS-01-13",
+      "requirement_id": "01-REQ-6.2",
+      "kind": "unit",
+      "description": "Spec.ValidateCrossFile records a dangling reference error when a test entry references a non-existent requirement ID.",
+      "preconditions": [
+        "A Spec where test_spec.json contains a test case with requirement_id 'XX-REQ-999' that does not exist in requirements.json"
+      ],
+      "input": "spec.ValidateCrossFile() where a test entry has a dangling requirement reference",
+      "expected": "Returns ValidationResult{Valid: false, Errors: [{category: 'integrity', check: 'dangling_reference', message: contains 'XX-REQ-999'}]}",
+      "assertion_pseudocode": "spec = buildSpecWithDanglingRef(\"XX-REQ-999\"); result = spec.ValidateCrossFile(); assert result.Valid == false; err = findError(result.Errors, check=\"dangling_reference\"); assert err != nil; assert err.Category == \"integrity\"; assert contains(err.Message, \"XX-REQ-999\")"
+    },
+    {
+      "id": "TS-01-14",
+      "requirement_id": "01-REQ-7.1",
+      "kind": "unit",
+      "description": "ValidateCrossSpec checks API symbol consistency, glossary conflicts, and contract mismatches across all provided specs using the dependency graph.",
+      "preconditions": [
+        "Two Spec values with compatible glossaries and no conflicting API symbols",
+        "A DependencyGraph with an edge from spec A to spec B"
+      ],
+      "input": "ValidateCrossSpec([specA, specB], graph) where specs are compatible",
+      "expected": "Returns ValidationResult{Valid: true} with no errors",
+      "assertion_pseudocode": "result = ValidateCrossSpec([specA, specB], graph); assert result.Valid == true; assert len(result.Errors) == 0"
+    },
+    {
+      "id": "TS-01-15",
+      "requirement_id": "01-REQ-8.1",
+      "kind": "unit",
+      "description": "Spec.ValidateStructured on a valid spec returns a map with 'valid' true, 'errors' as empty slice, and no 'warnings' key.",
+      "preconditions": [
+        "A Spec loaded from testdata/valid_spec/ that passes all validation checks with no warnings"
+      ],
+      "input": "spec.ValidateStructured() where spec is fully valid with no warnings",
+      "expected": "Returns map[string]any{\"valid\": true, \"errors\": []map[string]any{}}; the map does not contain a 'warnings' key",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); result = spec.ValidateStructured(); assert result[\"valid\"] == true; assert len(result[\"errors\"].([]map[string]any)) == 0; _, hasWarnings = result[\"warnings\"]; assert hasWarnings == false"
+    },
+    {
+      "id": "TS-01-16",
+      "requirement_id": "01-REQ-8.2",
+      "kind": "unit",
+      "description": "Spec.ValidateStructured on a spec with schema errors returns a map with 'valid' false and 'errors' entries containing 'category', 'message', and 'artifact' fields.",
+      "preconditions": [
+        "A Spec with a schema violation in requirements.json (e.g., missing required field)"
+      ],
+      "input": "spec.ValidateStructured() where spec has a schema error",
+      "expected": "Returns map with 'valid' false; 'errors' slice has at least one entry with 'category'=='schema', non-empty 'message', and non-empty 'artifact' string",
+      "assertion_pseudocode": "spec = buildSchemaViolatingSpec(); result = spec.ValidateStructured(); assert result[\"valid\"] == false; errors = result[\"errors\"].([]map[string]any); assert len(errors) > 0; e = errors[0]; assert e[\"category\"] == \"schema\"; assert e[\"message\"] != \"\"; assert e[\"artifact\"] != \"\""
+    },
+    {
+      "id": "TS-01-17",
+      "requirement_id": "01-REQ-8.3",
+      "kind": "unit",
+      "description": "Spec.ValidateStructured on a spec with integrity errors returns a map with 'valid' false and 'errors' entries containing 'category'=='integrity', 'message', and 'check' fields.",
+      "preconditions": [
+        "A Spec with a cross-file integrity violation (e.g., a dangling requirement reference in test_spec.json)"
+      ],
+      "input": "spec.ValidateStructured() where spec has an integrity error",
+      "expected": "Returns map with 'valid' false; 'errors' slice has at least one entry with 'category'=='integrity', non-empty 'message', and non-empty 'check' string",
+      "assertion_pseudocode": "spec = buildSpecWithDanglingRef(\"XX-REQ-999\"); result = spec.ValidateStructured(); assert result[\"valid\"] == false; errors = result[\"errors\"].([]map[string]any); e = findEntry(errors, \"category\", \"integrity\"); assert e != nil; assert e[\"check\"] != \"\"; assert e[\"message\"] != \"\""
+    },
+    {
+      "id": "TS-01-18",
+      "requirement_id": "01-REQ-8.4",
+      "kind": "unit",
+      "description": "Spec.ValidateStructured on a spec with warnings includes a 'warnings' key with entries containing 'category'=='warning', 'message', and 'entity_id' fields.",
+      "preconditions": [
+        "A Spec that passes validation but triggers at least one warning (e.g., a requirement with no test coverage)"
+      ],
+      "input": "spec.ValidateStructured() where spec has warnings but no errors",
+      "expected": "Returns map with 'valid' true; 'warnings' key is present and contains at least one entry with 'category'=='warning', non-empty 'message', and non-empty 'entity_id'",
+      "assertion_pseudocode": "spec = buildSpecWithWarnings(); result = spec.ValidateStructured(); assert result[\"valid\"] == true; warnings = result[\"warnings\"].([]map[string]any); assert len(warnings) > 0; w = warnings[0]; assert w[\"category\"] == \"warning\"; assert w[\"message\"] != \"\"; assert w[\"entity_id\"] != \"\""
+    },
+    {
+      "id": "TS-01-19",
+      "requirement_id": "01-REQ-9.1",
+      "kind": "integration",
+      "description": "Spec.Transition with a valid target state updates the spec status, persists to disk, and returns the updated Spec.",
+      "preconditions": [
+        "A Spec with Status 'draft' saved to a writable temporary directory tmpDir"
+      ],
+      "input": "spec.Transition(\"active\", tmpDir) where spec.Status == \"draft\"",
+      "expected": "Returns (*Spec, nil) where returned spec.Status == \"active\"; the prd.md in tmpDir reflects the new status",
+      "assertion_pseudocode": "spec = createDraftSpec(); updated, err = spec.Transition(\"active\", tmpDir); assert err == nil; assert updated != nil; assert updated.Status == \"active\"; savedSpec, _ = LoadSpec(tmpDir); assert savedSpec.Status == \"active\""
+    },
+    {
+      "id": "TS-01-20",
+      "requirement_id": "01-REQ-9.2",
+      "kind": "unit",
+      "description": "ValidTransition returns true for allowed transitions and false for disallowed ones with no side effects.",
+      "preconditions": [],
+      "input": "ValidTransition(\"draft\", \"active\"), ValidTransition(\"draft\", \"sealed\"), ValidTransition(\"sealed\", \"draft\")",
+      "expected": "ValidTransition(\"draft\", \"active\") returns true; ValidTransition(\"draft\", \"sealed\") returns false; ValidTransition(\"sealed\", \"draft\") returns false; no files are written, no state is mutated",
+      "assertion_pseudocode": "assert ValidTransition(\"draft\", \"active\") == true; assert ValidTransition(\"active\", \"sealed\") == true; assert ValidTransition(\"draft\", \"sealed\") == false; assert ValidTransition(\"sealed\", \"draft\") == false; assert ValidTransition(\"active\", \"superseded\") == true; assert ValidTransition(\"sealed\", \"superseded\") == true"
+    },
+    {
+      "id": "TS-01-21",
+      "requirement_id": "01-REQ-10.1",
+      "kind": "integration",
+      "description": "Spec.Supersede on a sealed spec transitions to superseded, prepends a deprecation banner to the PRD body, and persists to disk.",
+      "preconditions": [
+        "A Spec with Status 'sealed' saved to a writable temporary directory tmpDir"
+      ],
+      "input": "spec.Supersede(\"02\", tmpDir) where spec.Status == \"sealed\"",
+      "expected": "Returns (*Spec, nil) where returned spec.Status == \"superseded\" and spec.PRDBody starts with a deprecation banner referencing spec ID '02'; the prd.md in tmpDir reflects these changes",
+      "assertion_pseudocode": "spec = createSealedSpec(); updated, err = spec.Supersede(\"02\", tmpDir); assert err == nil; assert updated.Status == \"superseded\"; assert startsWith(updated.PRDBody, deprecationBannerContaining(\"02\")); savedSpec, _ = LoadSpec(tmpDir); assert savedSpec.Status == \"superseded\""
+    },
+    {
+      "id": "TS-01-22",
+      "requirement_id": "01-REQ-11.1",
+      "kind": "integration",
+      "description": "MoveToArchive transitions the spec to archived state and moves the spec directory to {root}/archive/.",
+      "preconditions": [
+        "A spec directory at tmpRoot/01_myspec/ containing valid spec artifacts",
+        "tmpRoot/archive/ does not exist yet"
+      ],
+      "input": "MoveToArchive(\"tmpRoot/01_myspec\", \"tmpRoot\")",
+      "expected": "Returns nil; the directory tmpRoot/archive/01_myspec/ exists with all original artifacts; tmpRoot/01_myspec/ no longer exists",
+      "assertion_pseudocode": "err = MoveToArchive(tmpRoot+\"/01_myspec\", tmpRoot); assert err == nil; assert dirExists(tmpRoot+\"/archive/01_myspec\"); assert !dirExists(tmpRoot+\"/01_myspec\")"
+    },
+    {
+      "id": "TS-01-23",
+      "requirement_id": "01-REQ-12.1",
+      "kind": "integration",
+      "description": "DiscoverSpecs scans a root directory for NN_snake_case subdirectories and returns SpecMeta entries with all fields populated.",
+      "preconditions": [
+        "A root directory containing subdirectories 01_first_spec/ and 02_second_spec/ each with valid prd.md files"
+      ],
+      "input": "DiscoverSpecs(\"testdata/workspace\")",
+      "expected": "Returns ([]SpecMeta, nil) with two entries; each entry has non-empty SpecID, SpecName, Status, and Dir fields matching the prd.md frontmatter",
+      "assertion_pseudocode": "metas, err = DiscoverSpecs(\"testdata/workspace\"); assert err == nil; assert len(metas) == 2; for each meta: assert meta.SpecID != \"\"; assert meta.SpecName != \"\"; assert meta.Status != \"\"; assert meta.Dir != \"\""
+    },
+    {
+      "id": "TS-01-24",
+      "requirement_id": "01-REQ-13.1",
+      "kind": "integration",
+      "description": "BuildDependencyGraph reads tasks.json for each spec, extracts cross-spec dependencies, and returns a DependencyGraph with Edges, Dependencies, Dependents, and TopologicalSort methods.",
+      "preconditions": [
+        "Two SpecMeta entries for specs '01' and '02' where tasks.json of spec '02' declares a dependency on spec '01'"
+      ],
+      "input": "BuildDependencyGraph([meta01, meta02], \"testdata/workspace\")",
+      "expected": "Returns (*DependencyGraph, nil); graph.Edges() returns at least one DependencyEdge with FromSpec='02' and ToSpec='01'; graph.Dependencies('02') returns the edge; graph.Dependents('01') returns the edge",
+      "assertion_pseudocode": "graph, err = BuildDependencyGraph([meta01, meta02], \"testdata/workspace\"); assert err == nil; assert graph != nil; edges = graph.Edges(); assert len(edges) >= 1; assert edges[0].FromSpec == \"02\"; assert edges[0].ToSpec == \"01\""
+    },
+    {
+      "id": "TS-01-25",
+      "requirement_id": "01-REQ-13.2",
+      "kind": "unit",
+      "description": "DependencyGraph.TopologicalSort on an acyclic graph returns spec IDs in topological order where each spec appears before its dependents.",
+      "preconditions": [
+        "A DependencyGraph with edges: 02->01 (02 depends on 01) and 03->02 (03 depends on 02)"
+      ],
+      "input": "graph.TopologicalSort() on an acyclic graph with edges 02->01 and 03->02",
+      "expected": "Returns ([\"01\", \"02\", \"03\"], nil); '01' appears before '02', '02' appears before '03'",
+      "assertion_pseudocode": "order, err = graph.TopologicalSort(); assert err == nil; assert indexOf(order, \"01\") < indexOf(order, \"02\"); assert indexOf(order, \"02\") < indexOf(order, \"03\")"
+    },
+    {
+      "id": "TS-01-26",
+      "requirement_id": "01-REQ-13.3",
+      "kind": "unit",
+      "description": "DependencyGraph.TopologicalSort on a graph with a cycle returns nil and an error identifying the cycle.",
+      "preconditions": [
+        "A DependencyGraph with a cycle: spec '01' depends on '02', spec '02' depends on '01'"
+      ],
+      "input": "graph.TopologicalSort() on a cyclic graph",
+      "expected": "Returns (nil, error) where error message identifies the specs involved in the cycle (e.g., contains '01' and '02')",
+      "assertion_pseudocode": "order, err = graph.TopologicalSort(); assert order == nil; assert err != nil; assert contains(err.Error(), \"01\") || contains(err.Error(), \"02\")"
+    },
+    {
+      "id": "TS-01-27",
+      "requirement_id": "01-REQ-14.1",
+      "kind": "unit",
+      "description": "IsSpecDirName returns true for strings matching the NN_snake_case pattern.",
+      "preconditions": [],
+      "input": "IsSpecDirName(\"01_my_spec\"), IsSpecDirName(\"99_another_spec\")",
+      "expected": "Both return true",
+      "assertion_pseudocode": "assert IsSpecDirName(\"01_my_spec\") == true; assert IsSpecDirName(\"99_another_spec\") == true; assert IsSpecDirName(\"10_foo_bar_baz\") == true"
+    },
+    {
+      "id": "TS-01-28",
+      "requirement_id": "01-REQ-14.2",
+      "kind": "unit",
+      "description": "IsSpecDirName returns false for strings that do not match the NN_snake_case pattern.",
+      "preconditions": [],
+      "input": "IsSpecDirName(\"my_spec\"), IsSpecDirName(\"01-my-spec\"), IsSpecDirName(\"1_spec\")",
+      "expected": "All return false",
+      "assertion_pseudocode": "assert IsSpecDirName(\"my_spec\") == false; assert IsSpecDirName(\"01-my-spec\") == false; assert IsSpecDirName(\"1_spec\") == false; assert IsSpecDirName(\"abc_spec\") == false"
+    },
+    {
+      "id": "TS-01-29",
+      "requirement_id": "01-REQ-14.3",
+      "kind": "unit",
+      "description": "ParseSpecDirName returns the numeric prefix and snake_case name as separate values for a valid NN_snake_case directory name.",
+      "preconditions": [],
+      "input": "ParseSpecDirName(\"01_my_spec\")",
+      "expected": "Returns (\"01\", \"my_spec\", nil)",
+      "assertion_pseudocode": "num, name, err = ParseSpecDirName(\"01_my_spec\"); assert err == nil; assert num == \"01\"; assert name == \"my_spec\""
+    },
+    {
+      "id": "TS-01-30",
+      "requirement_id": "01-REQ-15.1",
+      "kind": "integration",
+      "description": "LoadSpecLandscape with includeArchive true scans all spec directories including archive and excludes the currentSpecID entry.",
+      "preconditions": [
+        "A root directory with subdirectories 01_spec_a/, 02_spec_b/, and archive/03_spec_c/ each with valid prd.md files"
+      ],
+      "input": "LoadSpecLandscape(\"testdata/workspace\", true, \"01\")",
+      "expected": "Returns ([]SpecMeta, nil) with entries for spec '02' and spec '03' (from archive); spec '01' (currentSpecID) is excluded",
+      "assertion_pseudocode": "metas, err = LoadSpecLandscape(\"testdata/workspace\", true, \"01\"); assert err == nil; ids = map(metas, m => m.SpecID); assert \"01\" not in ids; assert \"02\" in ids; assert \"03\" in ids"
+    },
+    {
+      "id": "TS-01-31",
+      "requirement_id": "01-REQ-15.2",
+      "kind": "integration",
+      "description": "LoadSpecLandscape with includeArchive false returns only non-archived spec directories.",
+      "preconditions": [
+        "A root directory with subdirectories 01_spec_a/ (draft), 02_spec_b/ (active), and archive/03_spec_c/ (archived)"
+      ],
+      "input": "LoadSpecLandscape(\"testdata/workspace\", false, \"\")",
+      "expected": "Returns ([]SpecMeta, nil) with entries for spec '01' and '02' only; spec '03' from archive/ is excluded",
+      "assertion_pseudocode": "metas, err = LoadSpecLandscape(\"testdata/workspace\", false, \"\"); assert err == nil; ids = map(metas, m => m.SpecID); assert \"03\" not in ids; assert \"01\" in ids; assert \"02\" in ids"
+    },
+    {
+      "id": "TS-01-32",
+      "requirement_id": "01-REQ-16.1",
+      "kind": "unit",
+      "description": "Tasks.TransitionSubtask with a valid transition updates the subtask state and returns the updated Tasks.",
+      "preconditions": [
+        "A Tasks struct containing a subtask with ID 'subtask-1' in 'pending' state"
+      ],
+      "input": "tasks.TransitionSubtask(\"subtask-1\", \"queued\")",
+      "expected": "Returns (*Tasks, nil); the returned Tasks has subtask 'subtask-1' in 'queued' state; original Tasks is unchanged (value semantics)",
+      "assertion_pseudocode": "updated, err = tasks.TransitionSubtask(\"subtask-1\", \"queued\"); assert err == nil; assert updated != nil; assert getSubtask(updated, \"subtask-1\").State == \"queued\"; assert getSubtask(tasks, \"subtask-1\").State == \"pending\""
+    },
+    {
+      "id": "TS-01-33",
+      "requirement_id": "01-REQ-17.1",
+      "kind": "unit",
+      "description": "Tasks.CompleteSubtaskStates sets every subtask in specified groups to 'done' bypassing the state machine.",
+      "preconditions": [
+        "A Tasks struct with group ID 1 containing three subtasks in 'pending', 'queued', and 'in_progress' states"
+      ],
+      "input": "tasks.CompleteSubtaskStates([1])",
+      "expected": "Returns (*Tasks, nil); all subtasks in group 1 have state 'done' regardless of their prior state",
+      "assertion_pseudocode": "updated, err = tasks.CompleteSubtaskStates([1]); assert err == nil; assert updated != nil; for each subtask in getGroup(updated, 1): assert subtask.State == \"done\""
+    },
+    {
+      "id": "TS-01-34",
+      "requirement_id": "01-REQ-17.2",
+      "kind": "unit",
+      "description": "Tasks.ResetSubtaskStates sets every subtask in specified groups to 'pending' bypassing the state machine.",
+      "preconditions": [
+        "A Tasks struct with group ID 2 containing three subtasks in 'done', 'in_progress', and 'queued' states"
+      ],
+      "input": "tasks.ResetSubtaskStates([2])",
+      "expected": "Returns (*Tasks, nil); all subtasks in group 2 have state 'pending' regardless of their prior state",
+      "assertion_pseudocode": "updated, err = tasks.ResetSubtaskStates([2]); assert err == nil; assert updated != nil; for each subtask in getGroup(updated, 2): assert subtask.State == \"pending\""
+    },
+    {
+      "id": "TS-01-35",
+      "requirement_id": "01-REQ-18.1",
+      "kind": "unit",
+      "description": "Spec.RenderCombined renders all artifacts as a single concatenated Markdown document.",
+      "preconditions": [
+        "A Spec loaded from testdata/valid_spec/ with all artifacts including architecture.md"
+      ],
+      "input": "spec.RenderCombined()",
+      "expected": "Returns a non-empty string containing Markdown sections for PRD body, requirements, test spec, tasks, and architecture",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); result = spec.RenderCombined(); assert result != \"\"; assert contains(result, \"## \"); assert contains(result, spec.PRDBody[:50])"
+    },
+    {
+      "id": "TS-01-36",
+      "requirement_id": "01-REQ-18.2",
+      "kind": "unit",
+      "description": "Spec.RenderIndividual renders each artifact separately and returns a map keyed by artifact name.",
+      "preconditions": [
+        "A Spec loaded from testdata/valid_spec/ with all artifacts including architecture.md"
+      ],
+      "input": "spec.RenderIndividual()",
+      "expected": "Returns map[string]string with keys 'prd', 'requirements', 'test_spec', 'tasks', 'architecture'; each value is a non-empty Markdown string",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); result = spec.RenderIndividual(); assert result[\"prd\"] != \"\"; assert result[\"requirements\"] != \"\"; assert result[\"test_spec\"] != \"\"; assert result[\"tasks\"] != \"\"; assert result[\"architecture\"] != \"\""
+    },
+    {
+      "id": "TS-01-37",
+      "requirement_id": "01-REQ-19.1",
+      "kind": "unit",
+      "description": "Spec.RenderIndividualScoped renders only referenced requirements and test entries, renders target group with full detail, and other groups as one-line summaries.",
+      "preconditions": [
+        "A Spec with two task groups; group 1 has subtasks with requirement_refs=['01-REQ-1'] and test_spec_refs=['TS-01-1']; group 2 has subtasks with different refs"
+      ],
+      "input": "spec.RenderIndividualScoped(1)",
+      "expected": "Returns map[string]string; requirements entry contains '01-REQ-1' but not requirements only in group 2's refs; test_spec entry contains 'TS-01-1'; tasks entry shows group 1 with full subtask detail and group 2 as a one-line summary",
+      "assertion_pseudocode": "result = spec.RenderIndividualScoped(1); assert contains(result[\"requirements\"], \"01-REQ-1\"); assert contains(result[\"test_spec\"], \"TS-01-1\"); assert contains(result[\"tasks\"], fullDetailForGroup1); assert contains(result[\"tasks\"], oneLineSummaryForGroup2)"
+    },
+    {
+      "id": "TS-01-38",
+      "requirement_id": "01-REQ-19.2",
+      "kind": "unit",
+      "description": "Spec.RenderIndividualScoped falls back to full unscoped rendering when the target group has no refs.",
+      "preconditions": [
+        "A Spec with a task group ID 3 that has subtasks with empty requirement_refs and test_spec_refs"
+      ],
+      "input": "spec.RenderIndividualScoped(3) where group 3 has no refs",
+      "expected": "Returns map[string]string equivalent to spec.RenderIndividual() — all requirements and test entries are included",
+      "assertion_pseudocode": "scoped = spec.RenderIndividualScoped(3); full = spec.RenderIndividual(); assert scoped[\"requirements\"] == full[\"requirements\"]; assert scoped[\"test_spec\"] == full[\"test_spec\"]"
+    },
+    {
+      "id": "TS-01-39",
+      "requirement_id": "01-REQ-19.3",
+      "kind": "unit",
+      "description": "Spec.RenderIndividualScoped includes a Spec Overview listing all requirement IDs and titles even when requirements are scoped.",
+      "preconditions": [
+        "A Spec with requirements 01-REQ-1 and 01-REQ-2; group 1 only references 01-REQ-1"
+      ],
+      "input": "spec.RenderIndividualScoped(1) where only 01-REQ-1 is in scope",
+      "expected": "Returns map[string]string where requirements entry contains a 'Spec Overview' section listing both '01-REQ-1' and '01-REQ-2'",
+      "assertion_pseudocode": "result = spec.RenderIndividualScoped(1); reqSection = result[\"requirements\"]; assert contains(reqSection, \"Spec Overview\"); assert contains(reqSection, \"01-REQ-1\"); assert contains(reqSection, \"01-REQ-2\")"
+    },
+    {
+      "id": "TS-01-40",
+      "requirement_id": "01-REQ-20.1",
+      "kind": "unit",
+      "description": "Each EARS criterion builder returns a Criterion struct with ears_pattern set and all provided arguments mapped to correct fields.",
+      "preconditions": [],
+      "input": "EventDrivenCriterion(\"01-REQ-1.1\", \"user submits form\", \"AuthService\", \"validates credentials\")",
+      "expected": "Returns Criterion{ID: '01-REQ-1.1', EARSPattern: 'event_driven', Trigger: 'user submits form', System: 'AuthService', Action: 'validates credentials'}",
+      "assertion_pseudocode": "c = EventDrivenCriterion(\"01-REQ-1.1\", \"user submits form\", \"AuthService\", \"validates credentials\"); assert c.ID == \"01-REQ-1.1\"; assert c.EARSPattern == \"event_driven\"; assert c.Trigger == \"user submits form\"; assert c.System == \"AuthService\"; assert c.Action == \"validates credentials\""
+    },
+    {
+      "id": "TS-01-41",
+      "requirement_id": "01-REQ-20.2",
+      "kind": "unit",
+      "description": "EARS criterion builders set only the fields relevant to each pattern, leaving irrelevant fields at zero values.",
+      "preconditions": [],
+      "input": "UnwantedCriterion(\"id\", \"disk full\", \"StorageService\", \"returns error\") and OptionalCriterion(\"id\", \"dark mode\", \"UIService\", \"renders dark theme\")",
+      "expected": "UnwantedCriterion result has ErrorCondition set and Trigger/State/Feature as zero values; OptionalCriterion result has Feature set and Trigger/State/ErrorCondition as zero values",
+      "assertion_pseudocode": "u = UnwantedCriterion(\"id\", \"disk full\", \"StorageService\", \"returns error\"); assert u.ErrorCondition == \"disk full\"; assert u.Trigger == \"\"; assert u.State == \"\"; assert u.Feature == \"\"; o = OptionalCriterion(\"id\", \"dark mode\", \"UIService\", \"renders dark theme\"); assert o.Feature == \"dark mode\"; assert o.Trigger == \"\"; assert o.ErrorCondition == \"\""
+    },
+    {
+      "id": "TS-01-42",
+      "requirement_id": "01-REQ-21.1",
+      "kind": "unit",
+      "description": "NewBootstrapSpec returns a BootstrapSpec with specID and specName set and all artifact fields empty.",
+      "preconditions": [],
+      "input": "NewBootstrapSpec(\"01\", \"my_spec\")",
+      "expected": "Returns *BootstrapSpec with SpecID='01', SpecName='my_spec', and all artifact fields (Requirements, TestSpec, Tasks, PRD) as nil or zero values",
+      "assertion_pseudocode": "bs = NewBootstrapSpec(\"01\", \"my_spec\"); assert bs != nil; assert bs.SpecID == \"01\"; assert bs.SpecName == \"my_spec\"; assert bs.Requirements == nil; assert bs.TestSpec == nil; assert bs.Tasks == nil"
+    },
+    {
+      "id": "TS-01-43",
+      "requirement_id": "01-REQ-21.2",
+      "kind": "unit",
+      "description": "BootstrapSpec.Finalize with all required artifacts set assembles a Spec, runs full validation, and returns (*Spec, nil).",
+      "preconditions": [
+        "A BootstrapSpec with all required artifacts (Requirements, TestSpec, Tasks, PRD) set to valid values"
+      ],
+      "input": "bs.Finalize() where all required artifacts are set and valid",
+      "expected": "Returns (*Spec, nil) where the nil indicates an empty/nil error slice; the returned Spec has all artifacts populated",
+      "assertion_pseudocode": "bs = NewBootstrapSpec(\"01\", \"my_spec\"); setAllArtifacts(bs); spec, errs = bs.Finalize(); assert errs == nil; assert spec != nil; assert spec.Requirements != nil"
+    },
+    {
+      "id": "TS-01-44",
+      "requirement_id": "01-REQ-21.3",
+      "kind": "unit",
+      "description": "BootstrapSpec.Finalize with missing required artifacts returns (nil, []ValidationError) with bootstrap rule entries for each missing artifact.",
+      "preconditions": [
+        "A BootstrapSpec with Requirements and TestSpec set but Tasks and PRD not set"
+      ],
+      "input": "bs.Finalize() where Tasks and PRD artifacts are missing",
+      "expected": "Returns (nil, []ValidationError) where each ValidationError has Rule=='bootstrap' and Message=='Missing artifact: tasks' or 'Missing artifact: prd'",
+      "assertion_pseudocode": "bs = NewBootstrapSpec(\"01\", \"my_spec\"); bs.Requirements = validReq; bs.TestSpec = validTS; spec, errs = bs.Finalize(); assert spec == nil; assert len(errs) >= 2; for each e in errs where e.Rule == \"bootstrap\": assert startsWith(e.Message, \"Missing artifact:\")"
+    },
+    {
+      "id": "TS-01-45",
+      "requirement_id": "01-REQ-21.4",
+      "kind": "unit",
+      "description": "BootstrapSpec.Finalize with all artifacts present but validation failures returns (nil, []ValidationError) describing the failures.",
+      "preconditions": [
+        "A BootstrapSpec with all required artifacts set but requirements.json has a schema violation"
+      ],
+      "input": "bs.Finalize() where all artifacts are present but validation fails",
+      "expected": "Returns (nil, []ValidationError) with at least one ValidationError describing the schema or cross-file failure; Rule is not 'bootstrap'",
+      "assertion_pseudocode": "bs = NewBootstrapSpec(\"01\", \"my_spec\"); setAllArtifactsWithSchemaViolation(bs); spec, errs = bs.Finalize(); assert spec == nil; assert len(errs) > 0; assert errs[0].Rule != \"bootstrap\""
+    },
+    {
+      "id": "TS-01-46",
+      "requirement_id": "01-REQ-22.1",
+      "kind": "unit",
+      "description": "Schemas returns a non-nil map of schema file names to their raw bytes as embedded via //go:embed.",
+      "preconditions": [
+        "Schema files are embedded in the binary from the schemas/ directory at compile time"
+      ],
+      "input": "Schemas()",
+      "expected": "Returns map[string][]byte with at least one entry; each key is a schema filename (e.g., 'requirements.schema.json'); each value is non-empty []byte",
+      "assertion_pseudocode": "schemas = Schemas(); assert schemas != nil; assert len(schemas) > 0; for each key, val in schemas: assert key != \"\"; assert len(val) > 0"
+    },
+    {
+      "id": "TS-01-47",
+      "requirement_id": "01-REQ-23.1",
+      "kind": "unit",
+      "description": "ComputeIntentHash extracts the ## Intent section, computes its SHA-256 hash, and returns the hex-encoded hash string.",
+      "preconditions": [],
+      "input": "ComputeIntentHash(\"# Title\\n\\n## Intent\\n\\nThis is the intent.\\n\\n## Goals\\n\\nSome goals.\")",
+      "expected": "Returns (string, nil) where the string is a 64-character lowercase hex SHA-256 hash of the normalized Intent section text",
+      "assertion_pseudocode": "hash, err = ComputeIntentHash(prdBody); assert err == nil; assert len(hash) == 64; assert isHexString(hash); hash2, _ = ComputeIntentHash(prdBody); assert hash == hash2"
+    },
+    {
+      "id": "TS-01-48",
+      "requirement_id": "01-REQ-24.1",
+      "kind": "unit",
+      "description": "TestSpec.ComputeCoverage scans test entries against requirement IDs, property IDs, and path IDs and returns a coverage report.",
+      "preconditions": [
+        "A Requirements struct with requirements ['01-REQ-1', '01-REQ-2'], properties ['01-PROP-1'], and paths ['01-PATH-1']",
+        "A TestSpec with test entries covering '01-REQ-1' and '01-PROP-1' but not '01-REQ-2' or '01-PATH-1'"
+      ],
+      "input": "ts.ComputeCoverage(req)",
+      "expected": "Returns a coverage report where '01-REQ-1' and '01-PROP-1' are in the covered list; '01-REQ-2' and '01-PATH-1' are in the uncovered list",
+      "assertion_pseudocode": "report = ts.ComputeCoverage(req); assert \"01-REQ-1\" in report.Covered; assert \"01-PROP-1\" in report.Covered; assert \"01-REQ-2\" in report.Uncovered; assert \"01-PATH-1\" in report.Uncovered"
+    },
+    {
+      "id": "TS-01-49",
+      "requirement_id": "01-REQ-25.1",
+      "kind": "unit",
+      "description": "CreateSpec returns a Spec with status 'draft', all sub-artifacts initialized, and specID and specName set from arguments.",
+      "preconditions": [],
+      "input": "CreateSpec(\"01\", \"my_spec\")",
+      "expected": "Returns *Spec with Status=='draft', SpecID=='01', SpecName=='my_spec', and all artifact fields initialized to non-nil zero/empty values",
+      "assertion_pseudocode": "spec = CreateSpec(\"01\", \"my_spec\"); assert spec != nil; assert spec.Status == \"draft\"; assert spec.SpecID == \"01\"; assert spec.SpecName == \"my_spec\"; assert spec.Requirements != nil; assert spec.TestSpec != nil; assert spec.Tasks != nil"
+    },
+    {
+      "id": "TS-01-50",
+      "requirement_id": "01-REQ-26.1",
+      "kind": "unit",
+      "description": "All afspec error types implement the error interface and wrap SpecError such that errors.As(err, &SpecError{}) returns true.",
+      "preconditions": [
+        "A LoadError, SaveError, LifecycleError, IntentError, and BootstrapError each constructed with a wrapped SpecError"
+      ],
+      "input": "errors.As(loadErr, &SpecError{}), errors.As(saveErr, &SpecError{}), errors.As(lifecycleErr, &SpecError{}), errors.As(intentErr, &SpecError{}), errors.As(bootstrapErr, &SpecError{})",
+      "expected": "All five calls return true",
+      "assertion_pseudocode": "assert errors.As(loadErr, &SpecError{}) == true; assert errors.As(saveErr, &SpecError{}) == true; assert errors.As(lifecycleErr, &SpecError{}) == true; assert errors.As(intentErr, &SpecError{}) == true; assert errors.As(bootstrapErr, &SpecError{}) == true"
+    },
+    {
+      "id": "TS-01-51",
+      "requirement_id": "01-REQ-26.2",
+      "kind": "unit",
+      "description": "errors.As traverses from specific to base type: errors.As(loadErr, &LoadError{}) and errors.As(loadErr, &SpecError{}) both return true for the same error.",
+      "preconditions": [
+        "A LoadError value returned by LoadSpec when a required file is missing"
+      ],
+      "input": "errors.As(loadErr, &LoadError{}) and errors.As(loadErr, &SpecError{}) on the same error value",
+      "expected": "Both return true",
+      "assertion_pseudocode": "_, loadErr = LoadSpec(\"/nonexistent/dir\"); assert errors.As(loadErr, &LoadError{}) == true; assert errors.As(loadErr, &SpecError{}) == true"
+    },
+    {
+      "id": "TS-01-52",
+      "requirement_id": "01-REQ-27.1",
+      "kind": "integration",
+      "description": "LoadSpec followed by spec.Save produces byte-for-byte identical JSON output to the Python library golden fixtures for all artifact types.",
+      "preconditions": [
+        "Golden fixture files in testdata/ produced by the Python afspec library",
+        "A writable temporary directory tmpDir"
+      ],
+      "input": "LoadSpec(\"testdata/valid_spec\") then spec.Save(tmpDir)",
+      "expected": "For each artifact file, cmp.Diff(goldenContent, savedContent) returns empty string",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); spec.Save(tmpDir); for each artifact in [\"requirements.json\", \"test_spec.json\", \"tasks.json\", \"prd.md\"]: diff = cmp.Diff(readFile(\"testdata/valid_spec/\"+artifact), readFile(tmpDir+\"/\"+artifact)); assert diff == \"\""
+    },
+    {
+      "id": "TS-01-53",
+      "requirement_id": "01-REQ-27.2",
+      "kind": "integration",
+      "description": "Spec.Save produces byte-for-byte identical PRD frontmatter output using the hand-written renderer with fixed field order, not yaml.Marshal.",
+      "preconditions": [
+        "A golden prd.md fixture produced by the Python afspec library in testdata/valid_spec/",
+        "A writable temporary directory tmpDir"
+      ],
+      "input": "spec.Save(tmpDir) where spec was loaded from testdata/valid_spec/",
+      "expected": "The prd.md in tmpDir is byte-for-byte identical to testdata/valid_spec/prd.md including frontmatter field order and value formatting",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/valid_spec\"); spec.Save(tmpDir); diff = cmp.Diff(readFile(\"testdata/valid_spec/prd.md\"), readFile(tmpDir+\"/prd.md\")); assert diff == \"\""
+    },
+    {
+      "id": "TS-01-54",
+      "requirement_id": "01-REQ-28.1",
+      "kind": "unit",
+      "description": "Mutation methods on Spec return new Spec copies rather than modifying the receiver in place.",
+      "preconditions": [
+        "A Spec with Status 'draft' saved to a writable temporary directory"
+      ],
+      "input": "spec.Transition(\"active\", tmpDir) called on a draft Spec",
+      "expected": "The original spec variable still has Status=='draft'; the returned *Spec has Status=='active'",
+      "assertion_pseudocode": "original = createDraftSpec(); updated, _ = original.Transition(\"active\", tmpDir); assert original.Status == \"draft\"; assert updated.Status == \"active\""
+    },
+    {
+      "id": "TS-01-55",
+      "requirement_id": "01-REQ-28.2",
+      "kind": "unit",
+      "description": "The afspec library provides no goroutine-safety guarantees and documents this in package-level godoc.",
+      "preconditions": [
+        "The afspec package source code is available"
+      ],
+      "input": "Inspect the package-level doc comment in the afspec package",
+      "expected": "The package godoc contains a statement about lack of goroutine-safety and the requirement for external synchronization",
+      "assertion_pseudocode": "pkgDoc = getPackageDoc(\"github.com/agent-fox-dev/spec-format\"); assert contains(pkgDoc, \"goroutine\") || contains(pkgDoc, \"concurrent\") || contains(pkgDoc, \"synchronize\")"
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-01-P1",
+      "property_id": "01-PROP-1",
+      "validates": [
+        "01-REQ-1.1",
+        "01-REQ-2.1",
+        "01-REQ-27.1"
+      ],
+      "description": "For any valid spec fixture in testdata/, LoadSpec followed by spec.Save produces byte-for-byte identical files to the originals.",
+      "for_any_strategy": "Enumerate all spec fixture directories under testdata/ (static set of golden fixtures extracted from the Python test suite); for each fixture directory, run the load-save round-trip",
+      "invariant_check": "for each fixture dir in testdata/: spec, err = LoadSpec(dir); assert err == nil; spec.Save(tmpDir); for each artifact file: diff = cmp.Diff(readFile(dir+\"/\"+file), readFile(tmpDir+\"/\"+file)); assert diff == \"\" (empty diff means byte-for-byte identical)"
+    },
+    {
+      "id": "TS-01-P2",
+      "property_id": "01-PROP-2",
+      "validates": [
+        "01-REQ-3.1",
+        "01-REQ-3.2"
+      ],
+      "description": "MarshalJSON is deterministic: calling it twice on the same value returns identical byte slices.",
+      "for_any_strategy": "For each artifact type (Requirements, TestSpec, Tasks), load 5 distinct fixtures from testdata/ and call MarshalJSON twice on each loaded value",
+      "invariant_check": "for each artifact value v: data1, err1 = MarshalJSON(v); data2, err2 = MarshalJSON(v); assert err1 == nil; assert err2 == nil; assert bytes.Equal(data1, data2)"
+    },
+    {
+      "id": "TS-01-P3",
+      "property_id": "01-PROP-3",
+      "validates": [
+        "01-REQ-9.1",
+        "01-REQ-9.2",
+        "01-REQ-9.E1"
+      ],
+      "description": "ValidTransition is consistent with Transition: if ValidTransition returns false then Transition returns LifecycleError; if true then Transition succeeds (assuming no I/O errors).",
+      "for_any_strategy": "Enumerate all pairs of (current, target) states from the set {draft, active, sealed, superseded, archived} x {draft, active, sealed, superseded, archived} — 25 pairs total",
+      "invariant_check": "for each (current, target) pair: allowed = ValidTransition(current, target); spec = createSpecWithStatus(current); _, err = spec.Transition(target, tmpDir); if allowed: assert err == nil || errors.As(err, &SaveError{}) // only I/O errors allowed; if !allowed: assert errors.As(err, &LifecycleError{})"
+    },
+    {
+      "id": "TS-01-P4",
+      "property_id": "01-PROP-4",
+      "validates": [
+        "01-REQ-4.1",
+        "01-REQ-4.2"
+      ],
+      "description": "ValidationResult.Valid is true if and only if ValidationResult.Errors is empty for any Spec value.",
+      "for_any_strategy": "Load all fixtures from testdata/ (both valid and intentionally invalid fixtures); also generate 10 programmatically constructed Spec values with varying validity",
+      "invariant_check": "for each spec: result = spec.Validate(); if result.Valid: assert len(result.Errors) == 0; if !result.Valid: assert len(result.Errors) > 0; assert result.Valid == (len(result.Errors) == 0)"
+    },
+    {
+      "id": "TS-01-P5",
+      "property_id": "01-PROP-5",
+      "validates": [
+        "01-REQ-16.1",
+        "01-REQ-16.E1"
+      ],
+      "description": "TransitionSubtask only allows defined transitions: any transition not in the allowed table returns LifecycleError and leaves subtask state unchanged.",
+      "for_any_strategy": "Enumerate all pairs of (fromState, toState) from the subtask state set {pending, queued, in_progress, done, pending_reevaluation, dropped} x same set — 36 pairs; classify each as allowed or disallowed per the transition table",
+      "invariant_check": "for each (fromState, toState) pair: tasks = buildTasksWithSubtask(\"s1\", fromState); updated, err = tasks.TransitionSubtask(\"s1\", toState); if isAllowed(fromState, toState): assert err == nil; assert getSubtask(updated, \"s1\").State == toState; else: assert errors.As(err, &LifecycleError{}); assert getSubtask(tasks, \"s1\").State == fromState"
+    },
+    {
+      "id": "TS-01-P6",
+      "property_id": "01-PROP-6",
+      "validates": [
+        "01-REQ-21.2",
+        "01-REQ-21.3",
+        "01-REQ-21.4"
+      ],
+      "description": "BootstrapSpec.Finalize returns nil Spec on any error and non-nil Spec only on success.",
+      "for_any_strategy": "Generate 20 BootstrapSpec instances with varying combinations of set/missing artifacts (all 16 combinations of 4 required artifacts present/absent, plus 4 cases with all artifacts present but varying validity)",
+      "invariant_check": "for each bs: spec, errs = bs.Finalize(); if errs != nil && len(errs) > 0: assert spec == nil; if errs == nil || len(errs) == 0: assert spec != nil"
+    },
+    {
+      "id": "TS-01-P7",
+      "property_id": "01-PROP-7",
+      "validates": [
+        "01-REQ-26.1",
+        "01-REQ-26.2"
+      ],
+      "description": "errors.As(err, &SpecError{}) returns true for every non-nil error returned by any afspec function or method.",
+      "for_any_strategy": "Collect errors from: LoadSpec with missing dir, LoadSpec with malformed JSON, LoadSpec with malformed YAML, spec.Save on sealed spec, spec.Save with unwritable dir, spec.Transition with invalid state, tasks.TransitionSubtask with invalid transition, tasks.TransitionSubtask with missing ID, ComputeIntentHash with empty body, bs.Finalize with missing artifacts — at least 10 distinct error instances",
+      "invariant_check": "for each err in collectedErrors: assert err != nil; assert errors.As(err, &SpecError{}) == true"
+    },
+    {
+      "id": "TS-01-P8",
+      "property_id": "01-PROP-8",
+      "validates": [
+        "01-REQ-13.2"
+      ],
+      "description": "TopologicalSort order is consistent with dependency edges: for every edge (FromSpec, ToSpec), ToSpec appears before FromSpec in the sorted order.",
+      "for_any_strategy": "Generate 10 random acyclic dependency graphs with 2-10 nodes and 1-15 edges using a DAG generation algorithm (add edges only from higher-indexed to lower-indexed nodes to guarantee acyclicity)",
+      "invariant_check": "for each acyclic graph: order, err = graph.TopologicalSort(); assert err == nil; assert len(order) == numNodes; for each edge (from, to) in graph.Edges(): assert indexOf(order, to) < indexOf(order, from); assert terminatesWithinNIterations(TopologicalSort, maxIterations=numNodes+1)"
+    },
+    {
+      "id": "TS-01-P9",
+      "property_id": "01-PROP-9",
+      "validates": [
+        "01-REQ-2.2"
+      ],
+      "description": "Sealed specs cannot be saved: spec.Save on any sealed Spec always returns a LifecycleError and writes no files.",
+      "for_any_strategy": "Load all fixtures from testdata/ and set each to sealed status; also generate 5 programmatically constructed sealed Spec values",
+      "invariant_check": "for each sealed spec: filesBefore = listFiles(tmpDir); err = spec.Save(tmpDir); assert errors.As(err, &LifecycleError{}); filesAfter = listFiles(tmpDir); assert filesBefore == filesAfter // no files written"
+    },
+    {
+      "id": "TS-01-P10",
+      "property_id": "01-PROP-10",
+      "validates": [
+        "01-REQ-3.1"
+      ],
+      "description": "MarshalJSON always produces alphabetically sorted map keys regardless of insertion order.",
+      "for_any_strategy": "Generate 20 Requirements structs with glossary maps containing 1-20 keys inserted in random order (use Go's map iteration randomness to vary insertion order); also test with TestSpec structs containing coverage maps",
+      "invariant_check": "for each struct with map fields: data, err = MarshalJSON(v); assert err == nil; parsed = jsonParse(data); for each map field in parsed: keys = getKeys(mapField); assert keys == sort(keys) // keys are in alphabetical order"
+    }
+  ],
+  "edge_case_tests": [
+    {
+      "id": "TS-01-E1",
+      "requirement_id": "01-REQ-1.E1",
+      "kind": "unit",
+      "description": "LoadSpec returns a LoadError identifying the missing file when a required artifact is absent from the directory.",
+      "preconditions": [
+        "A directory at testdata/missing_req/ containing prd.md, test_spec.json, and tasks.json but NO requirements.json"
+      ],
+      "input": "LoadSpec(\"testdata/missing_req\")",
+      "expected": "Returns (nil, LoadError) where errors.As(err, &LoadError{}) is true, errors.As(err, &SpecError{}) is true, and err.Error() contains 'requirements.json'",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/missing_req\"); assert spec == nil; assert err != nil; assert errors.As(err, &LoadError{}); assert errors.As(err, &SpecError{}); assert contains(err.Error(), \"requirements.json\")"
+    },
+    {
+      "id": "TS-01-E2",
+      "requirement_id": "01-REQ-1.E2",
+      "kind": "unit",
+      "description": "LoadSpec returns a LoadError wrapping the parse error when a JSON artifact contains malformed JSON.",
+      "preconditions": [
+        "A directory at testdata/malformed_json/ containing prd.md, tasks.json, test_spec.json, and a requirements.json with invalid JSON content (e.g., '{broken json')"
+      ],
+      "input": "LoadSpec(\"testdata/malformed_json\")",
+      "expected": "Returns (nil, LoadError) where errors.As(err, &LoadError{}) is true and err.Error() contains information about the JSON parse failure",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/malformed_json\"); assert spec == nil; assert err != nil; assert errors.As(err, &LoadError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E3",
+      "requirement_id": "01-REQ-1.E3",
+      "kind": "unit",
+      "description": "LoadSpec returns a LoadError wrapping the yaml.Unmarshal error with line/column info when prd.md has malformed YAML frontmatter.",
+      "preconditions": [
+        "A directory at testdata/malformed_yaml/ containing a prd.md with invalid YAML frontmatter (e.g., 'spec_id: [unclosed bracket')"
+      ],
+      "input": "LoadSpec(\"testdata/malformed_yaml\")",
+      "expected": "Returns (nil, LoadError) where errors.As(err, &LoadError{}) is true and err.Error() contains line/column information from yaml.Unmarshal",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/malformed_yaml\"); assert spec == nil; assert err != nil; assert errors.As(err, &LoadError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E4",
+      "requirement_id": "01-REQ-1.E4",
+      "kind": "unit",
+      "description": "LoadSpec handles a prd.md with a missing closing --- delimiter in a manner that matches the Python implementation's behavior exactly.",
+      "preconditions": [
+        "A directory at testdata/no_closing_delim/ containing a prd.md that starts with --- and YAML content but has no closing --- delimiter"
+      ],
+      "input": "LoadSpec(\"testdata/no_closing_delim\")",
+      "expected": "Returns either (nil, LoadError) or (*Spec, nil) matching exactly the Python afspec library's behavior for the same input",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/no_closing_delim\"); pythonBehavior = getPythonBehaviorForMissingDelimiter(); if pythonBehavior == \"error\": assert spec == nil; assert errors.As(err, &LoadError{}); else: assert err == nil; assert spec != nil"
+    },
+    {
+      "id": "TS-01-E5",
+      "requirement_id": "01-REQ-1.E5",
+      "kind": "unit",
+      "description": "LoadSpec detects missing required frontmatter fields post-parse and returns a LoadError.",
+      "preconditions": [
+        "A directory at testdata/missing_fields/ containing a prd.md with valid YAML frontmatter syntax but missing the required 'spec_id' field"
+      ],
+      "input": "LoadSpec(\"testdata/missing_fields\")",
+      "expected": "Returns (nil, LoadError) where errors.As(err, &LoadError{}) is true and err.Error() mentions the missing field",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"testdata/missing_fields\"); assert spec == nil; assert err != nil; assert errors.As(err, &LoadError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E6",
+      "requirement_id": "01-REQ-1.E6",
+      "kind": "unit",
+      "description": "LoadSpec returns a LoadError wrapping the filesystem error when the directory path does not exist.",
+      "preconditions": [],
+      "input": "LoadSpec(\"/nonexistent/path/to/spec\")",
+      "expected": "Returns (nil, LoadError) where errors.As(err, &LoadError{}) is true and errors.As(err, &SpecError{}) is true",
+      "assertion_pseudocode": "spec, err = LoadSpec(\"/nonexistent/path/to/spec\"); assert spec == nil; assert err != nil; assert errors.As(err, &LoadError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E7",
+      "requirement_id": "01-REQ-2.E1",
+      "kind": "integration",
+      "description": "Spec.Save cleans up partially written temp files and returns a SaveError when the target directory is not writable.",
+      "preconditions": [
+        "A valid non-sealed Spec",
+        "A directory at /tmp/readonly_dir/ with permissions set to 0444 (read-only)"
+      ],
+      "input": "spec.Save(\"/tmp/readonly_dir\")",
+      "expected": "Returns SaveError where errors.As(err, &SaveError{}) is true and errors.As(err, &SpecError{}) is true; no temp files remain in /tmp/readonly_dir/",
+      "assertion_pseudocode": "spec = loadValidSpec(); err = spec.Save(\"/tmp/readonly_dir\"); assert err != nil; assert errors.As(err, &SaveError{}); assert errors.As(err, &SpecError{}); assert len(listTempFiles(\"/tmp/readonly_dir\")) == 0"
+    },
+    {
+      "id": "TS-01-E8",
+      "requirement_id": "01-REQ-2.E2",
+      "kind": "integration",
+      "description": "Spec.Save removes the orphaned temp file and returns a SaveError when the rename operation fails.",
+      "preconditions": [
+        "A valid non-sealed Spec",
+        "A scenario where os.Rename fails (e.g., simulated via a mock filesystem or cross-device rename)"
+      ],
+      "input": "spec.Save(dir) where rename fails after temp file is written",
+      "expected": "Returns SaveError where errors.As(err, &SaveError{}) is true; no orphaned temp files remain in dir",
+      "assertion_pseudocode": "spec = loadValidSpec(); injectRenameFailure(); err = spec.Save(tmpDir); assert err != nil; assert errors.As(err, &SaveError{}); assert len(listTempFiles(tmpDir)) == 0"
+    },
+    {
+      "id": "TS-01-E9",
+      "requirement_id": "01-REQ-2.E3",
+      "kind": "unit",
+      "description": "Spec.Save returns a SaveError without creating any files when the directory path does not exist.",
+      "preconditions": [
+        "A valid non-sealed Spec"
+      ],
+      "input": "spec.Save(\"/nonexistent/save/dir\")",
+      "expected": "Returns SaveError where errors.As(err, &SaveError{}) is true; no files are created at /nonexistent/save/dir/",
+      "assertion_pseudocode": "spec = loadValidSpec(); err = spec.Save(\"/nonexistent/save/dir\"); assert err != nil; assert errors.As(err, &SaveError{}); assert !dirExists(\"/nonexistent/save/dir\")"
+    },
+    {
+      "id": "TS-01-E10",
+      "requirement_id": "01-REQ-3.E1",
+      "kind": "unit",
+      "description": "MarshalJSON returns an error when the input value contains an unmarshalable type such as a channel.",
+      "preconditions": [],
+      "input": "MarshalJSON(struct{ Ch chan int }{Ch: make(chan int)})",
+      "expected": "Returns (nil, error) where err is non-nil and describes the marshaling failure",
+      "assertion_pseudocode": "type BadStruct struct { Ch chan int }; data, err = MarshalJSON(BadStruct{Ch: make(chan int)}); assert data == nil; assert err != nil"
+    },
+    {
+      "id": "TS-01-E11",
+      "requirement_id": "01-REQ-3.E2",
+      "kind": "unit",
+      "description": "MarshalJSON serializes an empty map[string]T field as an empty JSON object {}.",
+      "preconditions": [],
+      "input": "MarshalJSON(struct with an empty map[string]string field named Glossary)",
+      "expected": "Returns ([]byte, nil) where the JSON output contains '\"glossary\":{}' (empty object, not null or omitted)",
+      "assertion_pseudocode": "type S struct { Glossary map[string]string }; data, err = MarshalJSON(S{Glossary: map[string]string{}}); assert err == nil; assert contains(string(data), \"\\\"glossary\\\":{}\") || contains(string(data), \"\\\"glossary\\\": {}\")"
+    },
+    {
+      "id": "TS-01-E12",
+      "requirement_id": "01-REQ-3.E3",
+      "kind": "unit",
+      "description": "MarshalJSON serializes a nil pointer field as JSON null, matching Python's behavior.",
+      "preconditions": [],
+      "input": "MarshalJSON(struct with a nil *string field)",
+      "expected": "Returns ([]byte, nil) where the JSON output contains 'null' for the nil pointer field",
+      "assertion_pseudocode": "type S struct { Ptr *string }; data, err = MarshalJSON(S{Ptr: nil}); assert err == nil; assert contains(string(data), \"null\")"
+    },
+    {
+      "id": "TS-01-E13",
+      "requirement_id": "01-REQ-4.E1",
+      "kind": "unit",
+      "description": "Spec.Validate on a spec with warnings but no errors returns ValidationResult with Valid true and non-empty Warnings slice.",
+      "preconditions": [
+        "A Spec that passes all schema and cross-file checks but has at least one requirement with no test coverage (triggering a warning)"
+      ],
+      "input": "spec.Validate() where spec has warnings but no errors",
+      "expected": "Returns ValidationResult{Valid: true, Errors: [], Warnings: [...]} where Warnings has at least one entry",
+      "assertion_pseudocode": "spec = buildSpecWithWarningsOnly(); result = spec.Validate(); assert result.Valid == true; assert len(result.Errors) == 0; assert len(result.Warnings) > 0"
+    },
+    {
+      "id": "TS-01-E14",
+      "requirement_id": "01-REQ-4.E2",
+      "kind": "unit",
+      "description": "Spec.Validate on a minimally populated spec validates without panicking and returns a ValidationResult.",
+      "preconditions": [
+        "A Spec created with CreateSpec with only required fields set and no requirements, test entries, or tasks"
+      ],
+      "input": "spec.Validate() on a minimally populated spec",
+      "expected": "Returns a ValidationResult (Valid may be true or false) without panicking; no panic or runtime error occurs",
+      "assertion_pseudocode": "spec = CreateSpec(\"01\", \"minimal\"); result = spec.Validate(); assert result != nil // no panic occurred"
+    },
+    {
+      "id": "TS-01-E15",
+      "requirement_id": "01-REQ-5.E1",
+      "kind": "unit",
+      "description": "A structurally invalid bundled schema file causes a LoadError at library initialization, preventing use with corrupt schemas.",
+      "preconditions": [
+        "A test build where one of the embedded schema files has been replaced with invalid JSON (simulated via test injection)"
+      ],
+      "input": "Library initialization with a corrupt embedded schema",
+      "expected": "Returns LoadError wrapping SpecError at initialization; errors.As(err, &LoadError{}) is true",
+      "assertion_pseudocode": "err = initializeLibraryWithCorruptSchema(); assert err != nil; assert errors.As(err, &LoadError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E16",
+      "requirement_id": "01-REQ-5.E2",
+      "kind": "unit",
+      "description": "Spec.ValidateSchema collects errors from all artifacts and returns them together rather than stopping at the first failure.",
+      "preconditions": [
+        "A Spec where both requirements.json and test_spec.json have schema violations"
+      ],
+      "input": "spec.ValidateSchema() where multiple artifacts have schema errors",
+      "expected": "Returns ValidationResult{Valid: false, Errors: [...]} where Errors contains entries from both requirements.json and test_spec.json violations",
+      "assertion_pseudocode": "spec = buildSpecWithMultipleSchemaViolations(); result = spec.ValidateSchema(); assert result.Valid == false; artifacts = set(map(result.Errors, e => e.Artifact)); assert \"requirements\" in artifacts; assert \"test_spec\" in artifacts"
+    },
+    {
+      "id": "TS-01-E17",
+      "requirement_id": "01-REQ-6.E1",
+      "kind": "unit",
+      "description": "Spec.ValidateCrossFile reports coverage gaps for all requirements that have no corresponding test entries.",
+      "preconditions": [
+        "A Spec with three requirements in requirements.json and an empty test_spec.json (no test entries)"
+      ],
+      "input": "spec.ValidateCrossFile() on a spec with no test entries",
+      "expected": "Returns ValidationResult with coverage gap warnings or errors for each of the three uncovered requirements",
+      "assertion_pseudocode": "spec = buildSpecWithNoTests(); result = spec.ValidateCrossFile(); coverageIssues = filterByCheck(result.Errors + result.Warnings, \"coverage_gap\"); assert len(coverageIssues) >= 3"
+    },
+    {
+      "id": "TS-01-E18",
+      "requirement_id": "01-REQ-6.E2",
+      "kind": "unit",
+      "description": "Spec.ValidateCrossFile records an ID format validation error identifying the artifact and the malformed ID.",
+      "preconditions": [
+        "A Spec where requirements.json contains a requirement with ID 'INVALID-FORMAT' that does not match the expected NN-REQ-N pattern"
+      ],
+      "input": "spec.ValidateCrossFile() where a requirement has a malformed ID",
+      "expected": "Returns ValidationResult{Valid: false, Errors: [{category: 'integrity', check: 'id_format', message: contains 'INVALID-FORMAT'}]}",
+      "assertion_pseudocode": "spec = buildSpecWithMalformedID(\"INVALID-FORMAT\"); result = spec.ValidateCrossFile(); err = findError(result.Errors, check=\"id_format\"); assert err != nil; assert err.Category == \"integrity\"; assert contains(err.Message, \"INVALID-FORMAT\")"
+    },
+    {
+      "id": "TS-01-E19",
+      "requirement_id": "01-REQ-7.E1",
+      "kind": "unit",
+      "description": "ValidateCrossSpec with a single spec returns ValidationResult with no errors since there are no cross-spec relationships.",
+      "preconditions": [
+        "A single Spec value and an empty DependencyGraph with no edges"
+      ],
+      "input": "ValidateCrossSpec([singleSpec], emptyGraph)",
+      "expected": "Returns ValidationResult{Valid: true} with no errors",
+      "assertion_pseudocode": "result = ValidateCrossSpec([singleSpec], emptyGraph); assert result.Valid == true; assert len(result.Errors) == 0"
+    },
+    {
+      "id": "TS-01-E20",
+      "requirement_id": "01-REQ-7.E2",
+      "kind": "unit",
+      "description": "ValidateCrossSpec records a glossary conflict error when two specs define the same term with different meanings.",
+      "preconditions": [
+        "Two Spec values where both define the glossary term 'afspec' with different definitions",
+        "A DependencyGraph with an edge between the two specs"
+      ],
+      "input": "ValidateCrossSpec([specA, specB], graph) where both define 'afspec' differently",
+      "expected": "Returns ValidationResult{Valid: false, Errors: [{category: 'integrity', check: 'glossary_conflict', message: contains 'afspec'}]}",
+      "assertion_pseudocode": "result = ValidateCrossSpec([specA, specB], graph); err = findError(result.Errors, check=\"glossary_conflict\"); assert err != nil; assert err.Category == \"integrity\"; assert contains(err.Message, \"afspec\")"
+    },
+    {
+      "id": "TS-01-E21",
+      "requirement_id": "01-REQ-8.E1",
+      "kind": "unit",
+      "description": "Spec.ValidateStructured omits the 'warnings' key from the returned map when there are no warnings.",
+      "preconditions": [
+        "A Spec that passes all validation checks with no warnings"
+      ],
+      "input": "spec.ValidateStructured() where spec has no warnings",
+      "expected": "Returns map[string]any that does not contain the key 'warnings'",
+      "assertion_pseudocode": "spec = loadFullyCoveredValidSpec(); result = spec.ValidateStructured(); _, hasWarnings = result[\"warnings\"]; assert hasWarnings == false"
+    },
+    {
+      "id": "TS-01-E22",
+      "requirement_id": "01-REQ-9.E1",
+      "kind": "integration",
+      "description": "Spec.Transition with an invalid target state returns a LifecycleError without modifying the spec or writing to disk.",
+      "preconditions": [
+        "A Spec with Status 'draft' saved to a writable temporary directory tmpDir"
+      ],
+      "input": "spec.Transition(\"sealed\", tmpDir) where spec.Status == \"draft\" (draft->sealed is not a valid transition)",
+      "expected": "Returns (nil, LifecycleError) where errors.As(err, &LifecycleError{}) is true; spec.Status remains 'draft'; no files are modified in tmpDir",
+      "assertion_pseudocode": "spec = createDraftSpec(); originalMtime = getMtime(tmpDir+\"/prd.md\"); updated, err = spec.Transition(\"sealed\", tmpDir); assert updated == nil; assert err != nil; assert errors.As(err, &LifecycleError{}); assert errors.As(err, &SpecError{}); assert spec.Status == \"draft\"; assert getMtime(tmpDir+\"/prd.md\") == originalMtime"
+    },
+    {
+      "id": "TS-01-E23",
+      "requirement_id": "01-REQ-9.E2",
+      "kind": "integration",
+      "description": "Spec.Transition returns a SaveError when the disk write fails after the state is updated in memory.",
+      "preconditions": [
+        "A Spec with Status 'draft'",
+        "A directory that becomes unwritable after the transition is validated (simulated via permission change or mock)"
+      ],
+      "input": "spec.Transition(\"active\", readOnlyDir) where disk write fails",
+      "expected": "Returns (nil, SaveError) where errors.As(err, &SaveError{}) is true",
+      "assertion_pseudocode": "spec = createDraftSpec(); makeReadOnly(tmpDir); updated, err = spec.Transition(\"active\", tmpDir); assert updated == nil; assert err != nil; assert errors.As(err, &SaveError{})"
+    },
+    {
+      "id": "TS-01-E24",
+      "requirement_id": "01-REQ-10.E1",
+      "kind": "integration",
+      "description": "Spec.Supersede on a non-sealed spec returns a LifecycleError without modifying the spec or writing to disk.",
+      "preconditions": [
+        "A Spec with Status 'active' (not sealed) saved to a writable temporary directory tmpDir"
+      ],
+      "input": "spec.Supersede(\"02\", tmpDir) where spec.Status == \"active\"",
+      "expected": "Returns (nil, LifecycleError) where errors.As(err, &LifecycleError{}) is true; spec.Status remains 'active'; no files are modified in tmpDir",
+      "assertion_pseudocode": "spec = createActiveSpec(); originalMtime = getMtime(tmpDir+\"/prd.md\"); updated, err = spec.Supersede(\"02\", tmpDir); assert updated == nil; assert err != nil; assert errors.As(err, &LifecycleError{}); assert errors.As(err, &SpecError{}); assert getMtime(tmpDir+\"/prd.md\") == originalMtime"
+    },
+    {
+      "id": "TS-01-E25",
+      "requirement_id": "01-REQ-11.E1",
+      "kind": "integration",
+      "description": "MoveToArchive creates the archive directory if it does not exist, or returns a SaveError if creation fails.",
+      "preconditions": [
+        "A spec directory at tmpRoot/01_myspec/ with valid artifacts",
+        "tmpRoot/archive/ does not exist"
+      ],
+      "input": "MoveToArchive(\"tmpRoot/01_myspec\", \"tmpRoot\") where archive/ does not exist",
+      "expected": "Returns nil; tmpRoot/archive/ is created; tmpRoot/archive/01_myspec/ contains the spec artifacts",
+      "assertion_pseudocode": "assert !dirExists(tmpRoot+\"/archive\"); err = MoveToArchive(tmpRoot+\"/01_myspec\", tmpRoot); assert err == nil; assert dirExists(tmpRoot+\"/archive/01_myspec\")"
+    },
+    {
+      "id": "TS-01-E26",
+      "requirement_id": "01-REQ-11.E2",
+      "kind": "integration",
+      "description": "MoveToArchive returns a SaveError without overwriting when a spec directory with the same name already exists in the archive.",
+      "preconditions": [
+        "A spec directory at tmpRoot/01_myspec/ with valid artifacts",
+        "A directory at tmpRoot/archive/01_myspec/ already exists"
+      ],
+      "input": "MoveToArchive(\"tmpRoot/01_myspec\", \"tmpRoot\") where archive/01_myspec/ already exists",
+      "expected": "Returns SaveError where errors.As(err, &SaveError{}) is true; tmpRoot/archive/01_myspec/ is not overwritten; tmpRoot/01_myspec/ still exists",
+      "assertion_pseudocode": "createDir(tmpRoot+\"/archive/01_myspec\"); err = MoveToArchive(tmpRoot+\"/01_myspec\", tmpRoot); assert err != nil; assert errors.As(err, &SaveError{}); assert dirExists(tmpRoot+\"/01_myspec\")"
+    },
+    {
+      "id": "TS-01-E27",
+      "requirement_id": "01-REQ-12.E1",
+      "kind": "integration",
+      "description": "DiscoverSpecs skips a malformed spec directory and continues scanning, returning valid SpecMeta entries alongside errors for skipped directories.",
+      "preconditions": [
+        "A root directory with 01_good_spec/ (valid prd.md) and 02_bad_spec/ (missing or malformed prd.md)"
+      ],
+      "input": "DiscoverSpecs(\"testdata/mixed_workspace\")",
+      "expected": "Returns ([]SpecMeta, []error) where SpecMeta slice has one entry for '01_good_spec' and errors slice has one entry mentioning '02_bad_spec'",
+      "assertion_pseudocode": "metas, errs = DiscoverSpecs(\"testdata/mixed_workspace\"); assert len(metas) == 1; assert metas[0].SpecID == \"01\"; assert len(errs) == 1; assert contains(errs[0].Error(), \"02_bad_spec\")"
+    },
+    {
+      "id": "TS-01-E28",
+      "requirement_id": "01-REQ-12.E2",
+      "kind": "unit",
+      "description": "DiscoverSpecs returns an empty slice and a LoadError when the root directory does not exist.",
+      "preconditions": [],
+      "input": "DiscoverSpecs(\"/nonexistent/workspace\")",
+      "expected": "Returns (nil, LoadError) where errors.As(err, &LoadError{}) is true",
+      "assertion_pseudocode": "metas, err = DiscoverSpecs(\"/nonexistent/workspace\"); assert metas == nil; assert err != nil; assert errors.As(err, &LoadError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E29",
+      "requirement_id": "01-REQ-12.E3",
+      "kind": "integration",
+      "description": "DiscoverSpecs returns an empty slice with no error when the root directory has no matching subdirectories.",
+      "preconditions": [
+        "A root directory at testdata/empty_workspace/ that exists but contains no NN_snake_case subdirectories"
+      ],
+      "input": "DiscoverSpecs(\"testdata/empty_workspace\")",
+      "expected": "Returns ([]SpecMeta{}, nil) — empty non-nil slice and nil error",
+      "assertion_pseudocode": "metas, err = DiscoverSpecs(\"testdata/empty_workspace\"); assert err == nil; assert metas != nil; assert len(metas) == 0"
+    },
+    {
+      "id": "TS-01-E30",
+      "requirement_id": "01-REQ-13.E1",
+      "kind": "unit",
+      "description": "BuildDependencyGraph with a single SpecMeta returns a DependencyGraph with no edges.",
+      "preconditions": [
+        "A single SpecMeta for spec '01' whose tasks.json has no cross-spec dependency declarations"
+      ],
+      "input": "BuildDependencyGraph([meta01], \"testdata/workspace\")",
+      "expected": "Returns (*DependencyGraph, nil) where graph.Edges() returns an empty slice",
+      "assertion_pseudocode": "graph, err = BuildDependencyGraph([meta01], \"testdata/workspace\"); assert err == nil; assert graph != nil; assert len(graph.Edges()) == 0"
+    },
+    {
+      "id": "TS-01-E31",
+      "requirement_id": "01-REQ-13.E2",
+      "kind": "unit",
+      "description": "BuildDependencyGraph records a dangling reference error and returns it alongside the partial graph when tasks.json references an unknown spec ID.",
+      "preconditions": [
+        "A SpecMeta for spec '01' whose tasks.json declares a dependency on spec '99' which is not in the provided SpecMeta slice"
+      ],
+      "input": "BuildDependencyGraph([meta01], \"testdata/workspace\") where tasks.json references spec '99'",
+      "expected": "Returns (*DependencyGraph, error) where graph is non-nil (partial) and error describes the dangling reference to spec '99'",
+      "assertion_pseudocode": "graph, err = BuildDependencyGraph([meta01], \"testdata/workspace\"); assert graph != nil; assert err != nil; assert contains(err.Error(), \"99\")"
+    },
+    {
+      "id": "TS-01-E32",
+      "requirement_id": "01-REQ-14.E1",
+      "kind": "unit",
+      "description": "ParseSpecDirName returns an error when the input does not match the NN_snake_case pattern.",
+      "preconditions": [],
+      "input": "ParseSpecDirName(\"not-a-spec-dir\")",
+      "expected": "Returns (\"\", \"\", error) where error is non-nil and describes the invalid format",
+      "assertion_pseudocode": "num, name, err = ParseSpecDirName(\"not-a-spec-dir\"); assert num == \"\"; assert name == \"\"; assert err != nil"
+    },
+    {
+      "id": "TS-01-E33",
+      "requirement_id": "01-REQ-14.E2",
+      "kind": "unit",
+      "description": "IsSpecDirName returns false for an empty string.",
+      "preconditions": [],
+      "input": "IsSpecDirName(\"\")",
+      "expected": "Returns false",
+      "assertion_pseudocode": "assert IsSpecDirName(\"\") == false"
+    },
+    {
+      "id": "TS-01-E34",
+      "requirement_id": "01-REQ-15.E1",
+      "kind": "integration",
+      "description": "LoadSpecLandscape returns an empty slice with no error when the root directory contains no spec directories.",
+      "preconditions": [
+        "A root directory at testdata/empty_workspace/ that exists but contains no NN_snake_case subdirectories"
+      ],
+      "input": "LoadSpecLandscape(\"testdata/empty_workspace\", false, \"\")",
+      "expected": "Returns ([]SpecMeta{}, nil) — empty non-nil slice and nil error",
+      "assertion_pseudocode": "metas, err = LoadSpecLandscape(\"testdata/empty_workspace\", false, \"\"); assert err == nil; assert metas != nil; assert len(metas) == 0"
+    },
+    {
+      "id": "TS-01-E35",
+      "requirement_id": "01-REQ-16.E1",
+      "kind": "unit",
+      "description": "Tasks.TransitionSubtask returns a LifecycleError without modifying any subtask state when the transition is not in the allowed table.",
+      "preconditions": [
+        "A Tasks struct with a subtask 'subtask-1' in 'pending' state"
+      ],
+      "input": "tasks.TransitionSubtask(\"subtask-1\", \"done\") where pending->done is not an allowed transition",
+      "expected": "Returns (nil, LifecycleError) where errors.As(err, &LifecycleError{}) is true; subtask 'subtask-1' remains in 'pending' state",
+      "assertion_pseudocode": "updated, err = tasks.TransitionSubtask(\"subtask-1\", \"done\"); assert updated == nil; assert err != nil; assert errors.As(err, &LifecycleError{}); assert errors.As(err, &SpecError{}); assert getSubtask(tasks, \"subtask-1\").State == \"pending\""
+    },
+    {
+      "id": "TS-01-E36",
+      "requirement_id": "01-REQ-16.E2",
+      "kind": "unit",
+      "description": "Tasks.TransitionSubtask returns a LifecycleError identifying the missing subtask ID when the subtask does not exist.",
+      "preconditions": [
+        "A Tasks struct with no subtask having ID 'nonexistent-subtask'"
+      ],
+      "input": "tasks.TransitionSubtask(\"nonexistent-subtask\", \"queued\")",
+      "expected": "Returns (nil, LifecycleError) where errors.As(err, &LifecycleError{}) is true and err.Error() contains 'nonexistent-subtask'",
+      "assertion_pseudocode": "updated, err = tasks.TransitionSubtask(\"nonexistent-subtask\", \"queued\"); assert updated == nil; assert err != nil; assert errors.As(err, &LifecycleError{}); assert contains(err.Error(), \"nonexistent-subtask\")"
+    },
+    {
+      "id": "TS-01-E37",
+      "requirement_id": "01-REQ-17.E1",
+      "kind": "unit",
+      "description": "Tasks.CompleteSubtaskStates skips a missing group ID and processes all valid group IDs, returning updated Tasks without error.",
+      "preconditions": [
+        "A Tasks struct with group ID 1 containing subtasks; no group with ID 999 exists"
+      ],
+      "input": "tasks.CompleteSubtaskStates([1, 999])",
+      "expected": "Returns (*Tasks, nil); subtasks in group 1 are set to 'done'; no error for missing group 999",
+      "assertion_pseudocode": "updated, err = tasks.CompleteSubtaskStates([1, 999]); assert err == nil; assert updated != nil; for each subtask in getGroup(updated, 1): assert subtask.State == \"done\""
+    },
+    {
+      "id": "TS-01-E38",
+      "requirement_id": "01-REQ-17.E2",
+      "kind": "unit",
+      "description": "Tasks.CompleteSubtaskStates with an empty groupIDs slice returns the Tasks unchanged without error.",
+      "preconditions": [
+        "A Tasks struct with group ID 1 containing subtasks in 'pending' state"
+      ],
+      "input": "tasks.CompleteSubtaskStates([])",
+      "expected": "Returns (*Tasks, nil) with no state changes; all subtasks remain in their original states",
+      "assertion_pseudocode": "updated, err = tasks.CompleteSubtaskStates([]); assert err == nil; assert updated != nil; for each subtask in getGroup(updated, 1): assert subtask.State == \"pending\""
+    },
+    {
+      "id": "TS-01-E39",
+      "requirement_id": "01-REQ-18.E1",
+      "kind": "unit",
+      "description": "Spec.RenderIndividual omits the 'architecture' key from the returned map when the spec has no architecture.md.",
+      "preconditions": [
+        "A Spec loaded from testdata/no_arch_spec/ with no architecture.md"
+      ],
+      "input": "spec.RenderIndividual() where spec.Architecture == \"\"",
+      "expected": "Returns map[string]string that does not contain the key 'architecture'",
+      "assertion_pseudocode": "spec, _ = LoadSpec(\"testdata/no_arch_spec\"); result = spec.RenderIndividual(); _, hasArch = result[\"architecture\"]; assert hasArch == false"
+    },
+    {
+      "id": "TS-01-E40",
+      "requirement_id": "01-REQ-18.E2",
+      "kind": "unit",
+      "description": "Spec.RenderCombined on a spec with empty requirements renders the requirements section without panicking.",
+      "preconditions": [
+        "A Spec with an empty Requirements struct (no requirements)"
+      ],
+      "input": "spec.RenderCombined() where spec.Requirements has no entries",
+      "expected": "Returns a non-empty string without panicking; the string contains a requirements section (possibly empty or with a placeholder)",
+      "assertion_pseudocode": "spec = CreateSpec(\"01\", \"empty\"); result = spec.RenderCombined(); assert result != \"\" // no panic"
+    },
+    {
+      "id": "TS-01-E41",
+      "requirement_id": "01-REQ-19.E1",
+      "kind": "unit",
+      "description": "Spec.RenderIndividualScoped falls back to full unscoped rendering when the targetGroup ID does not exist in the Tasks struct.",
+      "preconditions": [
+        "A Spec with task groups 1 and 2; no group with ID 999 exists"
+      ],
+      "input": "spec.RenderIndividualScoped(999) where group 999 does not exist",
+      "expected": "Returns map[string]string equivalent to spec.RenderIndividual() — full unscoped content; no error or panic",
+      "assertion_pseudocode": "scoped = spec.RenderIndividualScoped(999); full = spec.RenderIndividual(); assert scoped[\"requirements\"] == full[\"requirements\"]; assert scoped[\"test_spec\"] == full[\"test_spec\"]"
+    },
+    {
+      "id": "TS-01-E42",
+      "requirement_id": "01-REQ-20.E1",
+      "kind": "unit",
+      "description": "EARS criterion builders with an empty id string return a Criterion with an empty ID field; validation is deferred to spec.Validate.",
+      "preconditions": [],
+      "input": "UbiquitousCriterion(\"\", \"System\", \"does something\")",
+      "expected": "Returns Criterion with ID == \"\" and EARSPattern == \"ubiquitous\"; no error or panic",
+      "assertion_pseudocode": "c = UbiquitousCriterion(\"\", \"System\", \"does something\"); assert c.ID == \"\"; assert c.EARSPattern == \"ubiquitous\"; assert c.System == \"System\"; assert c.Action == \"does something\""
+    },
+    {
+      "id": "TS-01-E43",
+      "requirement_id": "01-REQ-21.E1",
+      "kind": "unit",
+      "description": "BootstrapSpec.Finalize called multiple times on the same BootstrapSpec assembles and validates independently each time without mutating the BootstrapSpec.",
+      "preconditions": [
+        "A BootstrapSpec with all required artifacts set to valid values"
+      ],
+      "input": "bs.Finalize() called twice on the same BootstrapSpec",
+      "expected": "Both calls return (*Spec, nil); the BootstrapSpec's artifact fields are unchanged after each call; the two returned Spec pointers are different but equivalent",
+      "assertion_pseudocode": "bs = buildCompleteBootstrapSpec(); spec1, errs1 = bs.Finalize(); spec2, errs2 = bs.Finalize(); assert errs1 == nil; assert errs2 == nil; assert spec1 != nil; assert spec2 != nil; assert spec1 != spec2; assert bs.Requirements != nil // not mutated"
+    },
+    {
+      "id": "TS-01-E44",
+      "requirement_id": "01-REQ-21.E2",
+      "kind": "unit",
+      "description": "BootstrapSpec.Finalize returns all missing artifact errors and all validation errors together when both are present.",
+      "preconditions": [
+        "A BootstrapSpec with Tasks missing and Requirements set to a value with a schema violation"
+      ],
+      "input": "bs.Finalize() where Tasks is missing and Requirements has a schema violation",
+      "expected": "Returns (nil, []ValidationError) where the slice contains both a bootstrap error for missing Tasks and a schema validation error",
+      "assertion_pseudocode": "bs = NewBootstrapSpec(\"01\", \"my_spec\"); bs.Requirements = invalidReq; bs.TestSpec = validTS; bs.PRD = validPRD; spec, errs = bs.Finalize(); assert spec == nil; assert len(errs) >= 2; bootstrapErrs = filter(errs, e => e.Rule == \"bootstrap\"); assert len(bootstrapErrs) >= 1"
+    },
+    {
+      "id": "TS-01-E45",
+      "requirement_id": "01-REQ-22.E1",
+      "kind": "unit",
+      "description": "Schemas always returns a non-nil, non-empty map because schema files are embedded at compile time.",
+      "preconditions": [
+        "The afspec binary is compiled with schema files embedded via //go:embed"
+      ],
+      "input": "Schemas() called at runtime",
+      "expected": "Returns a non-nil map[string][]byte with at least one entry; the map is never empty",
+      "assertion_pseudocode": "schemas = Schemas(); assert schemas != nil; assert len(schemas) > 0"
+    },
+    {
+      "id": "TS-01-E46",
+      "requirement_id": "01-REQ-23.E1",
+      "kind": "unit",
+      "description": "ComputeIntentHash returns an IntentError when the PRD body does not contain a ## Intent section.",
+      "preconditions": [],
+      "input": "ComputeIntentHash(\"# Title\\n\\n## Goals\\n\\nSome goals.\") where no ## Intent section exists",
+      "expected": "Returns (\"\", IntentError) where errors.As(err, &IntentError{}) is true and errors.As(err, &SpecError{}) is true",
+      "assertion_pseudocode": "hash, err = ComputeIntentHash(\"# Title\\n\\n## Goals\\n\\nSome goals.\"); assert hash == \"\"; assert err != nil; assert errors.As(err, &IntentError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E47",
+      "requirement_id": "01-REQ-23.E2",
+      "kind": "unit",
+      "description": "ComputeIntentHash returns an IntentError when called with an empty string.",
+      "preconditions": [],
+      "input": "ComputeIntentHash(\"\")",
+      "expected": "Returns (\"\", IntentError) where errors.As(err, &IntentError{}) is true",
+      "assertion_pseudocode": "hash, err = ComputeIntentHash(\"\"); assert hash == \"\"; assert err != nil; assert errors.As(err, &IntentError{}); assert errors.As(err, &SpecError{})"
+    },
+    {
+      "id": "TS-01-E48",
+      "requirement_id": "01-REQ-24.E1",
+      "kind": "unit",
+      "description": "TestSpec.ComputeCoverage with an empty Requirements struct returns a coverage report indicating 100% coverage with an empty uncovered list.",
+      "preconditions": [
+        "An empty Requirements struct with no requirements, properties, or paths"
+      ],
+      "input": "ts.ComputeCoverage(emptyRequirements)",
+      "expected": "Returns a coverage report with an empty uncovered list; no panic or error",
+      "assertion_pseudocode": "report = ts.ComputeCoverage(emptyReq); assert len(report.Uncovered) == 0"
+    },
+    {
+      "id": "TS-01-E49",
+      "requirement_id": "01-REQ-24.E2",
+      "kind": "unit",
+      "description": "TestSpec.ComputeCoverage with a TestSpec that has no test entries returns a coverage report with all requirement IDs in the uncovered list.",
+      "preconditions": [
+        "A Requirements struct with requirements ['01-REQ-1', '01-REQ-2']",
+        "An empty TestSpec with no test entries"
+      ],
+      "input": "emptyTestSpec.ComputeCoverage(req) where TestSpec has no entries",
+      "expected": "Returns a coverage report where Uncovered contains '01-REQ-1' and '01-REQ-2'; Covered is empty",
+      "assertion_pseudocode": "report = emptyTS.ComputeCoverage(req); assert \"01-REQ-1\" in report.Uncovered; assert \"01-REQ-2\" in report.Uncovered; assert len(report.Covered) == 0"
+    },
+    {
+      "id": "TS-01-E50",
+      "requirement_id": "01-REQ-25.E1",
+      "kind": "unit",
+      "description": "CreateSpec with empty specID or specName returns a Spec with those empty values; validation is deferred to spec.Validate.",
+      "preconditions": [],
+      "input": "CreateSpec(\"\", \"\")",
+      "expected": "Returns *Spec with SpecID==\"\" and SpecName==\"\" and Status==\"draft\"; no panic or error",
+      "assertion_pseudocode": "spec = CreateSpec(\"\", \"\"); assert spec != nil; assert spec.SpecID == \"\"; assert spec.SpecName == \"\"; assert spec.Status == \"draft\""
+    },
+    {
+      "id": "TS-01-E51",
+      "requirement_id": "01-REQ-26.E1",
+      "kind": "unit",
+      "description": "The afspec library never calls os.Exit or panics in response to invalid input; all errors are returned as values.",
+      "preconditions": [],
+      "input": "LoadSpec(\"/nonexistent\"), MarshalJSON(nil), ComputeIntentHash(\"\"), tasks.TransitionSubtask(\"bad\", \"bad\")",
+      "expected": "All calls return error values without panicking or calling os.Exit; the test process continues normally after each call",
+      "assertion_pseudocode": "assertNoPanic(func() { LoadSpec(\"/nonexistent\") }); assertNoPanic(func() { MarshalJSON(nil) }); assertNoPanic(func() { ComputeIntentHash(\"\") }); assertNoPanic(func() { tasks.TransitionSubtask(\"bad\", \"bad\") })"
+    },
+    {
+      "id": "TS-01-E52",
+      "requirement_id": "01-REQ-27.E1",
+      "kind": "integration",
+      "description": "A golden-file test that detects a byte-level difference outputs the full go-cmp diff to the test log and fails the test.",
+      "preconditions": [
+        "A golden fixture file in testdata/ and a modified version of the same spec that produces different output"
+      ],
+      "input": "A golden-file test where the Go output differs from the Python fixture by one character",
+      "expected": "The test fails (t.Fail() or t.Error() is called); the test log contains a non-empty cmp.Diff output showing the exact difference",
+      "assertion_pseudocode": "diff = cmp.Diff(goldenContent, modifiedContent); if diff != \"\": t.Errorf(\"mismatch:\\n%s\", diff); assert testFailed == true; assert diff != \"\""
+    },
+    {
+      "id": "TS-01-E53",
+      "requirement_id": "01-REQ-28.E1",
+      "kind": "unit",
+      "description": "The afspec package-level godoc documents the lack of goroutine-safety so callers are not surprised by data races.",
+      "preconditions": [
+        "The afspec package source code is available at the module root"
+      ],
+      "input": "Inspect the package doc comment (the comment block above 'package afspec' in the root .go file)",
+      "expected": "The package doc comment contains language about goroutine safety, concurrent access, or external synchronization requirements",
+      "assertion_pseudocode": "pkgDoc = runGoDoc(\"github.com/agent-fox-dev/spec-format\"); assert contains(pkgDoc, \"goroutine\") || contains(pkgDoc, \"concurrent\") || contains(pkgDoc, \"synchronize\") || contains(pkgDoc, \"thread\")"
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "TS-01-SMOKE-1",
+      "execution_path_id": "01-PATH-1",
+      "description": "End-to-end smoke test: load a spec from a testdata fixture, validate it, save to a temp directory, and verify byte-for-byte round-trip fidelity.",
+      "trigger": "Call LoadSpec(\"testdata/valid_spec\"), then spec.Validate(), then spec.Save(tmpDir), then compare all artifact files byte-for-byte",
+      "real_components": [
+        "LoadSpec",
+        "Spec.Validate",
+        "Spec.ValidateSchema",
+        "Spec.ValidateCrossFile",
+        "Spec.Save",
+        "MarshalJSON",
+        "PRD hand-written renderer"
+      ],
+      "mockable": [
+        "filesystem (os.ReadFile, os.WriteFile, os.Rename) — use real filesystem with testdata/ and os.MkdirTemp"
+      ],
+      "expected_effects": [
+        "LoadSpec returns (*Spec, nil) with all artifacts populated",
+        "spec.Validate() returns ValidationResult{Valid: true}",
+        "spec.Save(tmpDir) returns nil",
+        "cmp.Diff of each artifact file between testdata/valid_spec/ and tmpDir returns empty string",
+        "No temp files remain in tmpDir after Save completes"
+      ]
+    },
+    {
+      "id": "TS-01-SMOKE-2",
+      "execution_path_id": "01-PATH-2",
+      "description": "End-to-end smoke test: discover specs in a workspace, build the dependency graph, and compute topological order.",
+      "trigger": "Call DiscoverSpecs(\"testdata/workspace\"), then BuildDependencyGraph(metas, \"testdata/workspace\"), then graph.TopologicalSort()",
+      "real_components": [
+        "DiscoverSpecs",
+        "IsSpecDirName",
+        "ParseSpecDirName",
+        "BuildDependencyGraph",
+        "DependencyGraph.TopologicalSort",
+        "DependencyGraph.Edges",
+        "DependencyGraph.Dependencies",
+        "DependencyGraph.Dependents"
+      ],
+      "mockable": [
+        "filesystem directory scanning — use real testdata/workspace/ directory"
+      ],
+      "expected_effects": [
+        "DiscoverSpecs returns ([]SpecMeta, nil) with one entry per NN_snake_case subdirectory",
+        "BuildDependencyGraph returns (*DependencyGraph, nil) with edges reflecting tasks.json declarations",
+        "graph.TopologicalSort() returns ([]string, nil) where each spec appears before its dependents",
+        "No cycle error is returned for an acyclic testdata workspace"
+      ]
+    },
+    {
+      "id": "TS-01-SMOKE-3",
+      "execution_path_id": "01-PATH-3",
+      "description": "End-to-end smoke test: create a BootstrapSpec, set all required artifacts, call Finalize, and verify the assembled Spec passes validation.",
+      "trigger": "Call NewBootstrapSpec(\"01\", \"smoke_test\"), set all artifact fields from testdata/valid_spec/ content, call bs.Finalize()",
+      "real_components": [
+        "NewBootstrapSpec",
+        "BootstrapSpec.Finalize",
+        "Spec.ValidateSchema",
+        "Spec.ValidateCrossFile"
+      ],
+      "mockable": [
+        "filesystem — artifacts are loaded from testdata/valid_spec/ but Finalize does not call Save"
+      ],
+      "expected_effects": [
+        "NewBootstrapSpec returns *BootstrapSpec with SpecID='01' and all artifact fields nil",
+        "After setting all artifacts, bs.Finalize() returns (*Spec, nil)",
+        "The returned Spec has all artifacts populated and passes spec.Validate()"
+      ]
+    },
+    {
+      "id": "TS-01-SMOKE-4",
+      "execution_path_id": "01-PATH-4",
+      "description": "End-to-end smoke test: create a spec, transition through draft->active->sealed lifecycle states, then archive it.",
+      "trigger": "Call CreateSpec(\"01\", \"lifecycle_test\"), spec.Save(tmpDir), spec.Transition(\"active\", tmpDir), spec.Transition(\"sealed\", tmpDir), MoveToArchive(tmpDir+\"/01_lifecycle_test\", tmpRoot)",
+      "real_components": [
+        "CreateSpec",
+        "Spec.Save",
+        "Spec.Transition",
+        "ValidTransition",
+        "MoveToArchive"
+      ],
+      "mockable": [
+        "filesystem — use os.MkdirTemp for tmpDir and tmpRoot"
+      ],
+      "expected_effects": [
+        "CreateSpec returns *Spec with Status=='draft'",
+        "spec.Save(tmpDir) returns nil and creates artifact files",
+        "spec.Transition('active', tmpDir) returns (*Spec, nil) with Status=='active'",
+        "spec.Transition('sealed', tmpDir) returns (*Spec, nil) with Status=='sealed'",
+        "MoveToArchive returns nil; spec directory exists at tmpRoot/archive/; original tmpDir no longer exists"
+      ]
+    },
+    {
+      "id": "TS-01-SMOKE-5",
+      "execution_path_id": "01-PATH-5",
+      "description": "End-to-end smoke test: load a spec with tasks, transition a subtask through pending->queued->in_progress->done, and save the updated state.",
+      "trigger": "Call LoadSpec(\"testdata/valid_spec\"), tasks.TransitionSubtask(id, 'queued'), tasks.TransitionSubtask(id, 'in_progress'), tasks.TransitionSubtask(id, 'done'), spec.Save(tmpDir)",
+      "real_components": [
+        "LoadSpec",
+        "Tasks.TransitionSubtask",
+        "Spec.Save",
+        "MarshalJSON"
+      ],
+      "mockable": [
+        "filesystem — use real testdata/valid_spec/ for loading and os.MkdirTemp for saving"
+      ],
+      "expected_effects": [
+        "LoadSpec returns (*Spec, nil) with Tasks containing subtasks in 'pending' state",
+        "Each TransitionSubtask call returns (*Tasks, nil) with the subtask in the new state",
+        "After all transitions, the subtask is in 'done' state",
+        "spec.Save(tmpDir) returns nil and tasks.json in tmpDir reflects the 'done' state"
+      ]
+    },
+    {
+      "id": "TS-01-SMOKE-6",
+      "execution_path_id": "01-PATH-6",
+      "description": "End-to-end smoke test: load a spec and render it scoped to a specific task group, verifying only referenced content appears.",
+      "trigger": "Call LoadSpec(\"testdata/valid_spec\"), spec.RenderIndividualScoped(targetGroupID) where targetGroupID has known requirement_refs and test_spec_refs",
+      "real_components": [
+        "LoadSpec",
+        "Spec.RenderIndividualScoped",
+        "Spec.RenderIndividual",
+        "Requirements.Render",
+        "TestSpec.Render",
+        "Tasks.Render"
+      ],
+      "mockable": [
+        "filesystem — use real testdata/valid_spec/ for loading"
+      ],
+      "expected_effects": [
+        "LoadSpec returns (*Spec, nil) with all artifacts populated",
+        "RenderIndividualScoped returns map[string]string with keys 'prd', 'requirements', 'test_spec', 'tasks'",
+        "The requirements entry contains only requirements referenced by the target group's subtasks plus a Spec Overview",
+        "The test_spec entry contains only test entries referenced by the target group's subtasks",
+        "The tasks entry shows the target group with full subtask detail and other groups as one-line summaries",
+        "The prd entry is identical to the unscoped prd rendering"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [
+      "01-REQ-1.1",
+      "01-REQ-1.2",
+      "01-REQ-1.3",
+      "01-REQ-2.1",
+      "01-REQ-2.2",
+      "01-REQ-3.1",
+      "01-REQ-3.2",
+      "01-REQ-4.1",
+      "01-REQ-4.2",
+      "01-REQ-5.1",
+      "01-REQ-5.2",
+      "01-REQ-6.1",
+      "01-REQ-6.2",
+      "01-REQ-7.1",
+      "01-REQ-8.1",
+      "01-REQ-8.2",
+      "01-REQ-8.3",
+      "01-REQ-8.4",
+      "01-REQ-9.1",
+      "01-REQ-9.2",
+      "01-REQ-10.1",
+      "01-REQ-11.1",
+      "01-REQ-12.1",
+      "01-REQ-13.1",
+      "01-REQ-13.2",
+      "01-REQ-13.3",
+      "01-REQ-14.1",
+      "01-REQ-14.2",
+      "01-REQ-14.3",
+      "01-REQ-15.1",
+      "01-REQ-15.2",
+      "01-REQ-16.1",
+      "01-REQ-17.1",
+      "01-REQ-17.2",
+      "01-REQ-18.1",
+      "01-REQ-18.2",
+      "01-REQ-19.1",
+      "01-REQ-19.2",
+      "01-REQ-19.3",
+      "01-REQ-20.1",
+      "01-REQ-20.2",
+      "01-REQ-21.1",
+      "01-REQ-21.2",
+      "01-REQ-21.3",
+      "01-REQ-21.4",
+      "01-REQ-22.1",
+      "01-REQ-23.1",
+      "01-REQ-24.1",
+      "01-REQ-25.1",
+      "01-REQ-26.1",
+      "01-REQ-26.2",
+      "01-REQ-27.1",
+      "01-REQ-27.2",
+      "01-REQ-28.1",
+      "01-REQ-28.2"
+    ],
+    "properties_covered": [
+      "01-PROP-1",
+      "01-PROP-2",
+      "01-PROP-3",
+      "01-PROP-4",
+      "01-PROP-5",
+      "01-PROP-6",
+      "01-PROP-7",
+      "01-PROP-8",
+      "01-PROP-9",
+      "01-PROP-10"
+    ],
+    "paths_covered": [
+      "01-PATH-1",
+      "01-PATH-2",
+      "01-PATH-3",
+      "01-PATH-4",
+      "01-PATH-5",
+      "01-PATH-6"
+    ],
+    "gaps": []
+  }
+}

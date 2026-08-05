@@ -1,0 +1,251 @@
+{
+  "state": "generated",
+  "prd_path": "prd.md",
+  "assessment_history": [
+    {
+      "quality": "needs_refinement",
+      "summary": "The PRD for `afspec_go` is well-structured and highly detailed. It clearly articulates the intent, goals, non-goals, functional requirements, technical boundaries, dependencies, and design decisions. The scope is well-defined and the API surface is thoroughly described. However, several gaps prevent it from being rated \"ready\": (1) there is no explicit test tooling specification, (2) the external API surface for `github.com/santhosh-tekuri/jsonschema` and `github.com/goccy/go-yaml` is not documented with respect to expected behavior and failure modes, (3) the byte-for-byte fidelity guarantee lacks a concrete testing strategy, and (4) the owner field is empty. These are refinements rather than fundamental omissions, so the PRD is close to ready.",
+      "gaps": [
+        "No test tooling specified \u2014 the PRD names the language (Go 1.26+) and libraries but does not mention the testing framework or strategy beyond a reference to 'golden-file tests'. Go's standard `testing` package, table-driven tests, and any third-party assertion libraries (e.g., `testify`) should be named explicitly to avoid ambiguity during artifact generation.",
+        "External API surface not documented \u2014 the PRD depends on two external libraries (`github.com/santhosh-tekuri/jsonschema` and `github.com/goccy/go-yaml`) but does not document the specific functions/methods used, expected return shapes, or failure/error modes for each. This is required per the spec-format evaluation criteria.",
+        "Byte-for-byte fidelity testing strategy is underspecified \u2014 the PRD states this is a 'hard requirement' and mentions 'golden-file tests using fixture specs from the Python test suite', but does not specify how fixtures are sourced (copied at build time? submodule? shared path?), how many scenarios are covered, or how discrepancies are reported.",
+        "Owner field is empty \u2014 the spec metadata has `owner: ''`, meaning there is no designated responsible party for this spec.",
+        "No explicit versioning or compatibility policy \u2014 the PRD does not state how the Go library will track the Python `afspec` library's version, or what happens when the Python library evolves (e.g., schema changes, new lifecycle states). This is a maintenance risk for the stated fidelity guarantee.",
+        "MarshalJSON 'sorted keys' behavior is underspecified \u2014 deterministic JSON with sorted keys is required for byte-for-byte fidelity, but Go's `encoding/json` does not sort struct fields by key name. The PRD does not clarify the mechanism (custom marshaler? reflection-based sort?), which is critical implementation detail."
+      ],
+      "questions": [
+        {
+          "id": "q1",
+          "text": "What test tooling should be used for the Go library? Please specify the testing framework, any assertion libraries, and whether integration/golden-file tests use the standard `testing` package or a third-party runner.",
+          "context": "The PRD specifies the language and runtime (Go 1.26+) but omits test tooling. Missing test tooling causes incorrect or inconsistent test artifacts to be generated.",
+          "options": [
+            "Standard library `testing` package only",
+            "Standard `testing` + `github.com/stretchr/testify`",
+            "Standard `testing` + `github.com/google/go-cmp`",
+            "Other (please specify)"
+          ],
+          "required": true
+        },
+        {
+          "id": "q2",
+          "text": "Can you document the external API surface for `github.com/santhosh-tekuri/jsonschema`? Specifically: which functions/methods are called, what the expected return types are, and how errors (invalid schema, validation failure, missing $ref) are handled?",
+          "context": "The spec-format requires external dependencies to have their API surface documented \u2014 including endpoints/functions used, response shapes, and failure modes. This library is central to the ValidateSchema() implementation.",
+          "options": [],
+          "required": true
+        },
+        {
+          "id": "q3",
+          "text": "Can you document the external API surface for `github.com/goccy/go-yaml`? Specifically: which functions are used for YAML parsing, what types are returned, and how malformed YAML or missing fields are surfaced as errors?",
+          "context": "Like the JSON Schema library, go-yaml is a key external dependency whose failure modes (malformed YAML, type mismatch) directly affect the PRD frontmatter parsing behavior described in the Functional Requirements.",
+          "options": [],
+          "required": true
+        },
+        {
+          "id": "q4",
+          "text": "How are the Python golden-file test fixtures sourced for the Go test suite? How will discrepancies between Go and Python output be detected and reported?",
+          "context": "Byte-for-byte round-trip fidelity is described as a hard requirement, but the mechanism for verifying it is underspecified. This is needed to generate correct test scaffolding.",
+          "options": [
+            "Fixtures are copied into the Go repo as static files",
+            "Fixtures are referenced via a git submodule pointing to the Python repo",
+            "Fixtures are generated at test time by invoking the Python library",
+            "Other (please specify)"
+          ],
+          "required": true
+        },
+        {
+          "id": "q5",
+          "text": "How should deterministic JSON serialization with sorted keys be implemented? Go's `encoding/json` marshals struct fields in declaration order, not alphabetically.",
+          "context": "The PRD requires MarshalJSON to produce 'sorted keys' for byte-for-byte fidelity with Python's output. The mechanism is not specified and is a non-trivial implementation detail that will directly affect how the marshaler is scaffolded.",
+          "options": [
+            "Use a custom marshaler that serializes to map[string]any then sorts keys via encoding/json",
+            "Use a third-party library such as github.com/tidwall/sjson or similar",
+            "Use reflection to dynamically sort struct field names",
+            "Other (please specify)"
+          ],
+          "required": true
+        },
+        {
+          "id": "q6",
+          "text": "Who is the owner of this spec? The `owner` field in the metadata is currently empty.",
+          "context": "An empty owner means there is no designated responsible party for decisions, reviews, and escalations related to this spec.",
+          "options": [],
+          "required": false
+        },
+        {
+          "id": "q7",
+          "text": "How will the Go library track changes to the Python `afspec` library over time? Is there a versioning or compatibility policy (e.g., the Go library pins to a specific Python library version, or tracks main)?",
+          "context": "The byte-for-byte fidelity guarantee creates an implicit coupling between the two libraries. Without a policy, schema changes or new lifecycle states in the Python library could silently break the Go implementation.",
+          "options": [
+            "The Go library pins to a specific tagged version of the Python library",
+            "The Go library tracks the Python library's main branch with CI checks",
+            "Schema files are the sole source of truth; the Go library is considered up-to-date when schemas match",
+            "No formal policy yet \u2014 to be determined"
+          ],
+          "required": false
+        }
+      ]
+    },
+    {
+      "quality": "needs_refinement",
+      "summary": "The PRD is comprehensive and well-structured, covering functional requirements, technical boundaries, external API surface, test strategy, and design decisions in considerable depth. The intent is clear and the non-goals are explicit. However, several gaps remain that could block implementation or cause ambiguity: the Go package layout/internal structure is underspecified, the exact `SpecMeta` and `DependencyGraph` type shapes are not documented, the `BootstrapSpec` lifecycle and `Finalize()` semantics are vague, the subtask state machine transitions are referenced but not enumerated, and performance/concurrency expectations are absent. A few error-type wrapping contracts and the `ValidateStructured` output shape also need clarification.",
+      "gaps": [
+        "Package layout is underspecified \u2014 the PRD states 'internal/ subpackages' but does not enumerate which subpackages exist (e.g., internal/marshal, internal/validate) or which public symbols live in which file/group.",
+        "SpecMeta struct shape is not documented \u2014 fields returned by DiscoverSpecs() are not listed, making it impossible to implement or test without reverse-engineering the Python library.",
+        "DependencyGraph interface is partially specified \u2014 Edges(), Dependencies(), Dependents(), TopologicalSort() are named but their signatures (parameter and return types) are not given.",
+        "BootstrapSpec lifecycle and Finalize() semantics are vague \u2014 it is unclear what 'deferred cross-file validation' means in practice: does Finalize() call ValidateCrossFile()? Does it call Save()? What errors does it return?",
+        "Subtask state machine transitions are referenced ('hardcoded valid transitions as defined in spec-format.md') but not enumerated in the PRD itself, creating an external dependency for implementers.",
+        "ValidateStructured() output shape is undocumented \u2014 the 'categorized map for CLI consumption' is not defined (key names, value types, nesting depth).",
+        "Concurrency and performance expectations are absent \u2014 no guidance on whether LoadSpec, Save, or ValidateSchema are safe for concurrent use, and no latency or throughput targets.",
+        "Error wrapping contract is incomplete \u2014 SpecError as a base type is mentioned but the wrapping chain (e.g., does LoadError always wrap SpecError? Is errors.As expected to work through the chain?) is not spelled out.",
+        "RenderIndividualScoped 'scoped to a target task group's refs' is ambiguous \u2014 the filtering/scoping algorithm is not described.",
+        "Go version '1.26+' appears to be a future/non-existent version \u2014 the latest stable Go is 1.23/1.24; this should be clarified or corrected."
+      ],
+      "questions": [
+        {
+          "id": "q1",
+          "text": "What fields does the SpecMeta struct expose? Please list each field name, its Go type, and where it is sourced from (e.g., PRD frontmatter key, derived value).",
+          "context": "DiscoverSpecs() returns []SpecMeta, but without the struct definition implementers cannot write the function or its tests.",
+          "options": [],
+          "required": true
+        },
+        {
+          "id": "q2",
+          "text": "What are the exact method signatures for DependencyGraph \u2014 specifically Edges(), Dependencies(specID), Dependents(specID), and TopologicalSort()? Include parameter and return types.",
+          "context": "The methods are named in the PRD but their types are unspecified, which is a blocking ambiguity for implementation.",
+          "options": [],
+          "required": true
+        },
+        {
+          "id": "q3",
+          "text": "What does BootstrapSpec.Finalize() do exactly? Does it run ValidateCrossFile(), call Save(), or both? What does it return on success and on failure?",
+          "context": "'Deferred cross-file validation via Finalize()' is the only description given \u2014 implementers need the precise contract.",
+          "options": [
+            "Finalize() runs ValidateCrossFile() only, returns ValidationResult",
+            "Finalize() runs ValidateCrossFile() and then Save(dir), returns (Spec, error)",
+            "Finalize() runs all validation (ValidateSchema + ValidateCrossFile) and Save(dir), returns (Spec, error)",
+            "Other (please describe)"
+          ],
+          "required": true
+        },
+        {
+          "id": "q4",
+          "text": "Please enumerate the valid subtask state transitions (e.g., pending \u2192 in_progress, in_progress \u2192 done, etc.) as they appear in spec-format.md, so they can be embedded directly in the PRD without requiring implementers to consult an external document.",
+          "context": "The PRD defers to spec-format.md for the state machine, but the Go library is supposed to hardcode these transitions. They should be self-contained in the PRD.",
+          "options": [],
+          "required": true
+        },
+        {
+          "id": "q5",
+          "text": "What is the exact shape of the map returned by ValidateStructured()? What are the category keys, and what type are the values (e.g., map[string][]ValidationError, map[string][]string)?",
+          "context": "ValidateStructured() is described as reshaping ValidationResult 'as a categorized map for CLI consumption' but the structure is not defined.",
+          "options": [
+            "map[string][]ValidationError where keys are category names (e.g., 'schema', 'cross_file', 'lifecycle')",
+            "map[string][]string where keys are severity levels (e.g., 'errors', 'warnings')",
+            "map[string]map[string][]string (category \u2192 severity \u2192 messages)",
+            "Other (please describe)"
+          ],
+          "required": true
+        },
+        {
+          "id": "q6",
+          "text": "Are LoadSpec, spec.Save(), and spec.ValidateSchema() intended to be safe for concurrent use from multiple goroutines? If yes, are there any locking requirements on the Spec struct itself?",
+          "context": "Go consumers often use libraries concurrently; without explicit guidance, implementers may make different assumptions about goroutine safety.",
+          "options": [
+            "All public functions are goroutine-safe; Spec is immutable after load",
+            "LoadSpec and ValidateSchema are safe; Save requires external synchronization",
+            "No goroutine-safety guarantees; callers must synchronize",
+            "Other (please describe)"
+          ],
+          "required": false
+        },
+        {
+          "id": "q7",
+          "text": "Can you clarify the intended Go version? Go 1.26 does not yet exist as a stable release. Did you mean Go 1.21, 1.22, 1.23, or a future version pinned in go.mod?",
+          "context": "The Technical Boundaries section states 'Go 1.26+' \u2014 this appears to be a typo or forward-looking statement that needs clarification to avoid confusion.",
+          "options": [
+            "Go 1.21+",
+            "Go 1.22+",
+            "Go 1.23+",
+            "Go 1.24+",
+            "Intentionally forward-looking (go.mod already specifies 1.26 as a pre-release)"
+          ],
+          "required": true
+        },
+        {
+          "id": "q8",
+          "text": "How does RenderIndividualScoped(targetGroup) filter or scope its output? Specifically, which artifacts are included, and how are 'refs' from the target task group used to filter requirements, test entries, or other content?",
+          "context": "The method is listed but its filtering algorithm is not described, making it impossible to implement correctly.",
+          "options": [],
+          "required": false
+        }
+      ]
+    },
+    {
+      "quality": "ready",
+      "summary": "The PRD is now comprehensive and implementation-ready. All previously identified blocking gaps have been resolved: SpecMeta fields are fully enumerated, DependencyGraph method signatures and DependencyEdge fields are specified, Finalize() semantics and return contract are documented precisely, the complete subtask state machine transition table is embedded, ValidateStructured() output shape is defined with key names and value types, the concurrency/goroutine-safety model is explicit, the error wrapping chain is specified with errors.As expectations, RenderIndividualScoped() scoping algorithm is described step by step, and the Go version situation is clarified. The PRD is well-structured, internally consistent, and self-contained for implementation.",
+      "gaps": [
+        "Package layout is still underspecified \u2014 internal/ subpackages are referenced but not enumerated (e.g., internal/marshal, internal/validate). This is a minor gap; implementers can infer a reasonable layout, but an explicit listing would eliminate ambiguity.",
+        "The Status enum values are referenced (draft, active, sealed, superseded, archived) in the lifecycle section but never formally enumerated as a type definition. Adding an explicit value list would make the SpecMeta struct definition fully self-contained."
+      ],
+      "questions": [
+        {
+          "id": "q9",
+          "text": "Can you enumerate the internal/ subpackage names intended for this library (e.g., internal/marshal, internal/validate, internal/render), or should the package layout be left entirely to implementer discretion?",
+          "context": "The PRD states 'internal/ subpackages' but does not list them. While implementers can infer a reasonable layout, an explicit list would prevent different contributors from making inconsistent structural choices.",
+          "options": [
+            "Leave layout to implementer discretion (current approach)",
+            "Enumerate subpackages: internal/marshal, internal/validate, internal/render, internal/lifecycle, internal/discover",
+            "Enumerate a different set of subpackages (please specify)"
+          ],
+          "required": false
+        },
+        {
+          "id": "q10",
+          "text": "Should the Status enum values (draft, active, sealed, superseded, archived) be formally defined as a named Go type with constants in the PRD, or is referencing them by string value sufficient?",
+          "context": "SpecMeta.Status is typed as 'Status (enum)' but the enum values are never formally listed in one place. A table of constants would make the type definition self-contained.",
+          "options": [
+            "List constants explicitly in the PRD: draft, active, sealed, superseded, archived",
+            "Leave as implicit string enum \u2014 values are clear from the lifecycle section",
+            "Define as iota-based int constants with String() method"
+          ],
+          "required": false
+        }
+      ]
+    }
+  ],
+  "qa_exchanges": [
+    {
+      "assessment_index": 0,
+      "answers": {
+        "q1": "Standard library `testing` package + `github.com/google/go-cmp` (already in go.mod). Table-driven tests for unit tests. Golden-file tests for byte-for-byte fidelity verification using the standard `testing` package with `go-cmp` for diff output on mismatch.",
+        "q2": "The Go library uses `github.com/santhosh-tekuri/jsonschema/v6`. Primary API surface: (1) `jsonschema.UnmarshalJSON(io.Reader)` to load a schema from bytes, (2) `compiler.Compile(url)` to compile a schema, (3) `schema.Validate(instance)` to validate a JSON value against the compiled schema \u2014 returns a `*jsonschema.ValidationError` on failure (tree of errors with path and message), nil on success. Schema loading uses `jsonschema.SchemeURLLoader` with embedded bytes. No network access. Errors from invalid schemas surface as Go errors from `Compile()`. Validation failures surface as structured `*ValidationError` values containing `InstanceLocation`, `KeywordLocation`, and `Message` fields.",
+        "q3": "The Go library uses `github.com/goccy/go-yaml`. Primary API surface: (1) `yaml.Unmarshal([]byte, interface{})` to parse YAML frontmatter bytes into a Go struct or `map[string]interface{}`. Returns error on malformed YAML (syntax errors, type mismatches). (2) No YAML marshaling is needed \u2014 the Go library renders PRD frontmatter using a hand-written renderer (fixed field order, explicit value formatting) to match the Python output byte-for-byte, same as the Python implementation does with `_render_yaml_value()` and `_render_prd()`. Failure modes: `yaml.Unmarshal` returns an error containing line/column info for parse failures; missing required fields are detected post-parse by checking the struct.",
+        "q4": "Fixtures are copied into the Go repo as static test files under `testdata/`. These are spec directories (each with prd.md, requirements.json, test_spec.json, tasks.json) extracted from the Python test suite. Discrepancies are detected by loading a fixture, saving it to a temp dir, and diffing the output byte-for-byte against the original using `go-cmp`. Any difference fails the test with a full diff.",
+        "q5": "Use a custom marshaler. The Python implementation serializes Pydantic model fields in declaration order (not alphabetically) and only sorts dict/map keys alphabetically. The Go implementation mirrors this: struct fields are serialized in declaration order (matching the generated Go struct field order, which matches the JSON schema property order), and any map[string]T values are serialized with keys sorted alphabetically. This is implemented via a custom `MarshalJSON` function that walks the struct fields via reflection, preserving declaration order, and recursively sorts map keys. Go's `encoding/json` already preserves struct field order.",
+        "q6": "agent-fox-dev",
+        "q7": "Schema files are the sole source of truth. The schemas/ directory in the Go project root is the canonical copy. When the Python library updates its schemas, the Go library updates by copying the new schemas and regenerating structs via `make json-go`. The Go library version tracks the schema version (currently v1), not the Python library version."
+      },
+      "timestamp": "2026-08-05T09:57:16.853375+00:00"
+    },
+    {
+      "assessment_index": 1,
+      "answers": {
+        "q1": "SpecMeta has four fields: SpecID (string, from PRD frontmatter spec_id), SpecName (string, from spec_name), Status (Status enum, from status), Dir (string, filesystem path to the spec directory). These are populated from prd.md YAML frontmatter during discovery.",
+        "q2": "DependencyGraph method signatures: (1) Edges() []DependencyEdge \u2014 returns all edges. (2) Dependencies(specID string) []DependencyEdge \u2014 returns edges where ToSpec == specID (upstream dependencies). (3) Dependents(specID string) []DependencyEdge \u2014 returns edges where FromSpec == specID (downstream dependents). (4) TopologicalSort() ([]string, error) \u2014 returns spec IDs in topological order using Kahn's algorithm; returns error if a cycle is detected. DependencyEdge has fields: FromSpec, ToSpec (string), FromGroup, ToGroup (int), Relationship (string).",
+        "q3": "Finalize() assembles a Spec from the set artifacts, then runs full validate() (schema + cross-file validation). It does NOT call Save(). Return signature: (*Spec, []ValidationError). On success: returns (spec, empty slice). On failure (missing artifacts or validation errors): returns (nil, errors). Missing artifacts produce ValidationErrors with rule 'bootstrap' and message 'Missing artifact: {name}'.",
+        "q4": "Valid subtask state transitions (from \u2192 to): pending \u2192 queued, pending \u2192 dropped, queued \u2192 in_progress, queued \u2192 pending, queued \u2192 dropped, in_progress \u2192 done, in_progress \u2192 pending_reevaluation, done \u2192 pending_reevaluation, pending_reevaluation \u2192 pending, pending_reevaluation \u2192 dropped. These are the complete set \u2014 no other transitions are allowed.",
+        "q5": "ValidateStructured() returns map[string]any with keys: 'valid' (bool), 'errors' ([]map[string]any), and optionally 'warnings' ([]map[string]any, only present when non-empty). Each error dict has: 'category' ('schema' or 'integrity'), 'message' (string). Schema errors add 'artifact' (string), optionally 'path' and 'value'. Integrity errors add 'check' (rule name string), optionally 'requirement_id'. Each warning dict has: 'category' ('warning'), 'message' (string), 'entity_id' (string).",
+        "q6": "No goroutine-safety guarantees. Callers must synchronize externally. Spec structs are value types \u2014 mutation methods return new copies (matching the Python immutable Pydantic model pattern).",
+        "q7": "Intentionally forward-looking \u2014 go.mod specifies go 1.26.5 as the project's target version. This is the version already set in the existing go.mod file.",
+        "q8": "RenderIndividualScoped(targetGroup int) collects requirement_refs and test_spec_refs from all subtasks in the target task group. It then: (1) Renders requirements filtered to only those matching the collected requirement_refs (checking requirement IDs, acceptance criteria IDs, and edge case IDs). Includes a Spec Overview listing all requirements for context. (2) Renders test spec filtered to only test entries matching the collected test_spec_refs. (3) Renders tasks with the target group in full subtask detail, and all other groups as one-line summaries with completion counts. (4) PRD body and architecture are included as-is. Falls back to full unscoped rendering if the target group has no refs."
+      },
+      "timestamp": "2026-08-05T09:59:42.707106+00:00"
+    }
+  ],
+  "generated_artifacts": [
+    "requirements",
+    "test_spec",
+    "tasks"
+  ],
+  "mode": "interactive"
+}

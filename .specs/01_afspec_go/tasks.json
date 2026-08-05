@@ -1,0 +1,1810 @@
+{
+  "$schema": null,
+  "spec_id": "01",
+  "spec_name": "afspec_go",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "go test ./... -run 'TestLoadSpec|TestSave|TestMarshalJSON|TestValidate|TestLifecycle|TestDiscover|TestDependency|TestSubtask|TestRender|TestEARS|TestBootstrap|TestSchemas|TestIntentHash|TestCoverage|TestCreateSpec|TestError|TestRoundTrip|TestConcurrency' -count=1 -v",
+    "all_tests": "go test ./... -count=1",
+    "linter": "go vet ./..."
+  },
+  "dependencies": [],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write tests: LoadSpec, Save, MarshalJSON, and PRD parsing",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write table-driven tests for LoadSpec happy path and error cases",
+          "details": [
+            "Create testdata/ fixtures: valid spec dir with all required files, dir missing requirements.json, dir with malformed tasks.json",
+            "Write TestLoadSpec in load_test.go covering: successful load returns populated Spec struct, missing required file returns LoadError, malformed JSON returns LoadError wrapping SpecError",
+            "Assert errors.As(err, &LoadError{}) and errors.As(err, &SpecError{}) both return true for load failures"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-2",
+            "TS-01-3",
+            "TS-01-50",
+            "TS-01-51"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-1.2",
+            "01-REQ-1.3",
+            "01-REQ-26.1",
+            "01-REQ-26.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write tests for Spec.Save atomic write and lifecycle guard",
+          "details": [
+            "Write TestSpecSave in save_test.go: save to temp dir, verify all artifact files exist with correct content",
+            "Test atomic write: simulate mid-write failure and verify no partial files remain",
+            "Test lifecycle guard: attempt Save on a sealed spec, assert LifecycleError is returned",
+            "Assert errors.As(err, &SaveError{}) and errors.As(err, &SpecError{}) for save failures"
+          ],
+          "test_spec_refs": [
+            "TS-01-4",
+            "TS-01-5",
+            "TS-01-50",
+            "TS-01-51"
+          ],
+          "requirement_refs": [
+            "01-REQ-2.1",
+            "01-REQ-2.2",
+            "01-REQ-26.1",
+            "01-REQ-26.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write tests for MarshalJSON deterministic serialization",
+          "details": [
+            "Write TestMarshalJSON in marshal_test.go: serialize a struct with map[string]T fields, assert keys are alphabetically sorted",
+            "Test struct field order: serialize a generated Go struct, assert output matches expected JSON with fields in declaration order",
+            "Test round-trip: unmarshal fixture JSON, re-marshal, assert byte-for-byte equality with original"
+          ],
+          "test_spec_refs": [
+            "TS-01-6",
+            "TS-01-7"
+          ],
+          "requirement_refs": [
+            "01-REQ-3.1",
+            "01-REQ-3.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.4",
+          "title": "Write golden-file round-trip fidelity tests",
+          "details": [
+            "Write TestRoundTripFidelity in roundtrip_test.go: for each fixture in testdata/, call LoadSpec then Save to a temp dir",
+            "Use go-cmp to compare each output file byte-for-byte against the original fixture file",
+            "On mismatch, log full go-cmp diff to test output",
+            "Cover prd.md frontmatter rendering, requirements.json, test_spec.json, tasks.json"
+          ],
+          "test_spec_refs": [
+            "TS-01-52",
+            "TS-01-53"
+          ],
+          "requirement_refs": [
+            "01-REQ-27.1",
+            "01-REQ-27.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.5",
+          "title": "Write tests for PRD frontmatter parsing edge cases",
+          "details": [
+            "Write TestPRDParsing in prd_test.go: parse valid frontmatter, assert all fields populated correctly",
+            "Test missing closing --- delimiter: assert behavior matches Python (treat rest of file as frontmatter or return LoadError)",
+            "Test malformed YAML in frontmatter: assert LoadError wrapping SpecError with line/column info",
+            "Test PRD body extraction: assert markdown body after closing --- is captured separately"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-3"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-1.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.6",
+          "title": "Write tests for PRD frontmatter hand-written renderer",
+          "details": [
+            "Write TestPRDRenderer in prd_test.go: render a PRD struct to bytes, assert fixed field order matches Python's _render_prd() output",
+            "Test explicit value formatting: timestamps, strings with special chars, null fields",
+            "Assert rendered output is byte-for-byte identical to Python-generated fixture prd.md files"
+          ],
+          "test_spec_refs": [
+            "TS-01-52",
+            "TS-01-53"
+          ],
+          "requirement_refs": [
+            "01-REQ-27.1",
+            "01-REQ-27.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All test files compile without errors: go build ./...",
+          "Test stubs (panic(\"not implemented\") placeholders) are in place so go test ./... -count=1 runs without build failures",
+          "go vet ./... reports no issues on test files",
+          "Test coverage for 01-REQ-1, 01-REQ-2, 01-REQ-3, 01-REQ-26, 01-REQ-27 acceptance criteria is represented by at least one test case each"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write tests: validation, lifecycle, and error hierarchy",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write tests for Spec.Validate, ValidateSchema, and ValidateCrossFile",
+          "details": [
+            "Write TestSpecValidate in validate_test.go: call Validate() on a valid fixture, assert ValidationResult.Valid == true and Errors is empty",
+            "Test ValidateSchema: load a fixture with a schema violation (e.g. missing required field), assert ValidationResult.Errors contains an entry with artifact and path",
+            "Test ValidateCrossFile: create a spec with a dangling requirement_ref, assert ValidationResult.Errors contains an integrity error with check and requirement_id fields"
+          ],
+          "test_spec_refs": [
+            "TS-01-8",
+            "TS-01-9",
+            "TS-01-10",
+            "TS-01-11",
+            "TS-01-12",
+            "TS-01-13"
+          ],
+          "requirement_refs": [
+            "01-REQ-4.1",
+            "01-REQ-4.2",
+            "01-REQ-5.1",
+            "01-REQ-5.2",
+            "01-REQ-6.1",
+            "01-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for ValidateCrossSpec and ValidateStructured",
+          "details": [
+            "Write TestValidateCrossSpec in validate_test.go: pass two specs with a conflicting glossary term, assert error returned",
+            "Write TestValidateStructured: call ValidateStructured() on a spec with both schema and integrity errors, assert map structure matches spec (valid bool, errors array with category/message/artifact/check fields, warnings array with entity_id)",
+            "Test ValidateStructured on a valid spec: assert valid=true, errors=[], warnings absent or empty"
+          ],
+          "test_spec_refs": [
+            "TS-01-14",
+            "TS-01-15",
+            "TS-01-16",
+            "TS-01-17",
+            "TS-01-18"
+          ],
+          "requirement_refs": [
+            "01-REQ-7.1",
+            "01-REQ-8.1",
+            "01-REQ-8.2",
+            "01-REQ-8.3",
+            "01-REQ-8.4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for Spec.Transition and ValidTransition",
+          "details": [
+            "Write TestSpecTransition in lifecycle_test.go: transition draft→active, assert returned Spec has updated status and file is persisted",
+            "Test invalid transition (active→draft): assert LifecycleError returned, errors.As(err, &LifecycleError{}) and errors.As(err, &SpecError{}) both true",
+            "Write TestValidTransition: table-driven test covering all valid and invalid transitions, assert pure function returns correct bool with no side effects"
+          ],
+          "test_spec_refs": [
+            "TS-01-19",
+            "TS-01-20",
+            "TS-01-50",
+            "TS-01-51"
+          ],
+          "requirement_refs": [
+            "01-REQ-9.1",
+            "01-REQ-9.2",
+            "01-REQ-26.1",
+            "01-REQ-26.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.4",
+          "title": "Write tests for Spec.Supersede and MoveToArchive",
+          "details": [
+            "Write TestSpecSupersede in lifecycle_test.go: call Supersede on a sealed spec, assert status becomes superseded and PRD body has deprecation banner prepended",
+            "Test Supersede on non-sealed spec: assert LifecycleError",
+            "Write TestMoveToArchive: call MoveToArchive on an active spec dir, assert directory moved to {root}/archive/, spec status is archived"
+          ],
+          "test_spec_refs": [
+            "TS-01-21",
+            "TS-01-22"
+          ],
+          "requirement_refs": [
+            "01-REQ-10.1",
+            "01-REQ-11.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.5",
+          "title": "Write tests for error type hierarchy and errors.As traversal",
+          "details": [
+            "Write TestErrorHierarchy in errors_test.go: for each specific error type (LoadError, SaveError, LifecycleError, IntentError, BootstrapError), assert errors.As(err, &SpecError{}) returns true",
+            "Assert errors.As(err, &specificType{}) returns true for the concrete type",
+            "Assert errors.Is behavior is consistent with wrapping chain",
+            "Test that a non-afspec error does not satisfy errors.As(err, &SpecError{})"
+          ],
+          "test_spec_refs": [
+            "TS-01-50",
+            "TS-01-51"
+          ],
+          "requirement_refs": [
+            "01-REQ-26.1",
+            "01-REQ-26.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.6",
+          "title": "Write tests for concurrency model documentation and immutability",
+          "details": [
+            "Write TestSpecImmutability in concurrency_test.go: call a mutation method on a Spec, assert original Spec is unchanged and returned value is a new copy",
+            "Document in test that no goroutine-safety guarantees are provided (comment-level assertion)",
+            "Test that mutation methods return (*Spec, error) with new copies, not modifying receiver in place"
+          ],
+          "test_spec_refs": [
+            "TS-01-54",
+            "TS-01-55"
+          ],
+          "requirement_refs": [
+            "01-REQ-28.1",
+            "01-REQ-28.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All test files in validate_test.go, lifecycle_test.go, errors_test.go, concurrency_test.go compile: go build ./...",
+          "go vet ./... reports no issues",
+          "Test stubs allow go test ./... -count=1 to run without build failures",
+          "Requirements 01-REQ-4 through 01-REQ-11, 01-REQ-26, 01-REQ-28 each have at least one corresponding test case"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Write tests: discovery, dependency graph, subtask state machine",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write tests for DiscoverSpecs and LoadSpecLandscape",
+          "details": [
+            "Write TestDiscoverSpecs in discover_test.go: create a temp root with two valid spec dirs (01_foo, 02_bar) and one non-spec dir, assert DiscoverSpecs returns two SpecMeta entries with correct SpecID, SpecName, Status, Dir fields",
+            "Test DiscoverSpecs with no spec dirs: assert empty slice returned",
+            "Write TestLoadSpecLandscape: call with includeArchive=false, assert archived specs excluded; call with includeArchive=true, assert all specs included; assert currentSpecID is excluded from results"
+          ],
+          "test_spec_refs": [
+            "TS-01-23",
+            "TS-01-30",
+            "TS-01-31"
+          ],
+          "requirement_refs": [
+            "01-REQ-12.1",
+            "01-REQ-15.1",
+            "01-REQ-15.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write tests for BuildDependencyGraph and DependencyGraph methods",
+          "details": [
+            "Write TestBuildDependencyGraph in graph_test.go: build graph from two SpecMeta entries with cross-spec dependency in tasks.json, assert Edges() returns correct DependencyEdge structs",
+            "Write TestDependencyGraphDependencies: call Dependencies(specID) and assert returns only edges where ToSpec == specID",
+            "Write TestDependencyGraphDependents: call Dependents(specID) and assert returns only edges where FromSpec == specID",
+            "Write TestTopologicalSort: assert correct order for a DAG; assert error returned when cycle detected (e.g. A→B→A)"
+          ],
+          "test_spec_refs": [
+            "TS-01-24",
+            "TS-01-25",
+            "TS-01-26"
+          ],
+          "requirement_refs": [
+            "01-REQ-13.1",
+            "01-REQ-13.2",
+            "01-REQ-13.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Write tests for IsSpecDirName and ParseSpecDirName",
+          "details": [
+            "Write TestIsSpecDirName in dirname_test.go: table-driven test with valid names (01_foo, 99_bar_baz), invalid names (foo, 1_foo, 01foo, 01_), assert correct bool returned",
+            "Write TestParseSpecDirName: valid input 01_my_spec returns (\"01\", \"my_spec\", nil); invalid input returns error",
+            "Test boundary: two-digit prefix only (01 through 99), snake_case body with underscores"
+          ],
+          "test_spec_refs": [
+            "TS-01-27",
+            "TS-01-28",
+            "TS-01-29"
+          ],
+          "requirement_refs": [
+            "01-REQ-14.1",
+            "01-REQ-14.2",
+            "01-REQ-14.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.4",
+          "title": "Write tests for Tasks.TransitionSubtask state machine",
+          "details": [
+            "Write TestTransitionSubtask in subtask_test.go: table-driven test covering all 10 valid transitions from the PRD table, assert each returns updated Tasks with new state",
+            "Test all invalid transitions (e.g. pending→done, done→queued): assert LifecycleError returned",
+            "Test TransitionSubtask with non-existent subtask ID: assert error returned",
+            "Assert returned Tasks is a new copy (immutability)"
+          ],
+          "test_spec_refs": [
+            "TS-01-32"
+          ],
+          "requirement_refs": [
+            "01-REQ-16.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.5",
+          "title": "Write tests for Tasks.CompleteSubtaskStates and ResetSubtaskStates",
+          "details": [
+            "Write TestCompleteSubtaskStates in subtask_test.go: call with group IDs [1, 2], assert all subtasks in those groups have state=done regardless of prior state",
+            "Write TestResetSubtaskStates: call with group IDs [1], assert all subtasks in group 1 have state=pending",
+            "Test with empty groupIDs slice: assert no subtasks modified",
+            "Assert both methods return new Tasks copies (immutability)"
+          ],
+          "test_spec_refs": [
+            "TS-01-33",
+            "TS-01-34"
+          ],
+          "requirement_refs": [
+            "01-REQ-17.1",
+            "01-REQ-17.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "All test files in discover_test.go, graph_test.go, dirname_test.go, subtask_test.go compile: go build ./...",
+          "go vet ./... reports no issues",
+          "go test ./... -count=1 runs without build failures (stubs in place)",
+          "Requirements 01-REQ-12 through 01-REQ-17 each have at least one corresponding test case"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "tests",
+      "title": "Write tests: rendering, EARS builders, BootstrapSpec, and utilities",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Write tests for RenderCombined, RenderIndividual, and component Render methods",
+          "details": [
+            "Write TestRenderCombined in render_test.go: call RenderCombined() on a fixture spec, assert output is a non-empty string containing all artifact sections",
+            "Write TestRenderIndividual: assert returned map[string]string has keys for each artifact (prd.md, requirements.md, etc.) with non-empty values",
+            "Write TestRequirementsRender, TestTestSpecRender, TestTasksRender: assert each produces valid Markdown with checkbox-formatted subtasks for Tasks"
+          ],
+          "test_spec_refs": [
+            "TS-01-35",
+            "TS-01-36"
+          ],
+          "requirement_refs": [
+            "01-REQ-18.1",
+            "01-REQ-18.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Write tests for RenderIndividualScoped",
+          "details": [
+            "Write TestRenderIndividualScoped in render_test.go: call with a target group that has requirement_refs and test_spec_refs, assert requirements output contains only referenced requirements",
+            "Test scoped test spec: assert only referenced test entries appear in test spec output",
+            "Test scoped tasks: assert target group has full subtask detail, other groups show one-line completion summaries",
+            "Test fallback: call with a group that has no refs, assert output equals full unscoped rendering"
+          ],
+          "test_spec_refs": [
+            "TS-01-37",
+            "TS-01-38",
+            "TS-01-39"
+          ],
+          "requirement_refs": [
+            "01-REQ-19.1",
+            "01-REQ-19.2",
+            "01-REQ-19.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.3",
+          "title": "Write tests for EARS Criterion Builders and RenderEARSSentence",
+          "details": [
+            "Write TestEARSBuilders in ears_test.go: call each of the 6 constructors (UbiquitousCriterion, EventDrivenCriterion, ComplexEventCriterion, StateDrivenCriterion, UnwantedCriterion, OptionalCriterion), assert returned Criterion has correct fields populated",
+            "Write TestRenderEARSSentence: for each EARS type, assert RenderEARSSentence() produces the expected natural-language sentence pattern",
+            "Test with empty/missing optional fields to ensure no panics"
+          ],
+          "test_spec_refs": [
+            "TS-01-40",
+            "TS-01-41"
+          ],
+          "requirement_refs": [
+            "01-REQ-20.1",
+            "01-REQ-20.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.4",
+          "title": "Write tests for BootstrapSpec and Finalize",
+          "details": [
+            "Write TestBootstrapSpec in bootstrap_test.go: call NewBootstrapSpec(\"01\", \"test\"), set all required artifacts, call Finalize(), assert (*Spec, nil) returned",
+            "Test Finalize with missing required artifact: assert (nil, []ValidationError) with entry having rule=\"bootstrap\" and message=\"Missing artifact: {name}\"",
+            "Test Finalize with schema violation in an artifact: assert (nil, errors) with validation errors",
+            "Test that Finalize does not call Save (no files written to disk)"
+          ],
+          "test_spec_refs": [
+            "TS-01-42",
+            "TS-01-43",
+            "TS-01-44",
+            "TS-01-45"
+          ],
+          "requirement_refs": [
+            "01-REQ-21.1",
+            "01-REQ-21.2",
+            "01-REQ-21.3",
+            "01-REQ-21.4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.5",
+          "title": "Write tests for Schemas, ComputeIntentHash, ComputeCoverage, and CreateSpec",
+          "details": [
+            "Write TestSchemas in schemas_test.go: call Schemas(), assert returned map has expected schema file keys (e.g. requirements.json, tasks.json) with non-empty byte slices",
+            "Write TestComputeIntentHash: call with a PRD body containing ## Intent section, assert returned hash is a 64-char hex SHA-256 string; call with body missing ## Intent, assert IntentError returned",
+            "Write TestComputeCoverage: call on a TestSpec with known test entries, assert coverage map correctly identifies covered and uncovered requirements",
+            "Write TestCreateSpec: assert returned Spec has draft status, non-nil sub-artifacts, and correct specID/specName"
+          ],
+          "test_spec_refs": [
+            "TS-01-46",
+            "TS-01-47",
+            "TS-01-48",
+            "TS-01-49"
+          ],
+          "requirement_refs": [
+            "01-REQ-22.1",
+            "01-REQ-23.1",
+            "01-REQ-24.1",
+            "01-REQ-25.1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "All test files in render_test.go, ears_test.go, bootstrap_test.go, schemas_test.go compile: go build ./...",
+          "go vet ./... reports no issues",
+          "go test ./... -count=1 runs without build failures (stubs in place)",
+          "Requirements 01-REQ-18 through 01-REQ-25 each have at least one corresponding test case"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement core data types, error hierarchy, and project scaffolding",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Scaffold Go module, package structure, and embedded schemas",
+          "details": [
+            "Verify go.mod has module path github.com/agent-fox-dev/spec-format and Go 1.26.5",
+            "Create package afspec in project root; create internal/ subpackages: internal/prd, internal/marshal, internal/validate, internal/lifecycle, internal/render, internal/discover",
+            "Copy JSON Schema files to schemas/ directory",
+            "Add //go:embed schemas/*.json directive in schemas.go; implement Schemas() returning map[string][]byte"
+          ],
+          "test_spec_refs": [
+            "TS-01-46"
+          ],
+          "requirement_refs": [
+            "01-REQ-22.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Define SpecError base type and all specific error types",
+          "details": [
+            "Define SpecError struct with Message string and Cause error fields; implement Error() and Unwrap() methods",
+            "Define LoadError, SaveError, LifecycleError, IntentError, BootstrapError each embedding or wrapping SpecError",
+            "Implement Unwrap() on each specific type to return the wrapped SpecError, enabling errors.As traversal",
+            "Add constructor functions: NewLoadError(msg string, cause error) *LoadError, etc."
+          ],
+          "test_spec_refs": [
+            "TS-01-50",
+            "TS-01-51"
+          ],
+          "requirement_refs": [
+            "01-REQ-26.1",
+            "01-REQ-26.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Define Spec, SpecMeta, ValidationResult, and sub-artifact structs",
+          "details": [
+            "Define Spec struct with fields: PRD, Requirements, TestSpec, Tasks, Architecture (optional string pointer)",
+            "Define SpecMeta struct with SpecID, SpecName, Status (Status enum), Dir string fields",
+            "Define ValidationResult struct with Valid bool, Errors []ValidationError, Warnings []ValidationWarning",
+            "Define ValidationError with Category, Message, Artifact, Path, Value, Check, RequirementID fields (all string, optional via pointer or zero value)",
+            "Define Status type as string enum with constants: Draft, Active, Sealed, Superseded, Archived"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-8",
+            "TS-01-15"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-4.1",
+            "01-REQ-8.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.4",
+          "title": "Implement CreateSpec and NewBootstrapSpec constructors",
+          "details": [
+            "Implement CreateSpec(specID, specName string) *Spec: initialize all sub-artifacts with empty/default values, set status to Draft",
+            "Implement NewBootstrapSpec(specID, specName string) *BootstrapSpec: initialize struct with specID and specName, nil artifact fields",
+            "Add setter methods on BootstrapSpec for each artifact type (SetRequirements, SetTestSpec, SetTasks, SetPRD)",
+            "Implement Finalize() (*Spec, []ValidationError) with missing-artifact detection producing rule=\"bootstrap\" errors"
+          ],
+          "test_spec_refs": [
+            "TS-01-42",
+            "TS-01-43",
+            "TS-01-44",
+            "TS-01-45",
+            "TS-01-49"
+          ],
+          "requirement_refs": [
+            "01-REQ-21.1",
+            "01-REQ-21.2",
+            "01-REQ-21.3",
+            "01-REQ-21.4",
+            "01-REQ-25.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.5",
+          "title": "Implement IsSpecDirName, ParseSpecDirName, and ComputeIntentHash",
+          "details": [
+            "Implement IsSpecDirName(name string) bool using regexp matching ^[0-9]{2}_[a-z][a-z0-9_]*$",
+            "Implement ParseSpecDirName(name string) (id, snakeName string, err error): split on first underscore, validate both parts",
+            "Implement ComputeIntentHash(body string) (string, error): extract ## Intent section via regex, normalize whitespace, compute SHA-256, return 64-char hex string; return IntentError if section missing"
+          ],
+          "test_spec_refs": [
+            "TS-01-27",
+            "TS-01-28",
+            "TS-01-29",
+            "TS-01-47"
+          ],
+          "requirement_refs": [
+            "01-REQ-14.1",
+            "01-REQ-14.2",
+            "01-REQ-14.3",
+            "01-REQ-23.1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "go build ./... succeeds with no errors",
+          "go vet ./... reports no issues",
+          "go test ./... -run 'TestCreateSpec|TestBootstrapSpec|TestIsSpecDirName|TestParseSpecDirName|TestComputeIntentHash|TestSchemas|TestErrorHierarchy' -count=1 passes",
+          "Requirements 01-REQ-14, 01-REQ-22, 01-REQ-23, 01-REQ-25, 01-REQ-26 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement LoadSpec, PRD parsing, and MarshalJSON",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Implement PRD frontmatter parser using go-yaml",
+          "details": [
+            "In internal/prd/parser.go: implement ParsePRD(data []byte) (*PRDFrontmatter, body string, error)",
+            "Split on --- delimiters: handle missing closing delimiter to match Python behavior (treat remainder as frontmatter)",
+            "Use yaml.Unmarshal to parse frontmatter bytes into PRDFrontmatter struct",
+            "Wrap yaml.Unmarshal errors in LoadError with line/column info; detect missing required fields post-parse and wrap in LoadError"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-3"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-1.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement PRD hand-written frontmatter renderer",
+          "details": [
+            "In internal/prd/renderer.go: implement RenderPRD(frontmatter *PRDFrontmatter, body string) []byte",
+            "Write fields in fixed order matching Python's _render_prd(): spec_id, spec_name, title, status, created_at, updated_at, owner, source, schema_version",
+            "Implement _renderYAMLValue equivalent: strings quoted only when necessary, timestamps as ISO-8601, null as empty string",
+            "Do NOT use yaml.Marshal — hand-write each field line"
+          ],
+          "test_spec_refs": [
+            "TS-01-52",
+            "TS-01-53"
+          ],
+          "requirement_refs": [
+            "01-REQ-27.1",
+            "01-REQ-27.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.3",
+          "title": "Implement MarshalJSON deterministic serializer",
+          "details": [
+            "In internal/marshal/marshal.go: implement MarshalJSON(v any) ([]byte, error)",
+            "Use reflection to walk struct fields in declaration order (matching encoding/json behavior)",
+            "For map[string]T fields: collect keys, sort alphabetically, serialize in sorted order",
+            "Recursively apply sorting to nested maps; delegate to encoding/json for primitive types and slices"
+          ],
+          "test_spec_refs": [
+            "TS-01-6",
+            "TS-01-7"
+          ],
+          "requirement_refs": [
+            "01-REQ-3.1",
+            "01-REQ-3.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.4",
+          "title": "Implement LoadSpec function",
+          "details": [
+            "In load.go: implement LoadSpec(dir string) (*Spec, error)",
+            "Read and parse prd.md using ParsePRD; read and unmarshal requirements.json, test_spec.json, tasks.json using encoding/json",
+            "Read architecture.md if present (optional); set Architecture field to nil if absent",
+            "Return LoadError wrapping SpecError for missing required files or malformed content"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-2",
+            "TS-01-3"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-1.2",
+            "01-REQ-1.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.5",
+          "title": "Implement golden-file round-trip fidelity verification",
+          "details": [
+            "Add testdata/ fixtures extracted from Python test suite (at least 2 complete spec directories)",
+            "Ensure TestRoundTripFidelity in roundtrip_test.go passes: LoadSpec → Save → byte-for-byte comparison using go-cmp",
+            "Fix any formatting discrepancies found between Go renderer and Python output",
+            "Document any known edge cases in a comment in roundtrip_test.go"
+          ],
+          "test_spec_refs": [
+            "TS-01-52",
+            "TS-01-53"
+          ],
+          "requirement_refs": [
+            "01-REQ-27.1",
+            "01-REQ-27.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "go test ./... -run 'TestLoadSpec|TestPRDParsing|TestPRDRenderer|TestMarshalJSON|TestRoundTripFidelity' -count=1 passes",
+          "go vet ./... reports no issues",
+          "Round-trip fidelity test passes for all testdata/ fixtures with zero byte-level differences",
+          "Requirements 01-REQ-1, 01-REQ-3, 01-REQ-27 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement Spec.Save and atomic file writes",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Implement atomic write helper using write-to-temp-then-rename",
+          "details": [
+            "In internal/atomicwrite/atomicwrite.go: implement WriteFileAtomic(path string, data []byte, perm os.FileMode) error",
+            "Write data to a temp file in the same directory as path (same filesystem, ensures rename is atomic)",
+            "Call os.Rename to move temp file to final path; clean up temp file on error",
+            "Handle edge cases: directory does not exist (return error), permission denied (return error)"
+          ],
+          "test_spec_refs": [
+            "TS-01-4"
+          ],
+          "requirement_refs": [
+            "01-REQ-2.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Implement Spec.Save with lifecycle guard",
+          "details": [
+            "In save.go: implement (s *Spec) Save(dir string) error",
+            "Check lifecycle guard: if s.PRD.Frontmatter.Status == Sealed, return LifecycleError",
+            "Serialize each artifact using MarshalJSON (for JSON files) and RenderPRD (for prd.md)",
+            "Write each file atomically using WriteFileAtomic; return SaveError wrapping SpecError on any write failure"
+          ],
+          "test_spec_refs": [
+            "TS-01-4",
+            "TS-01-5"
+          ],
+          "requirement_refs": [
+            "01-REQ-2.1",
+            "01-REQ-2.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.3",
+          "title": "Implement Spec.Transition and ValidTransition",
+          "details": [
+            "In lifecycle.go: implement ValidTransition(current, target Status) bool with hardcoded allowed transitions: draft→active, active→sealed, sealed→superseded, any→archived",
+            "Implement (s *Spec) Transition(target Status, dir string) (*Spec, error): validate transition via ValidTransition, update status in new Spec copy, call Save, return updated Spec",
+            "Return LifecycleError wrapping SpecError for invalid transitions"
+          ],
+          "test_spec_refs": [
+            "TS-01-19",
+            "TS-01-20"
+          ],
+          "requirement_refs": [
+            "01-REQ-9.1",
+            "01-REQ-9.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.4",
+          "title": "Implement Spec.Supersede and MoveToArchive",
+          "details": [
+            "Implement (s *Spec) Supersede(supersedingSpecID string, dir string) (*Spec, error): assert current status is Sealed (else LifecycleError), set status to Superseded, prepend deprecation banner to PRD body, call Save",
+            "Implement MoveToArchive(specDir, root string) error: call Transition to Archived if not already, use os.Rename to move specDir to filepath.Join(root, \"archive\", filepath.Base(specDir))",
+            "Create archive/ directory if it does not exist"
+          ],
+          "test_spec_refs": [
+            "TS-01-21",
+            "TS-01-22"
+          ],
+          "requirement_refs": [
+            "01-REQ-10.1",
+            "01-REQ-11.1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "go test ./... -run 'TestSpecSave|TestSpecTransition|TestValidTransition|TestSpecSupersede|TestMoveToArchive' -count=1 passes",
+          "go vet ./... reports no issues",
+          "Atomic write test: no partial files remain after simulated failure",
+          "Requirements 01-REQ-2, 01-REQ-9, 01-REQ-10, 01-REQ-11 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "standard",
+      "title": "Implement validation: schema, cross-file, cross-spec, and structured output",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Implement JSON Schema validation using jsonschema/v6 with embedded schemas",
+          "details": [
+            "In internal/validate/schema.go: implement a SchemeURLLoader that serves embedded schema bytes from Schemas() map",
+            "At package init or first use: compile all schemas using compiler.Compile(url) with the custom loader; wrap compile errors in LoadError",
+            "Implement validateArtifactSchema(artifact any, schemaName string) []ValidationError: marshal artifact to JSON, call schema.Validate(), map *jsonschema.ValidationError tree to ValidationError entries with artifact, path, message fields"
+          ],
+          "test_spec_refs": [
+            "TS-01-10",
+            "TS-01-11"
+          ],
+          "requirement_refs": [
+            "01-REQ-5.1",
+            "01-REQ-5.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Implement Spec.ValidateSchema with EARS and task group structural rules",
+          "details": [
+            "In validate.go: implement (s *Spec) ValidateSchema() ValidationResult",
+            "Call validateArtifactSchema for each artifact (requirements.json, test_spec.json, tasks.json)",
+            "Add EARS constraint checks: each criterion must have a valid EARS type field",
+            "Add task group structure rules: first group must be kind=tests, last must be kind=wiring_verification, each group has exactly one verification subtask"
+          ],
+          "test_spec_refs": [
+            "TS-01-10",
+            "TS-01-11"
+          ],
+          "requirement_refs": [
+            "01-REQ-5.1",
+            "01-REQ-5.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Implement Spec.ValidateCrossFile and Spec.Validate",
+          "details": [
+            "Implement (s *Spec) ValidateCrossFile() ValidationResult: check dangling requirement_refs (subtask refs not in requirements), coverage gaps (requirements with no test coverage), ID format validation (all IDs match expected patterns), glossary completeness",
+            "Implement (s *Spec) Validate() ValidationResult: call ValidateSchema() and ValidateCrossFile(), merge results; Valid=true only when Errors is empty"
+          ],
+          "test_spec_refs": [
+            "TS-01-8",
+            "TS-01-9",
+            "TS-01-12",
+            "TS-01-13"
+          ],
+          "requirement_refs": [
+            "01-REQ-4.1",
+            "01-REQ-4.2",
+            "01-REQ-6.1",
+            "01-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.4",
+          "title": "Implement ValidateCrossSpec and Spec.ValidateStructured",
+          "details": [
+            "Implement ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult: check API symbol consistency, glossary conflicts, contract mismatches across specs",
+            "Implement (s *Spec) ValidateStructured() map[string]any: call Validate(), reshape ValidationResult into the specified map structure with valid bool, errors []map[string]any (with category/message/artifact/path/value/check/requirement_id), warnings []map[string]any (with category/message/entity_id, present only when non-empty)"
+          ],
+          "test_spec_refs": [
+            "TS-01-14",
+            "TS-01-15",
+            "TS-01-16",
+            "TS-01-17",
+            "TS-01-18"
+          ],
+          "requirement_refs": [
+            "01-REQ-7.1",
+            "01-REQ-8.1",
+            "01-REQ-8.2",
+            "01-REQ-8.3",
+            "01-REQ-8.4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.5",
+          "title": "Integrate Finalize validation in BootstrapSpec",
+          "details": [
+            "In bootstrap.go: implement Finalize() (*Spec, []ValidationError): check each required artifact is set (PRD, Requirements, TestSpec, Tasks); for each missing artifact, append ValidationError{Rule: \"bootstrap\", Message: \"Missing artifact: {name}\"}",
+            "If no missing artifacts, assemble Spec and call Validate(); if validation errors, return (nil, errors)",
+            "On success return (spec, nil); ensure Save is never called"
+          ],
+          "test_spec_refs": [
+            "TS-01-42",
+            "TS-01-43",
+            "TS-01-44",
+            "TS-01-45"
+          ],
+          "requirement_refs": [
+            "01-REQ-21.1",
+            "01-REQ-21.2",
+            "01-REQ-21.3",
+            "01-REQ-21.4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "go test ./... -run 'TestSpecValidate|TestValidateSchema|TestValidateCrossFile|TestValidateCrossSpec|TestValidateStructured|TestBootstrapSpec' -count=1 passes",
+          "go vet ./... reports no issues",
+          "Schema validation correctly rejects fixtures with known violations",
+          "Requirements 01-REQ-4 through 01-REQ-8, 01-REQ-21 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "standard",
+      "title": "Implement discovery, dependency graph, and subtask state machine",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Implement DiscoverSpecs and LoadSpecLandscape",
+          "details": [
+            "In discover.go: implement DiscoverSpecs(root string) ([]SpecMeta, error): read root directory entries, filter by IsSpecDirName, parse PRD frontmatter from each to populate SpecMeta",
+            "Implement LoadSpecLandscape(root string, includeArchive bool, currentSpecID string) ([]SpecMeta, error): call DiscoverSpecs, filter out currentSpecID, optionally filter out archived specs",
+            "Return empty slice (not nil) when no specs found"
+          ],
+          "test_spec_refs": [
+            "TS-01-23",
+            "TS-01-30",
+            "TS-01-31"
+          ],
+          "requirement_refs": [
+            "01-REQ-12.1",
+            "01-REQ-15.1",
+            "01-REQ-15.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Implement BuildDependencyGraph and DependencyGraph methods",
+          "details": [
+            "Define DependencyEdge struct with FromSpec, ToSpec string, FromGroup, ToGroup int, Relationship string",
+            "Define DependencyGraph struct with edges []DependencyEdge; implement Edges(), Dependencies(specID string), Dependents(specID string) methods",
+            "Implement BuildDependencyGraph(metas []SpecMeta, root string) (*DependencyGraph, error): for each meta, load tasks.json, extract cross-spec dependency declarations, build edges",
+            "Implement TopologicalSort() ([]string, error) using Kahn's algorithm; return error with cycle description if cycle detected"
+          ],
+          "test_spec_refs": [
+            "TS-01-24",
+            "TS-01-25",
+            "TS-01-26"
+          ],
+          "requirement_refs": [
+            "01-REQ-13.1",
+            "01-REQ-13.2",
+            "01-REQ-13.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Implement Tasks.TransitionSubtask state machine",
+          "details": [
+            "In subtask.go: define the complete transition table as a map[SubtaskState][]SubtaskState with all 10 valid transitions from the PRD",
+            "Implement (t *Tasks) TransitionSubtask(subtaskID string, target SubtaskState) (*Tasks, error): find subtask by ID, check transition validity, return new Tasks copy with updated state",
+            "Return LifecycleError wrapping SpecError for invalid transitions or unknown subtask IDs"
+          ],
+          "test_spec_refs": [
+            "TS-01-32"
+          ],
+          "requirement_refs": [
+            "01-REQ-16.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.4",
+          "title": "Implement Tasks.CompleteSubtaskStates and ResetSubtaskStates",
+          "details": [
+            "Implement (t *Tasks) CompleteSubtaskStates(groupIDs []int) *Tasks: deep-copy Tasks, for each group in groupIDs set all subtask states to done (bypassing state machine)",
+            "Implement (t *Tasks) ResetSubtaskStates(groupIDs []int) *Tasks: deep-copy Tasks, for each group in groupIDs set all subtask states to pending",
+            "Handle empty groupIDs slice gracefully (return copy with no changes)"
+          ],
+          "test_spec_refs": [
+            "TS-01-33",
+            "TS-01-34"
+          ],
+          "requirement_refs": [
+            "01-REQ-17.1",
+            "01-REQ-17.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.5",
+          "title": "Implement TestSpec.ComputeCoverage",
+          "details": [
+            "In coverage.go: implement (ts *TestSpec) ComputeCoverage(req *Requirements) CoverageResult",
+            "Scan all test entries, collect requirement IDs, property IDs, and path IDs they reference",
+            "Build CoverageResult with covered and uncovered sets for requirements, properties, and paths",
+            "Return structured result usable for gap reporting"
+          ],
+          "test_spec_refs": [
+            "TS-01-48"
+          ],
+          "requirement_refs": [
+            "01-REQ-24.1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "go test ./... -run 'TestDiscoverSpecs|TestLoadSpecLandscape|TestBuildDependencyGraph|TestTopologicalSort|TestTransitionSubtask|TestCompleteSubtaskStates|TestResetSubtaskStates|TestComputeCoverage' -count=1 passes",
+          "go vet ./... reports no issues",
+          "Cycle detection test: TopologicalSort returns error for A→B→A graph",
+          "Requirements 01-REQ-12 through 01-REQ-17, 01-REQ-24 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "standard",
+      "title": "Implement rendering: combined, individual, scoped, and EARS builders",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Implement Requirements.Render, TestSpec.Render, and Tasks.Render",
+          "details": [
+            "In internal/render/render.go: implement (r *Requirements) Render() string: produce Markdown with requirement IDs, titles, acceptance criteria, and edge cases",
+            "Implement (ts *TestSpec) Render() string: produce Markdown table or list of test cases with IDs and requirement links",
+            "Implement (t *Tasks) Render() string: produce Markdown with task groups and checkbox-formatted subtasks (- [x] for done, - [ ] for others)"
+          ],
+          "test_spec_refs": [
+            "TS-01-35",
+            "TS-01-36"
+          ],
+          "requirement_refs": [
+            "01-REQ-18.1",
+            "01-REQ-18.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Implement Spec.RenderCombined and Spec.RenderIndividual",
+          "details": [
+            "Implement (s *Spec) RenderCombined() string: concatenate PRD body, Requirements.Render(), TestSpec.Render(), Tasks.Render(), and Architecture (if present) with section headers",
+            "Implement (s *Spec) RenderIndividual() map[string]string: return map with keys prd.md, requirements.md, test_spec.md, tasks.md, architecture.md (if present), each mapped to its rendered Markdown"
+          ],
+          "test_spec_refs": [
+            "TS-01-35",
+            "TS-01-36"
+          ],
+          "requirement_refs": [
+            "01-REQ-18.1",
+            "01-REQ-18.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.3",
+          "title": "Implement Spec.RenderIndividualScoped",
+          "details": [
+            "Implement (s *Spec) RenderIndividualScoped(targetGroup int) map[string]string",
+            "Step 1: collect all requirement_refs and test_spec_refs from every subtask in targetGroup",
+            "Step 2: if no refs found, fall back to RenderIndividual()",
+            "Step 3: filter requirements to only those whose IDs/criteria/edge-case IDs appear in requirement_refs; include Spec Overview listing all requirements",
+            "Step 4: filter test spec to only entries in test_spec_refs; Step 5: render target group with full detail, other groups as one-line completion summaries; PRD body and architecture included as-is"
+          ],
+          "test_spec_refs": [
+            "TS-01-37",
+            "TS-01-38",
+            "TS-01-39"
+          ],
+          "requirement_refs": [
+            "01-REQ-19.1",
+            "01-REQ-19.2",
+            "01-REQ-19.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.4",
+          "title": "Implement EARS Criterion Builders and Criterion.RenderEARSSentence",
+          "details": [
+            "In ears.go: implement UbiquitousCriterion(id, system, action string) *Criterion",
+            "Implement EventDrivenCriterion(id, trigger, system, action string) *Criterion",
+            "Implement ComplexEventCriterion(id, trigger, condition, system, action string) *Criterion",
+            "Implement StateDrivenCriterion(id, state, system, action string) *Criterion",
+            "Implement UnwantedCriterion(id, errorCondition, system, action string) *Criterion",
+            "Implement OptionalCriterion(id, feature, system, action string) *Criterion",
+            "Implement (c *Criterion) RenderEARSSentence() string: produce natural-language sentence based on EARS type (e.g. 'The {system} shall {action}' for ubiquitous)"
+          ],
+          "test_spec_refs": [
+            "TS-01-40",
+            "TS-01-41"
+          ],
+          "requirement_refs": [
+            "01-REQ-20.1",
+            "01-REQ-20.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "go test ./... -run 'TestRenderCombined|TestRenderIndividual|TestRenderIndividualScoped|TestEARSBuilders|TestRenderEARSSentence|TestRequirementsRender|TestTestSpecRender|TestTasksRender' -count=1 passes",
+          "go vet ./... reports no issues",
+          "Scoped rendering test: target group with refs produces filtered output; group with no refs falls back to full rendering",
+          "Requirements 01-REQ-18, 01-REQ-19, 01-REQ-20 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "kind": "checkpoint",
+      "title": "Integration checkpoint: all unit tests pass, no stubs remain in core paths",
+      "subtasks": [
+        {
+          "id": "11.1",
+          "title": "Run full test suite and confirm all unit tests pass",
+          "details": [
+            "Run go test ./... -count=1 and confirm zero failures",
+            "Run go vet ./... and confirm zero issues",
+            "Review test output for any skipped tests and document rationale"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-4",
+            "TS-01-6",
+            "TS-01-8"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-2.1",
+            "01-REQ-3.1",
+            "01-REQ-4.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.2",
+          "title": "Audit for panic(\"not implemented\") stubs and bare return nil in non-trivial paths",
+          "details": [
+            "Search codebase: grep -r 'panic(\"not implemented\")' . and grep -r '// TODO' . in non-test files",
+            "For each stub found, either implement the function or document why it is deferred",
+            "Verify no bare 'return nil' in functions with non-trivial logic (e.g. Save, Validate, Transition)"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-2.1",
+            "01-REQ-4.1",
+            "01-REQ-9.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.3",
+          "title": "Verify round-trip fidelity for all testdata/ fixtures",
+          "details": [
+            "Run go test ./... -run TestRoundTripFidelity -count=1 -v and confirm all fixtures pass",
+            "If any fixture fails, fix the renderer discrepancy before proceeding",
+            "Document any known Python-Go formatting differences in roundtrip_test.go comments"
+          ],
+          "test_spec_refs": [
+            "TS-01-52",
+            "TS-01-53"
+          ],
+          "requirement_refs": [
+            "01-REQ-27.1",
+            "01-REQ-27.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.4",
+          "title": "Verify error hierarchy traversal with errors.As across all error types",
+          "details": [
+            "Run go test ./... -run TestErrorHierarchy -count=1 -v and confirm all assertions pass",
+            "Manually verify: errors.As(loadErr, &SpecError{}) returns true, errors.As(lifecycleErr, &SpecError{}) returns true",
+            "Confirm BootstrapError and IntentError also satisfy errors.As(err, &SpecError{})"
+          ],
+          "test_spec_refs": [
+            "TS-01-50",
+            "TS-01-51"
+          ],
+          "requirement_refs": [
+            "01-REQ-26.1",
+            "01-REQ-26.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "11.V",
+        "checks": [
+          "go test ./... -count=1 passes with zero failures",
+          "go vet ./... reports zero issues",
+          "grep -r 'panic(\"not implemented\")' . returns no results in non-test files",
+          "TestRoundTripFidelity passes for all testdata/ fixtures with zero byte-level differences",
+          "Requirements 01-REQ-26, 01-REQ-27 acceptance criteria fully met"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "kind": "wiring_verification",
+      "title": "Wiring verification: end-to-end integration, smoke tests, and dead-code audit",
+      "subtasks": [
+        {
+          "id": "12.1",
+          "title": "Trace execution paths: verify LoadSpec → Validate → Save chain is fully wired",
+          "details": [
+            "Trace LoadSpec entry point: confirm it calls ParsePRD, json.Unmarshal for each artifact, and returns a populated Spec",
+            "Trace Spec.Validate: confirm it calls ValidateSchema and ValidateCrossFile and merges results",
+            "Trace Spec.Save: confirm it calls RenderPRD and MarshalJSON and WriteFileAtomic for each artifact",
+            "Confirm no stub markers remain in any of these paths"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-4",
+            "TS-01-8",
+            "TS-01-SMOKE-1",
+            "TS-01-SMOKE-2",
+            "TS-01-SMOKE-3",
+            "TS-01-SMOKE-4",
+            "TS-01-SMOKE-5",
+            "TS-01-SMOKE-6"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-2.1",
+            "01-REQ-4.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.2",
+          "title": "Verify return value propagation across all public API functions",
+          "details": [
+            "Confirm LoadSpec returns (*Spec, error) and callers check both values",
+            "Confirm Spec.Save returns error and callers handle it",
+            "Confirm Spec.Transition returns (*Spec, error) and callers use the returned *Spec (not the receiver)",
+            "Confirm BootstrapSpec.Finalize returns (*Spec, []ValidationError) and callers check the error slice"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-4",
+            "TS-01-19",
+            "TS-01-43"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-2.1",
+            "01-REQ-9.1",
+            "01-REQ-21.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.3",
+          "title": "Dead-code and stub audit across entire codebase",
+          "details": [
+            "Run: grep -rn 'panic(\"not implemented\")' . --include='*.go' | grep -v '_test.go'",
+            "Run: grep -rn '// TODO' . --include='*.go' | grep -v '_test.go'",
+            "Run: grep -rn 'return nil$' . --include='*.go' | grep -v '_test.go' and review each occurrence for non-trivial functions",
+            "Resolve all findings: implement or document as intentional"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-2.1",
+            "01-REQ-4.1",
+            "01-REQ-9.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.4",
+          "title": "Run smoke tests: LoadSpec + RenderCombined + Save end-to-end",
+          "details": [
+            "Write TestSmokeLoadRenderSave in smoke_test.go: LoadSpec from testdata/01_example, call RenderCombined(), call Save to temp dir, assert no errors and output files exist",
+            "Write TestSmokeBootstrapFinalize: NewBootstrapSpec → set all artifacts → Finalize() → assert (*Spec, nil)",
+            "Write TestSmokeDiscoverAndGraph: DiscoverSpecs on testdata root → BuildDependencyGraph → TopologicalSort → assert no error",
+            "Run: go test ./... -run 'TestSmoke' -count=1 -v and confirm all pass"
+          ],
+          "test_spec_refs": [
+            "TS-01-1",
+            "TS-01-35",
+            "TS-01-4",
+            "TS-01-42",
+            "TS-01-23",
+            "TS-01-24"
+          ],
+          "requirement_refs": [
+            "01-REQ-1.1",
+            "01-REQ-18.1",
+            "01-REQ-2.1",
+            "01-REQ-21.1",
+            "01-REQ-12.1",
+            "01-REQ-13.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.5",
+          "title": "Verify call-site wiring: confirm public API functions are called from integration paths",
+          "details": [
+            "Confirm ValidateCrossSpec is called from at least one integration test or example (not just unit-tested in isolation)",
+            "Confirm MoveToArchive is called from at least one integration test",
+            "Confirm RenderIndividualScoped is exercised with a real spec fixture (not just a mock)",
+            "Confirm ComputeIntentHash is called and its return value used (not discarded)"
+          ],
+          "test_spec_refs": [
+            "TS-01-14",
+            "TS-01-22",
+            "TS-01-37",
+            "TS-01-47"
+          ],
+          "requirement_refs": [
+            "01-REQ-7.1",
+            "01-REQ-11.1",
+            "01-REQ-19.1",
+            "01-REQ-23.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.6",
+          "title": "Final go vet, build, and full test suite run",
+          "details": [
+            "Run go build ./... and confirm zero errors",
+            "Run go vet ./... and confirm zero issues",
+            "Run go test ./... -count=1 -race and confirm zero failures and zero data races",
+            "Confirm test coverage report shows all public API functions exercised"
+          ],
+          "test_spec_refs": [
+            "TS-01-52",
+            "TS-01-54"
+          ],
+          "requirement_refs": [
+            "01-REQ-27.1",
+            "01-REQ-28.1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "12.V",
+        "checks": [
+          "go test ./... -count=1 passes with zero failures",
+          "go test ./... -run 'TestSmoke' -count=1 -v passes: TestSmokeLoadRenderSave, TestSmokeBootstrapFinalize, TestSmokeDiscoverAndGraph all green",
+          "go vet ./... reports zero issues",
+          "grep -rn 'panic(\"not implemented\")' . --include='*.go' | grep -v '_test.go' returns no results",
+          "grep -rn '// TODO' . --include='*.go' | grep -v '_test.go' returns no results (or all are documented as intentional)",
+          "TestRoundTripFidelity passes for all testdata/ fixtures with zero byte-level differences",
+          "All requirements 01-REQ-1 through 01-REQ-28 have at least one passing test case"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "01-REQ-1.1",
+      "test_spec_id": "TS-01-1",
+      "task_id": "1.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-1.2",
+      "test_spec_id": "TS-01-2",
+      "task_id": "1.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-1.3",
+      "test_spec_id": "TS-01-3",
+      "task_id": "1.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-2.1",
+      "test_spec_id": "TS-01-4",
+      "task_id": "1.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-2.2",
+      "test_spec_id": "TS-01-5",
+      "task_id": "1.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-3.1",
+      "test_spec_id": "TS-01-6",
+      "task_id": "1.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-3.2",
+      "test_spec_id": "TS-01-7",
+      "task_id": "1.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-4.1",
+      "test_spec_id": "TS-01-8",
+      "task_id": "2.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-4.2",
+      "test_spec_id": "TS-01-9",
+      "task_id": "2.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-5.1",
+      "test_spec_id": "TS-01-10",
+      "task_id": "2.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-5.2",
+      "test_spec_id": "TS-01-11",
+      "task_id": "2.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-6.1",
+      "test_spec_id": "TS-01-12",
+      "task_id": "2.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-6.2",
+      "test_spec_id": "TS-01-13",
+      "task_id": "2.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-7.1",
+      "test_spec_id": "TS-01-14",
+      "task_id": "2.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-8.1",
+      "test_spec_id": "TS-01-15",
+      "task_id": "2.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-8.2",
+      "test_spec_id": "TS-01-16",
+      "task_id": "2.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-8.3",
+      "test_spec_id": "TS-01-17",
+      "task_id": "2.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-8.4",
+      "test_spec_id": "TS-01-18",
+      "task_id": "2.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-9.1",
+      "test_spec_id": "TS-01-19",
+      "task_id": "2.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-9.2",
+      "test_spec_id": "TS-01-20",
+      "task_id": "2.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-10.1",
+      "test_spec_id": "TS-01-21",
+      "task_id": "2.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-11.1",
+      "test_spec_id": "TS-01-22",
+      "task_id": "2.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-12.1",
+      "test_spec_id": "TS-01-23",
+      "task_id": "3.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-13.1",
+      "test_spec_id": "TS-01-24",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-13.2",
+      "test_spec_id": "TS-01-25",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-13.3",
+      "test_spec_id": "TS-01-26",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-14.1",
+      "test_spec_id": "TS-01-27",
+      "task_id": "3.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-14.2",
+      "test_spec_id": "TS-01-28",
+      "task_id": "3.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-14.3",
+      "test_spec_id": "TS-01-29",
+      "task_id": "3.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-15.1",
+      "test_spec_id": "TS-01-30",
+      "task_id": "3.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-15.2",
+      "test_spec_id": "TS-01-31",
+      "task_id": "3.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-16.1",
+      "test_spec_id": "TS-01-32",
+      "task_id": "3.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-17.1",
+      "test_spec_id": "TS-01-33",
+      "task_id": "3.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-17.2",
+      "test_spec_id": "TS-01-34",
+      "task_id": "3.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-18.1",
+      "test_spec_id": "TS-01-35",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-18.2",
+      "test_spec_id": "TS-01-36",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-19.1",
+      "test_spec_id": "TS-01-37",
+      "task_id": "4.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-19.2",
+      "test_spec_id": "TS-01-38",
+      "task_id": "4.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-19.3",
+      "test_spec_id": "TS-01-39",
+      "task_id": "4.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-20.1",
+      "test_spec_id": "TS-01-40",
+      "task_id": "4.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-20.2",
+      "test_spec_id": "TS-01-41",
+      "task_id": "4.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-21.1",
+      "test_spec_id": "TS-01-42",
+      "task_id": "4.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-21.2",
+      "test_spec_id": "TS-01-43",
+      "task_id": "4.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-21.3",
+      "test_spec_id": "TS-01-44",
+      "task_id": "4.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-21.4",
+      "test_spec_id": "TS-01-45",
+      "task_id": "4.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-22.1",
+      "test_spec_id": "TS-01-46",
+      "task_id": "4.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-23.1",
+      "test_spec_id": "TS-01-47",
+      "task_id": "4.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-24.1",
+      "test_spec_id": "TS-01-48",
+      "task_id": "4.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-25.1",
+      "test_spec_id": "TS-01-49",
+      "task_id": "4.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-26.1",
+      "test_spec_id": "TS-01-50",
+      "task_id": "2.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-26.2",
+      "test_spec_id": "TS-01-51",
+      "task_id": "2.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-27.1",
+      "test_spec_id": "TS-01-52",
+      "task_id": "1.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-27.2",
+      "test_spec_id": "TS-01-53",
+      "task_id": "1.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-28.1",
+      "test_spec_id": "TS-01-54",
+      "task_id": "2.6",
+      "test_path": null
+    },
+    {
+      "requirement_id": "01-REQ-28.2",
+      "test_spec_id": "TS-01-55",
+      "task_id": "2.6",
+      "test_path": null
+    }
+  ]
+}

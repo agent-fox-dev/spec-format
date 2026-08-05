@@ -1,4 +1,4 @@
-.PHONY: clean test test-fast lint format check install-skills uninstall-skills
+.PHONY: clean test test-fast lint format check json-go install-skills uninstall-skills
 
 SKILLS_TEMPLATES_DIR := $(CURDIR)/skills
 CLAUDE_SKILLS_DIR := $(HOME)/.claude/skills
@@ -25,13 +25,15 @@ format:
 
 check: lint test
 
-json-go:
+json-go-gen:
 	go get github.com/atombender/go-jsonschema/...
 	go install github.com/atombender/go-jsonschema@latest
-	go-jsonschema -p afspec packages/afspec/afspec/schemas/tasks.v1.json > tasks.v1.go
-	go-jsonschema -p afspec packages/afspec/afspec/schemas/requirements.v1.json > requirements.v1.go
-	go-jsonschema -p afspec packages/afspec/afspec/schemas/test_spec.v1.json > test_spec.v1.go
-	go-jsonschema -p afspec packages/afspec/afspec/schemas/prd-frontmatter.v1.json > prd-frontmatter.v1.go
+	rm -rf schemas && mkdir -p schemas
+	cp packages/afspec/afspec/schemas/*.json schemas/
+	go-jsonschema -p afspec schemas/tasks.v1.json > tasks.v1.go
+	go-jsonschema -p afspec schemas/requirements.v1.json > requirements.v1.go
+	go-jsonschema -p afspec schemas/test_spec.v1.json > test_spec.v1.go
+	go-jsonschema -p afspec schemas/prd-frontmatter.v1.json > prd-frontmatter.v1.go
 	 
 
 install-skills:

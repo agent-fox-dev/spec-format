@@ -1,0 +1,1827 @@
+{
+  "$schema": null,
+  "spec_id": "01",
+  "spec_name": "afspec_go",
+  "schema_version": 1,
+  "introduction": "The `afspec` Go library provides an idiomatic Go implementation of the Python `afspec` library, enabling Go programs to load, validate, mutate, save, and render agent-fox specification packages with byte-for-byte round-trip fidelity. Note: requirements referencing `github.com/santhosh-tekuri/jsonschema/v6` and `github.com/goccy/go-yaml` APIs are based on the PRD's verified external API surface and should be cross-checked against installed library versions before implementation.",
+  "glossary": {
+    "BootstrapError": "An error type returned when BootstrapSpec.Finalize fails due to missing artifacts or validation errors",
+    "BootstrapSpec": "A struct that supports incremental population of spec artifacts with deferred cross-file validation before assembling a final Spec",
+    "BuildDependencyGraph": "A standalone function that builds the inter-spec dependency graph from tasks.json declarations",
+    "CompleteSubtaskStates": "A method on Tasks that marks all subtasks in specified groups as done, bypassing the state machine",
+    "ComputeCoverage": "A method on TestSpec that computes test coverage by scanning test entries against requirements, properties, and paths",
+    "ComputeIntentHash": "A standalone function that computes the SHA-256 hash of the normalized ## Intent section from a PRD body",
+    "CreateSpec": "A standalone function that creates a new Spec with initialized sub-artifacts in draft state",
+    "DependencyEdge": "A struct representing a directed dependency edge between two specs, carrying FromSpec, ToSpec, FromGroup, ToGroup, and Relationship fields",
+    "DependencyGraph": "A struct representing the inter-spec dependency graph built from tasks.json declarations",
+    "DiscoverSpecs": "A standalone function that scans a directory for spec directories and returns lightweight SpecMeta entries",
+    "EARS": "Easy Approach to Requirements Syntax — a structured natural-language pattern for writing acceptance criteria",
+    "Finalize": "The method on BootstrapSpec that assembles a Spec from all set artifacts and runs full validation without saving to disk",
+    "IntentError": "An error type returned when ComputeIntentHash cannot find the ## Intent section in a PRD body",
+    "IntentHash": "A SHA-256 hash computed over the normalized ## Intent section of a PRD body",
+    "IsSpecDirName": "A standalone function that validates whether a directory name matches the NN_snake_case pattern",
+    "Kahn's algorithm": "A topological sort algorithm that detects cycles by iteratively removing nodes with no incoming edges",
+    "LifecycleError": "An error type returned when an invalid spec or subtask state transition is attempted",
+    "LoadError": "An error type returned when a spec directory cannot be loaded due to missing required files or malformed content",
+    "LoadSpecLandscape": "A standalone function that collects metadata for all specs for landscape views",
+    "MarshalJSON": "A standalone function that produces deterministic JSON serialization matching Python's output byte-for-byte",
+    "MoveToArchive": "A standalone function that transitions a spec to archived state and moves its directory to the archive subdirectory",
+    "ParseSpecDirName": "A standalone function that parses a directory name matching the NN_snake_case pattern into its components",
+    "RenderCombined": "A method on Spec that renders all artifacts as a single Markdown document",
+    "RenderEARSSentence": "A method on Criterion that renders a single EARS criterion as a natural-language sentence",
+    "RenderIndividual": "A method on Spec that renders each artifact separately as a map of filename to Markdown string",
+    "RenderIndividualScoped": "A method on Spec that renders each artifact filtered to the refs of a target task group",
+    "ResetSubtaskStates": "A method on Tasks that resets all subtasks in specified groups to pending",
+    "SaveError": "An error type returned when a spec cannot be written to disk",
+    "Schemas": "A standalone function that returns the bundled JSON Schema files as a map[string][]byte",
+    "SchemeURLLoader": "A jsonschema interface implementation that loads schema documents from embedded bytes rather than the network",
+    "SpecError": "The base error type for the afspec library; all specific error types wrap it",
+    "SpecMeta": "A lightweight struct containing metadata parsed from a spec's PRD frontmatter, used for discovery",
+    "Supersede": "A method on Spec that marks a sealed spec as superseded and prepends a deprecation banner to the PRD body",
+    "TopologicalSort": "A method on DependencyGraph that returns spec IDs in dependency order using Kahn's algorithm",
+    "Transition": "A method on Spec that transitions the spec's lifecycle state and persists the change to disk",
+    "TransitionSubtask": "A method on Tasks that transitions a single subtask's state via the state machine",
+    "ValidTransition": "A standalone pure function that checks whether a lifecycle state transition is allowed without side effects",
+    "ValidateCrossFile": "A method on Spec that checks cross-file consistency including dangling references, coverage gaps, and ID format validation",
+    "ValidateCrossSpec": "A standalone function that checks cross-spec interface consistency across multiple specs",
+    "ValidateSchema": "A method on Spec that checks each artifact against bundled JSON Schema files and EARS/task-group structural rules",
+    "ValidateStructured": "A method on Spec that returns validation results as a categorized map[string]any for CLI consumption",
+    "ValidationResult": "A struct containing errors and warnings from spec validation, with a Valid boolean that is true when Errors is empty",
+    "active": "A lifecycle state indicating a spec is in active use",
+    "afspec": "The Go library (and its Python counterpart) for working with agent-fox specification packages",
+    "architecture.md": "An optional Markdown artifact within a spec directory describing the spec's architecture",
+    "archived": "A terminal lifecycle state indicating a spec has been moved to the archive directory",
+    "done": "A terminal subtask state indicating the subtask has been completed",
+    "draft": "The initial lifecycle state of a newly created spec",
+    "dropped": "A terminal subtask state indicating the subtask will not be completed",
+    "frontmatter": "YAML metadata block delimited by --- at the top of a prd.md file",
+    "go-cmp": "The github.com/google/go-cmp package used for structured diffs in test failures",
+    "go-yaml": "The github.com/goccy/go-yaml package used for parsing YAML frontmatter in prd.md",
+    "in_progress": "A subtask state indicating the subtask is currently being worked on",
+    "jsonschema": "The github.com/santhosh-tekuri/jsonschema/v6 package used for JSON Schema validation",
+    "pending": "The initial subtask state indicating the subtask has not yet been started",
+    "pending_reevaluation": "A subtask state indicating the subtask needs to be re-examined before proceeding",
+    "prd.md": "The Product Requirements Document file within a spec directory, containing YAML frontmatter and a Markdown body",
+    "queued": "A subtask state indicating the subtask is ready to be worked on",
+    "requirement_refs": "A list of requirement IDs referenced by a subtask, used for scoped rendering",
+    "requirements.json": "The JSON artifact within a spec directory containing structured requirements",
+    "round-trip fidelity": "The property that a spec loaded and saved by the Go library produces byte-for-byte identical output to the Python library",
+    "sealed": "A lifecycle state in which a spec cannot be mutated or saved",
+    "spec directory": "A filesystem directory matching the NN_name pattern that contains a spec's artifacts",
+    "subtask": "An individual unit of work within a task group, tracked with a state machine",
+    "superseded": "A terminal lifecycle state indicating a spec has been replaced by another",
+    "tasks.json": "The JSON artifact within a spec directory containing task groups and subtasks",
+    "test_spec.json": "The JSON artifact within a spec directory containing test specifications",
+    "test_spec_refs": "A list of test spec entry IDs referenced by a subtask, used for scoped rendering",
+    "testdata": "The directory in the Go repository containing static spec fixture directories extracted from the Python test suite"
+  },
+  "requirements": [
+    {
+      "id": "01-REQ-1",
+      "title": "LoadSpec — load spec artifacts from a directory",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call LoadSpec(dir) to load all spec artifacts from a directory into a Spec struct",
+        "benefit": "so that I can work with spec data natively in Go without shelling out to Python"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-1.1",
+          "ears_pattern": "event_driven",
+          "system": "LoadSpec",
+          "action": "reads prd.md, requirements.json, test_spec.json, tasks.json, and optionally architecture.md, parses each artifact into the corresponding Go struct, and returns a populated Spec struct",
+          "return_contract": "returns (*Spec, nil)",
+          "trigger": "a caller invokes LoadSpec with a valid spec directory path"
+        },
+        {
+          "id": "01-REQ-1.2",
+          "ears_pattern": "event_driven",
+          "system": "LoadSpec",
+          "action": "parses the YAML frontmatter using yaml.Unmarshal and extracts the Markdown body separately, populating all frontmatter fields on the Spec struct",
+          "return_contract": "returns (*Spec, nil) with frontmatter fields populated",
+          "trigger": "a caller invokes LoadSpec and prd.md contains YAML frontmatter delimited by ---"
+        },
+        {
+          "id": "01-REQ-1.3",
+          "ears_pattern": "event_driven",
+          "system": "LoadSpec",
+          "action": "loads all other required artifacts successfully and leaves the architecture field empty",
+          "return_contract": "returns (*Spec, nil) with architecture field as empty string",
+          "trigger": "a caller invokes LoadSpec and architecture.md is absent from the directory"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-1.E1",
+          "ears_pattern": "unwanted",
+          "system": "LoadSpec",
+          "action": "returns a LoadError identifying the missing file",
+          "return_contract": "returns (nil, LoadError) wrapping SpecError",
+          "error_condition": "a required artifact (prd.md, requirements.json, test_spec.json, or tasks.json) is missing from the directory"
+        },
+        {
+          "id": "01-REQ-1.E2",
+          "ears_pattern": "unwanted",
+          "system": "LoadSpec",
+          "action": "returns a LoadError wrapping the parse error",
+          "return_contract": "returns (nil, LoadError) wrapping SpecError",
+          "error_condition": "a JSON artifact (requirements.json, test_spec.json, or tasks.json) contains malformed JSON"
+        },
+        {
+          "id": "01-REQ-1.E3",
+          "ears_pattern": "unwanted",
+          "system": "LoadSpec",
+          "action": "returns a LoadError wrapping the yaml.Unmarshal error with line/column info",
+          "return_contract": "returns (nil, LoadError) wrapping SpecError",
+          "error_condition": "prd.md contains malformed YAML frontmatter (syntax error or type mismatch)"
+        },
+        {
+          "id": "01-REQ-1.E4",
+          "ears_pattern": "unwanted",
+          "system": "LoadSpec",
+          "action": "handles the missing delimiter in a manner that matches the Python implementation's behavior exactly",
+          "return_contract": "returns (nil, LoadError) or (*Spec, nil) matching Python behavior",
+          "error_condition": "prd.md frontmatter is missing the closing --- delimiter"
+        },
+        {
+          "id": "01-REQ-1.E5",
+          "ears_pattern": "unwanted",
+          "system": "LoadSpec",
+          "action": "detects missing required fields post-parse and returns a LoadError",
+          "return_contract": "returns (nil, LoadError) wrapping SpecError",
+          "error_condition": "prd.md frontmatter is present but required fields are missing after parsing"
+        },
+        {
+          "id": "01-REQ-1.E6",
+          "ears_pattern": "unwanted",
+          "system": "LoadSpec",
+          "action": "returns a LoadError wrapping the filesystem error",
+          "return_contract": "returns (nil, LoadError) wrapping SpecError",
+          "error_condition": "the directory path does not exist or is not readable"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-2",
+      "title": "Spec.Save — atomically write spec artifacts to disk",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.Save(dir) to persist all spec artifacts atomically",
+        "benefit": "so that partial writes never leave the spec directory in a corrupt state"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-2.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.Save",
+          "action": "writes each artifact to a temporary file in the same directory, then renames each temp file to its final name atomically, producing output byte-for-byte identical to the Python library's output",
+          "return_contract": "returns nil on success",
+          "trigger": "a caller invokes spec.Save with a valid directory path on a non-sealed Spec"
+        },
+        {
+          "id": "01-REQ-2.2",
+          "ears_pattern": "state_driven",
+          "system": "Spec.Save",
+          "action": "refuses to write any files and returns a LifecycleError",
+          "return_contract": "returns LifecycleError wrapping SpecError",
+          "state": "the Spec is in the sealed lifecycle state"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-2.E1",
+          "ears_pattern": "unwanted",
+          "system": "Spec.Save",
+          "action": "cleans up any partially written temp files and returns a SaveError",
+          "return_contract": "returns SaveError wrapping SpecError",
+          "error_condition": "the target directory is not writable or the filesystem returns an error during temp file creation"
+        },
+        {
+          "id": "01-REQ-2.E2",
+          "ears_pattern": "unwanted",
+          "system": "Spec.Save",
+          "action": "removes the orphaned temp file and returns a SaveError",
+          "return_contract": "returns SaveError wrapping SpecError",
+          "error_condition": "the rename operation fails after the temp file is written (e.g., cross-device rename)"
+        },
+        {
+          "id": "01-REQ-2.E3",
+          "ears_pattern": "unwanted",
+          "system": "Spec.Save",
+          "action": "returns a SaveError without creating any files",
+          "return_contract": "returns SaveError wrapping SpecError",
+          "error_condition": "the directory path does not exist at save time"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-3",
+      "title": "MarshalJSON — deterministic JSON serialization",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call MarshalJSON(v) to serialize a spec artifact to JSON",
+        "benefit": "so that the output is byte-for-byte identical to the Python library's JSON output"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-3.1",
+          "ears_pattern": "event_driven",
+          "system": "MarshalJSON",
+          "action": "serializes struct fields in declaration order (matching JSON Schema property order) and sorts all map[string]T keys alphabetically using reflection-based custom marshaling",
+          "return_contract": "returns ([]byte, nil) with deterministic JSON output",
+          "trigger": "a caller invokes MarshalJSON with a spec artifact struct"
+        },
+        {
+          "id": "01-REQ-3.2",
+          "ears_pattern": "ubiquitous",
+          "system": "MarshalJSON",
+          "action": "produces output byte-for-byte identical to the Python library for every spec artifact type, including nested structs and map fields",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-3.E1",
+          "ears_pattern": "unwanted",
+          "system": "MarshalJSON",
+          "action": "returns an error from the marshaling step",
+          "return_contract": "returns (nil, error)",
+          "error_condition": "the input value contains a type that cannot be marshaled to JSON (e.g., a channel or function)"
+        },
+        {
+          "id": "01-REQ-3.E2",
+          "ears_pattern": "event_driven",
+          "system": "MarshalJSON",
+          "action": "serializes the field as an empty JSON object {}",
+          "return_contract": "returns ([]byte, nil) with {} for the empty map field",
+          "trigger": "a caller invokes MarshalJSON with a struct containing an empty map[string]T field"
+        },
+        {
+          "id": "01-REQ-3.E3",
+          "ears_pattern": "event_driven",
+          "system": "MarshalJSON",
+          "action": "serializes the nil pointer as JSON null, matching Python's behavior",
+          "return_contract": "returns ([]byte, nil) with null for the nil pointer field",
+          "trigger": "a caller invokes MarshalJSON with a struct containing a nil pointer field"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-4",
+      "title": "Spec.Validate — full spec validation",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.Validate() to check a loaded spec for errors and warnings",
+        "benefit": "so that I can surface actionable feedback before using or publishing the spec"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-4.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.Validate",
+          "action": "runs schema validation, EARS constraint checks, task group structure rules, and cross-file consistency checks, then returns a ValidationResult with Valid set to true and empty Errors",
+          "return_contract": "returns ValidationResult{Valid: true, Errors: [], Warnings: [...]}",
+          "trigger": "a caller invokes spec.Validate on a fully valid spec"
+        },
+        {
+          "id": "01-REQ-4.2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.Validate",
+          "action": "collects all errors and warnings from schema and cross-file checks and returns a ValidationResult with Valid set to false",
+          "return_contract": "returns ValidationResult{Valid: false, Errors: [...]}",
+          "trigger": "a caller invokes spec.Validate on a spec with one or more errors"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-4.E1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.Validate",
+          "action": "returns a ValidationResult with Valid set to true and a non-empty Warnings slice",
+          "return_contract": "returns ValidationResult{Valid: true, Warnings: [...]}",
+          "trigger": "a caller invokes spec.Validate on a spec with warnings but no errors"
+        },
+        {
+          "id": "01-REQ-4.E2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.Validate",
+          "action": "validates without panicking and returns a ValidationResult",
+          "return_contract": "returns ValidationResult without panicking",
+          "trigger": "a caller invokes spec.Validate on a minimally populated spec (only required fields set)"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-5",
+      "title": "Spec.ValidateSchema — JSON Schema and structural validation",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.ValidateSchema() to check each artifact against bundled JSON Schema files",
+        "benefit": "so that I can detect structural violations before cross-file checks"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-5.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateSchema",
+          "action": "compiles each bundled schema using jsonschema compiler with a SchemeURLLoader backed by embedded bytes, validates each artifact's JSON representation against its schema, and returns a ValidationResult with no errors",
+          "return_contract": "returns ValidationResult{Valid: true}",
+          "trigger": "a caller invokes spec.ValidateSchema on a structurally valid spec"
+        },
+        {
+          "id": "01-REQ-5.2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateSchema",
+          "action": "maps each *jsonschema.ValidationError to a ValidationResult error entry carrying InstanceLocation as path, KeywordLocation as keyword, and Message as the human-readable description",
+          "return_contract": "returns ValidationResult{Valid: false, Errors: [...]}",
+          "trigger": "a caller invokes spec.ValidateSchema and an artifact fails schema validation"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-5.E1",
+          "ears_pattern": "unwanted",
+          "system": "Spec.ValidateSchema",
+          "action": "returns a LoadError at startup when schemas are compiled, preventing the library from being used with corrupt schemas",
+          "return_contract": "returns LoadError wrapping SpecError at initialization",
+          "error_condition": "a bundled schema file is structurally invalid or contains a bad $ref (detected at compile time)"
+        },
+        {
+          "id": "01-REQ-5.E2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateSchema",
+          "action": "collects errors from all artifacts and returns them together rather than stopping at the first failure",
+          "return_contract": "returns ValidationResult{Valid: false, Errors: [...all errors...]}",
+          "trigger": "a caller invokes spec.ValidateSchema and multiple artifacts have schema errors"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-6",
+      "title": "Spec.ValidateCrossFile — cross-file consistency checks",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.ValidateCrossFile() to detect dangling references and coverage gaps across artifacts",
+        "benefit": "so that I can ensure all cross-artifact references are consistent before publishing"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-6.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateCrossFile",
+          "action": "checks dangling references, coverage gaps, glossary completeness, and ID format validity across all artifacts and returns a ValidationResult with no errors",
+          "return_contract": "returns ValidationResult{Valid: true}",
+          "trigger": "a caller invokes spec.ValidateCrossFile on a spec with consistent cross-file references"
+        },
+        {
+          "id": "01-REQ-6.2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateCrossFile",
+          "action": "records a dangling reference error identifying the test entry ID and the missing requirement ID",
+          "return_contract": "returns ValidationResult{Valid: false, Errors: [{category: integrity, check: dangling_reference, ...}]}",
+          "trigger": "a caller invokes spec.ValidateCrossFile and a test spec entry references a requirement ID that does not exist in requirements.json"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-6.E1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateCrossFile",
+          "action": "reports coverage gaps for all requirements that have no corresponding test entries",
+          "return_contract": "returns ValidationResult with coverage gap warnings or errors for each uncovered requirement",
+          "trigger": "a caller invokes spec.ValidateCrossFile on a spec with no test entries"
+        },
+        {
+          "id": "01-REQ-6.E2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateCrossFile",
+          "action": "records an ID format validation error identifying the artifact and the malformed ID",
+          "return_contract": "returns ValidationResult{Valid: false, Errors: [{category: integrity, check: id_format, ...}]}",
+          "trigger": "a caller invokes spec.ValidateCrossFile and an ID in any artifact does not match the expected format"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-7",
+      "title": "ValidateCrossSpec — cross-spec interface consistency",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call ValidateCrossSpec(specs, graph) to check interface consistency across multiple specs",
+        "benefit": "so that I can detect API symbol mismatches and glossary conflicts before integration"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-7.1",
+          "ears_pattern": "event_driven",
+          "system": "ValidateCrossSpec",
+          "action": "checks API symbol consistency, glossary conflicts, and contract mismatches across all provided specs using the dependency graph to determine which specs interact, and returns a ValidationResult",
+          "return_contract": "returns ValidationResult with Valid true if no cross-spec errors are found",
+          "trigger": "a caller invokes ValidateCrossSpec with a slice of Spec values and a DependencyGraph"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-7.E1",
+          "ears_pattern": "event_driven",
+          "system": "ValidateCrossSpec",
+          "action": "returns a ValidationResult with no errors since there are no cross-spec relationships to check",
+          "return_contract": "returns ValidationResult{Valid: true}",
+          "trigger": "a caller invokes ValidateCrossSpec with a single spec (no dependencies)"
+        },
+        {
+          "id": "01-REQ-7.E2",
+          "ears_pattern": "event_driven",
+          "system": "ValidateCrossSpec",
+          "action": "records a glossary conflict error identifying both specs and the conflicting term",
+          "return_contract": "returns ValidationResult{Valid: false, Errors: [{category: integrity, check: glossary_conflict, ...}]}",
+          "trigger": "a caller invokes ValidateCrossSpec and two specs define the same glossary term with different meanings"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-8",
+      "title": "Spec.ValidateStructured — categorized validation output for CLI consumption",
+      "user_story": {
+        "role": "CLI tool",
+        "goal": "call spec.ValidateStructured() to get validation results as a structured map",
+        "benefit": "so that I can format and display validation output without parsing ValidationResult internals"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-8.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateStructured",
+          "action": "runs full validation and returns a map[string]any with a 'valid' key set to true, an 'errors' key set to an empty slice, and no 'warnings' key",
+          "return_contract": "returns map[string]any{\"valid\": true, \"errors\": []map[string]any{}}",
+          "trigger": "a caller invokes spec.ValidateStructured on a valid spec"
+        },
+        {
+          "id": "01-REQ-8.2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateStructured",
+          "action": "returns a map with 'valid' false and 'errors' containing entries with 'category' set to 'schema', 'message', 'artifact', and optionally 'path' and 'value' fields",
+          "return_contract": "returns map[string]any{\"valid\": false, \"errors\": [{\"category\": \"schema\", \"message\": string, \"artifact\": string, ...}]}",
+          "trigger": "a caller invokes spec.ValidateStructured on a spec with schema errors"
+        },
+        {
+          "id": "01-REQ-8.3",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateStructured",
+          "action": "returns a map with 'valid' false and 'errors' containing entries with 'category' set to 'integrity', 'message', 'check', and optionally 'requirement_id' fields",
+          "return_contract": "returns map[string]any{\"valid\": false, \"errors\": [{\"category\": \"integrity\", \"message\": string, \"check\": string, ...}]}",
+          "trigger": "a caller invokes spec.ValidateStructured on a spec with integrity errors"
+        },
+        {
+          "id": "01-REQ-8.4",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateStructured",
+          "action": "includes a 'warnings' key in the returned map containing entries with 'category' set to 'warning', 'message', and 'entity_id' fields",
+          "return_contract": "returns map[string]any{..., \"warnings\": [{\"category\": \"warning\", \"message\": string, \"entity_id\": string}]}",
+          "trigger": "a caller invokes spec.ValidateStructured on a spec with warnings"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-8.E1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.ValidateStructured",
+          "action": "omits the 'warnings' key from the returned map entirely",
+          "return_contract": "returns map[string]any without a 'warnings' key",
+          "trigger": "a caller invokes spec.ValidateStructured on a spec with no warnings"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-9",
+      "title": "Spec.Transition — lifecycle state transitions",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.Transition(target, dir) to advance a spec's lifecycle state",
+        "benefit": "so that I can manage spec lifecycle programmatically with persistence"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-9.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.Transition",
+          "action": "updates the spec's status field to the target state, persists the updated spec to disk, and returns the updated Spec",
+          "return_contract": "returns (*Spec, nil) with status set to target state",
+          "trigger": "a caller invokes spec.Transition with a valid target state and directory"
+        },
+        {
+          "id": "01-REQ-9.2",
+          "ears_pattern": "event_driven",
+          "system": "ValidTransition",
+          "action": "checks the transition table (draft→active, active→sealed, active→superseded, sealed→superseded, any→archived) and returns true if the transition is allowed, false otherwise, with no side effects",
+          "return_contract": "returns bool",
+          "trigger": "a caller invokes ValidTransition with a current and target state"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-9.E1",
+          "ears_pattern": "unwanted",
+          "system": "Spec.Transition",
+          "action": "returns a LifecycleError without modifying the spec or writing to disk",
+          "return_contract": "returns (nil, LifecycleError) wrapping SpecError",
+          "error_condition": "a caller invokes spec.Transition with a target state that is not a valid transition from the current state"
+        },
+        {
+          "id": "01-REQ-9.E2",
+          "ears_pattern": "unwanted",
+          "system": "Spec.Transition",
+          "action": "returns a SaveError; the in-memory Spec copy reflects the new state but the on-disk state is unchanged due to atomic write semantics",
+          "return_contract": "returns (nil, SaveError) wrapping SpecError",
+          "error_condition": "a caller invokes spec.Transition and the disk write fails after the state is updated in memory"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-10",
+      "title": "Spec.Supersede — mark a spec as superseded with deprecation banner",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.Supersede(supersedingSpecID, dir) to mark a sealed spec as superseded",
+        "benefit": "so that readers of the PRD are immediately informed of the replacement spec"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-10.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.Supersede",
+          "action": "transitions the spec to the superseded state, prepends a deprecation banner referencing the superseding spec ID to the PRD body, and persists the updated spec to disk",
+          "return_contract": "returns (*Spec, nil) with status superseded and deprecation banner in PRD body",
+          "trigger": "a caller invokes spec.Supersede with a superseding spec ID and directory on a sealed Spec"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-10.E1",
+          "ears_pattern": "unwanted",
+          "system": "Spec.Supersede",
+          "action": "returns a LifecycleError without modifying the spec or writing to disk",
+          "return_contract": "returns (nil, LifecycleError) wrapping SpecError",
+          "error_condition": "a caller invokes spec.Supersede on a spec that is not in the sealed state"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-11",
+      "title": "MoveToArchive — move a spec directory to the archive",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call MoveToArchive(specDir, root) to archive a spec",
+        "benefit": "so that inactive specs are organized out of the active workspace"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-11.1",
+          "ears_pattern": "event_driven",
+          "system": "MoveToArchive",
+          "action": "transitions the spec to the archived state if not already archived, then moves the spec directory to {root}/archive/ using an atomic rename or copy-then-delete",
+          "return_contract": "returns nil on success",
+          "trigger": "a caller invokes MoveToArchive with a spec directory and root path"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-11.E1",
+          "ears_pattern": "unwanted",
+          "system": "MoveToArchive",
+          "action": "creates the archive directory before moving the spec, or returns a SaveError if creation fails",
+          "return_contract": "returns nil on success or SaveError on failure",
+          "error_condition": "the {root}/archive/ directory does not exist"
+        },
+        {
+          "id": "01-REQ-11.E2",
+          "ears_pattern": "unwanted",
+          "system": "MoveToArchive",
+          "action": "returns a SaveError identifying the conflict without overwriting the existing archive entry",
+          "return_contract": "returns SaveError wrapping SpecError",
+          "error_condition": "a spec directory with the same name already exists in {root}/archive/"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-12",
+      "title": "DiscoverSpecs — scan a root directory for spec directories",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call DiscoverSpecs(root) to enumerate all spec directories under a root path",
+        "benefit": "so that I can build landscape views and dependency graphs without knowing spec locations in advance"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-12.1",
+          "ears_pattern": "event_driven",
+          "system": "DiscoverSpecs",
+          "action": "scans the root directory for subdirectories matching the NN_snake_case pattern, parses the PRD frontmatter of each, and returns a slice of SpecMeta entries with SpecID, SpecName, Status, and Dir fields populated",
+          "return_contract": "returns ([]SpecMeta, nil)",
+          "trigger": "a caller invokes DiscoverSpecs with a root directory path"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-12.E1",
+          "ears_pattern": "unwanted",
+          "system": "DiscoverSpecs",
+          "action": "skips the malformed entry and continues scanning, collecting errors to return alongside the valid SpecMeta entries",
+          "return_contract": "returns ([]SpecMeta, []error) where errors list the skipped directories",
+          "error_condition": "a subdirectory matches the NN_snake_case pattern but its prd.md is missing or malformed"
+        },
+        {
+          "id": "01-REQ-12.E2",
+          "ears_pattern": "unwanted",
+          "system": "DiscoverSpecs",
+          "action": "returns an empty slice and a LoadError",
+          "return_contract": "returns (nil, LoadError) wrapping SpecError",
+          "error_condition": "the root directory does not exist or is not readable"
+        },
+        {
+          "id": "01-REQ-12.E3",
+          "ears_pattern": "event_driven",
+          "system": "DiscoverSpecs",
+          "action": "returns an empty slice with no error",
+          "return_contract": "returns ([]SpecMeta{}, nil)",
+          "trigger": "a caller invokes DiscoverSpecs on a root directory with no matching subdirectories"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-13",
+      "title": "BuildDependencyGraph — build inter-spec dependency graph",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call BuildDependencyGraph(metas, root) to construct the dependency graph from tasks.json declarations",
+        "benefit": "so that I can determine build order and detect circular dependencies across specs"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-13.1",
+          "ears_pattern": "event_driven",
+          "system": "BuildDependencyGraph",
+          "action": "reads tasks.json for each spec, extracts cross-spec dependency declarations, and returns a DependencyGraph with Edges, Dependencies, Dependents, and TopologicalSort methods",
+          "return_contract": "returns (*DependencyGraph, nil)",
+          "trigger": "a caller invokes BuildDependencyGraph with a slice of SpecMeta and a root path"
+        },
+        {
+          "id": "01-REQ-13.2",
+          "ears_pattern": "event_driven",
+          "system": "DependencyGraph.TopologicalSort",
+          "action": "returns spec IDs in topological order using Kahn's algorithm such that every spec appears before its dependents",
+          "return_contract": "returns ([]string, nil)",
+          "trigger": "a caller invokes DependencyGraph.TopologicalSort on an acyclic graph"
+        },
+        {
+          "id": "01-REQ-13.3",
+          "ears_pattern": "event_driven",
+          "system": "DependencyGraph.TopologicalSort",
+          "action": "detects the cycle using Kahn's algorithm and returns an error identifying the cycle",
+          "return_contract": "returns (nil, error) describing the cycle",
+          "trigger": "a caller invokes DependencyGraph.TopologicalSort on a graph with a cycle"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-13.E1",
+          "ears_pattern": "event_driven",
+          "system": "BuildDependencyGraph",
+          "action": "returns a DependencyGraph with no edges",
+          "return_contract": "returns (*DependencyGraph, nil) with empty Edges slice",
+          "trigger": "a caller invokes BuildDependencyGraph with a single SpecMeta (no dependencies)"
+        },
+        {
+          "id": "01-REQ-13.E2",
+          "ears_pattern": "unwanted",
+          "system": "BuildDependencyGraph",
+          "action": "records the dangling reference as an error and returns it alongside the partial graph",
+          "return_contract": "returns (*DependencyGraph, error) with the partial graph and a descriptive error",
+          "error_condition": "a tasks.json references a spec ID that is not present in the provided SpecMeta slice"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-14",
+      "title": "IsSpecDirName and ParseSpecDirName — directory name validation and parsing",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call IsSpecDirName(name) and ParseSpecDirName(name) to validate and parse spec directory names",
+        "benefit": "so that I can reliably identify spec directories without duplicating the matching logic"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-14.1",
+          "ears_pattern": "event_driven",
+          "system": "IsSpecDirName",
+          "action": "returns true",
+          "return_contract": "returns true",
+          "trigger": "a caller invokes IsSpecDirName with a string matching the NN_snake_case pattern"
+        },
+        {
+          "id": "01-REQ-14.2",
+          "ears_pattern": "event_driven",
+          "system": "IsSpecDirName",
+          "action": "returns false",
+          "return_contract": "returns false",
+          "trigger": "a caller invokes IsSpecDirName with a string that does not match the NN_snake_case pattern"
+        },
+        {
+          "id": "01-REQ-14.3",
+          "ears_pattern": "event_driven",
+          "system": "ParseSpecDirName",
+          "action": "returns the numeric prefix and the snake_case name portion as separate values",
+          "return_contract": "returns (string, string, nil) — numeric prefix, name, nil error",
+          "trigger": "a caller invokes ParseSpecDirName with a valid NN_snake_case directory name"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-14.E1",
+          "ears_pattern": "unwanted",
+          "system": "ParseSpecDirName",
+          "action": "returns an error indicating the name is not a valid spec directory name",
+          "return_contract": "returns (\"\", \"\", error)",
+          "error_condition": "a caller invokes ParseSpecDirName with a string that does not match the NN_snake_case pattern"
+        },
+        {
+          "id": "01-REQ-14.E2",
+          "ears_pattern": "event_driven",
+          "system": "IsSpecDirName",
+          "action": "returns false",
+          "return_contract": "returns false",
+          "trigger": "a caller invokes IsSpecDirName with an empty string"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-15",
+      "title": "LoadSpecLandscape — collect metadata for all specs",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call LoadSpecLandscape(root, includeArchive, currentSpecID) to get a landscape view of all specs",
+        "benefit": "so that I can display cross-spec context without loading full spec artifacts"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-15.1",
+          "ears_pattern": "event_driven",
+          "system": "LoadSpecLandscape",
+          "action": "scans all spec directories including the archive subdirectory, parses PRD frontmatter for each, and returns a slice of SpecMeta entries excluding the currentSpecID entry",
+          "return_contract": "returns ([]SpecMeta, nil)",
+          "trigger": "a caller invokes LoadSpecLandscape with a root path, includeArchive true, and a currentSpecID"
+        },
+        {
+          "id": "01-REQ-15.2",
+          "ears_pattern": "event_driven",
+          "system": "LoadSpecLandscape",
+          "action": "scans only non-archived spec directories and returns SpecMeta entries for active and draft specs",
+          "return_contract": "returns ([]SpecMeta, nil) excluding archived specs",
+          "trigger": "a caller invokes LoadSpecLandscape with includeArchive false"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-15.E1",
+          "ears_pattern": "event_driven",
+          "system": "LoadSpecLandscape",
+          "action": "returns an empty slice with no error",
+          "return_contract": "returns ([]SpecMeta{}, nil)",
+          "trigger": "a caller invokes LoadSpecLandscape and the root directory contains no spec directories"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-16",
+      "title": "Tasks.TransitionSubtask — subtask state machine transitions",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call tasks.TransitionSubtask(subtaskID, target) to advance a subtask's state",
+        "benefit": "so that I can track work progress through a well-defined state machine"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-16.1",
+          "ears_pattern": "event_driven",
+          "system": "Tasks.TransitionSubtask",
+          "action": "looks up the subtask by ID, verifies the transition is in the allowed table (pending→queued, pending→dropped, queued→in_progress, queued→pending, queued→dropped, in_progress→done, in_progress→pending_reevaluation, done→pending_reevaluation, pending_reevaluation→pending, pending_reevaluation→dropped), updates the subtask state, and returns the updated Tasks",
+          "return_contract": "returns (*Tasks, nil)",
+          "trigger": "a caller invokes tasks.TransitionSubtask with a subtask ID and a valid target state"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-16.E1",
+          "ears_pattern": "unwanted",
+          "system": "Tasks.TransitionSubtask",
+          "action": "returns a LifecycleError without modifying any subtask state",
+          "return_contract": "returns (nil, LifecycleError) wrapping SpecError",
+          "error_condition": "a caller invokes tasks.TransitionSubtask with a target state not in the allowed transition table for the subtask's current state"
+        },
+        {
+          "id": "01-REQ-16.E2",
+          "ears_pattern": "unwanted",
+          "system": "Tasks.TransitionSubtask",
+          "action": "returns a LifecycleError identifying the missing subtask ID",
+          "return_contract": "returns (nil, LifecycleError) wrapping SpecError",
+          "error_condition": "a caller invokes tasks.TransitionSubtask with a subtask ID that does not exist in the Tasks struct"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-17",
+      "title": "Tasks.CompleteSubtaskStates and Tasks.ResetSubtaskStates — bulk subtask state mutation",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call tasks.CompleteSubtaskStates(groupIDs) or tasks.ResetSubtaskStates(groupIDs) to bulk-update subtask states",
+        "benefit": "so that I can mark entire task groups as done or reset them without iterating subtasks individually"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-17.1",
+          "ears_pattern": "event_driven",
+          "system": "Tasks.CompleteSubtaskStates",
+          "action": "sets every subtask in each specified group to the done state, bypassing the state machine transition rules, and returns the updated Tasks",
+          "return_contract": "returns (*Tasks, nil)",
+          "trigger": "a caller invokes tasks.CompleteSubtaskStates with a slice of group IDs"
+        },
+        {
+          "id": "01-REQ-17.2",
+          "ears_pattern": "event_driven",
+          "system": "Tasks.ResetSubtaskStates",
+          "action": "sets every subtask in each specified group to the pending state, bypassing the state machine transition rules, and returns the updated Tasks",
+          "return_contract": "returns (*Tasks, nil)",
+          "trigger": "a caller invokes tasks.ResetSubtaskStates with a slice of group IDs"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-17.E1",
+          "ears_pattern": "event_driven",
+          "system": "Tasks.CompleteSubtaskStates",
+          "action": "skips the missing group ID and processes all valid group IDs, returning the updated Tasks without error",
+          "return_contract": "returns (*Tasks, nil) with valid groups updated",
+          "trigger": "a caller invokes tasks.CompleteSubtaskStates or tasks.ResetSubtaskStates with a group ID that does not exist"
+        },
+        {
+          "id": "01-REQ-17.E2",
+          "ears_pattern": "event_driven",
+          "system": "Tasks.CompleteSubtaskStates",
+          "action": "returns the Tasks unchanged without error",
+          "return_contract": "returns (*Tasks, nil) with no state changes",
+          "trigger": "a caller invokes tasks.CompleteSubtaskStates or tasks.ResetSubtaskStates with an empty groupIDs slice"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-18",
+      "title": "Spec.RenderCombined and Spec.RenderIndividual — Markdown rendering",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.RenderCombined() or spec.RenderIndividual() to render spec artifacts as Markdown",
+        "benefit": "so that I can produce human-readable documentation from spec data"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-18.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.RenderCombined",
+          "action": "renders all artifacts (PRD body, requirements, test spec, tasks, architecture if present) as a single concatenated Markdown document",
+          "return_contract": "returns string containing the full Markdown document",
+          "trigger": "a caller invokes spec.RenderCombined"
+        },
+        {
+          "id": "01-REQ-18.2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.RenderIndividual",
+          "action": "renders each artifact separately and returns a map keyed by artifact name (e.g., 'prd', 'requirements', 'test_spec', 'tasks', 'architecture') to its Markdown string",
+          "return_contract": "returns map[string]string with one entry per artifact",
+          "trigger": "a caller invokes spec.RenderIndividual"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-18.E1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.RenderIndividual",
+          "action": "omits the 'architecture' key from the returned map",
+          "return_contract": "returns map[string]string without 'architecture' key",
+          "trigger": "a caller invokes spec.RenderIndividual on a spec with no architecture.md"
+        },
+        {
+          "id": "01-REQ-18.E2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.RenderCombined",
+          "action": "renders the requirements section as an empty or placeholder section without panicking",
+          "return_contract": "returns string without panicking",
+          "trigger": "a caller invokes spec.RenderCombined on a spec with empty requirements"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-19",
+      "title": "Spec.RenderIndividualScoped — task-group-scoped rendering",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call spec.RenderIndividualScoped(targetGroup) to render artifacts filtered to a task group's references",
+        "benefit": "so that I can provide focused context to an AI agent working on a specific task group"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-19.1",
+          "ears_pattern": "event_driven",
+          "system": "Spec.RenderIndividualScoped",
+          "action": "collects all requirement_refs and test_spec_refs from every subtask in targetGroup, renders only the referenced requirements (including acceptance criteria and edge cases whose IDs appear in requirement_refs), renders only the referenced test entries, renders the target group with full subtask detail and all other groups as one-line completion summaries, and includes PRD body and architecture unfiltered",
+          "return_contract": "returns map[string]string with scoped content per artifact",
+          "trigger": "a caller invokes spec.RenderIndividualScoped with a targetGroup that has requirement_refs and test_spec_refs"
+        },
+        {
+          "id": "01-REQ-19.2",
+          "ears_pattern": "event_driven",
+          "system": "Spec.RenderIndividualScoped",
+          "action": "falls back to full unscoped rendering equivalent to spec.RenderIndividual",
+          "return_contract": "returns map[string]string with full unscoped content",
+          "trigger": "a caller invokes spec.RenderIndividualScoped with a targetGroup that has no requirement_refs or test_spec_refs"
+        },
+        {
+          "id": "01-REQ-19.3",
+          "ears_pattern": "event_driven",
+          "system": "Spec.RenderIndividualScoped",
+          "action": "includes a Spec Overview listing all requirement IDs and titles for context, even for requirements not in the scoped set",
+          "return_contract": "returns map[string]string where the requirements entry includes a Spec Overview section",
+          "trigger": "a caller invokes spec.RenderIndividualScoped and the requirements section is scoped"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-19.E1",
+          "ears_pattern": "unwanted",
+          "system": "Spec.RenderIndividualScoped",
+          "action": "falls back to full unscoped rendering and returns the result without error",
+          "return_contract": "returns map[string]string with full unscoped content",
+          "error_condition": "a caller invokes spec.RenderIndividualScoped with a targetGroup ID that does not exist in the Tasks struct"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-20",
+      "title": "EARS Criterion Builders — convenience constructors for EARS criteria",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call UbiquitousCriterion, EventDrivenCriterion, ComplexEventCriterion, StateDrivenCriterion, UnwantedCriterion, or OptionalCriterion to construct EARS criterion structs",
+        "benefit": "so that I can build requirements programmatically without manually setting pattern-specific fields"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-20.1",
+          "ears_pattern": "event_driven",
+          "system": "EARS criterion builder",
+          "action": "returns a Criterion struct with the ears_pattern field set to the corresponding pattern and all provided arguments mapped to the correct struct fields",
+          "return_contract": "returns Criterion with ears_pattern and all relevant fields populated",
+          "trigger": "a caller invokes any EARS criterion builder with valid arguments"
+        },
+        {
+          "id": "01-REQ-20.2",
+          "ears_pattern": "ubiquitous",
+          "system": "EARS criterion builders",
+          "action": "set only the fields relevant to each pattern (e.g., UnwantedCriterion sets error_condition but not trigger, state, or feature; OptionalCriterion sets feature but not trigger, state, or error_condition)",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-20.E1",
+          "ears_pattern": "event_driven",
+          "system": "EARS criterion builder",
+          "action": "returns a Criterion with an empty ID field; validation of the ID is deferred to spec.Validate",
+          "return_contract": "returns Criterion with empty ID field",
+          "trigger": "a caller invokes any EARS criterion builder with an empty id string"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-21",
+      "title": "BootstrapSpec — incremental spec population with deferred validation",
+      "user_story": {
+        "role": "Go program",
+        "goal": "use NewBootstrapSpec(specID, specName) and BootstrapSpec.Finalize() to build a spec incrementally",
+        "benefit": "so that I can populate artifacts one at a time and validate the complete spec only when ready"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-21.1",
+          "ears_pattern": "event_driven",
+          "system": "NewBootstrapSpec",
+          "action": "returns a BootstrapSpec with the specID and specName set and all artifact fields empty",
+          "return_contract": "returns *BootstrapSpec",
+          "trigger": "a caller invokes NewBootstrapSpec with a specID and specName"
+        },
+        {
+          "id": "01-REQ-21.2",
+          "ears_pattern": "event_driven",
+          "system": "BootstrapSpec.Finalize",
+          "action": "assembles a Spec from all set artifacts, runs full schema and cross-file validation, and returns the assembled Spec with no validation errors",
+          "return_contract": "returns (*Spec, nil) — nil slice indicates no errors",
+          "trigger": "a caller invokes BootstrapSpec.Finalize after setting all required artifacts"
+        },
+        {
+          "id": "01-REQ-21.3",
+          "ears_pattern": "event_driven",
+          "system": "BootstrapSpec.Finalize",
+          "action": "returns nil for the Spec and a slice of ValidationError entries each with rule set to 'bootstrap' and message set to 'Missing artifact: {name}' for each missing artifact",
+          "return_contract": "returns (nil, []ValidationError) with bootstrap rule entries",
+          "trigger": "a caller invokes BootstrapSpec.Finalize with one or more required artifacts missing"
+        },
+        {
+          "id": "01-REQ-21.4",
+          "ears_pattern": "event_driven",
+          "system": "BootstrapSpec.Finalize",
+          "action": "returns nil for the Spec and a slice of ValidationError entries describing the validation failures",
+          "return_contract": "returns (nil, []ValidationError)",
+          "trigger": "a caller invokes BootstrapSpec.Finalize and all required artifacts are present but validation fails"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-21.E1",
+          "ears_pattern": "event_driven",
+          "system": "BootstrapSpec.Finalize",
+          "action": "each call assembles and validates independently; the BootstrapSpec is not mutated by Finalize",
+          "return_contract": "returns (*Spec, nil) or (nil, []ValidationError) on each call independently",
+          "trigger": "a caller invokes BootstrapSpec.Finalize multiple times on the same BootstrapSpec"
+        },
+        {
+          "id": "01-REQ-21.E2",
+          "ears_pattern": "event_driven",
+          "system": "BootstrapSpec.Finalize",
+          "action": "returns all missing artifact errors and all validation errors together in the returned slice",
+          "return_contract": "returns (nil, []ValidationError) with all errors combined",
+          "trigger": "a caller invokes BootstrapSpec.Finalize and both missing artifacts and validation errors are present"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-22",
+      "title": "Schemas — return bundled JSON Schema files",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call Schemas() to access the embedded JSON Schema files",
+        "benefit": "so that I can inspect or use the schemas without reading from the filesystem"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-22.1",
+          "ears_pattern": "event_driven",
+          "system": "Schemas",
+          "action": "returns the map of schema file names to their raw bytes as embedded via //go:embed from the schemas/ directory",
+          "return_contract": "returns map[string][]byte with one entry per schema file",
+          "trigger": "a caller invokes Schemas"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-22.E1",
+          "ears_pattern": "ubiquitous",
+          "system": "Schemas",
+          "action": "always returns a non-nil map; the map is never empty because schema files are embedded at compile time and their absence would be a build error",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-23",
+      "title": "ComputeIntentHash — SHA-256 hash of the PRD Intent section",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call ComputeIntentHash(body) to compute a stable hash of the PRD's Intent section",
+        "benefit": "so that I can detect when the intent of a spec has changed"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-23.1",
+          "ears_pattern": "event_driven",
+          "system": "ComputeIntentHash",
+          "action": "extracts and normalizes the ## Intent section text, computes its SHA-256 hash, and returns the hex-encoded hash string",
+          "return_contract": "returns (string, nil) — hex-encoded SHA-256 hash",
+          "trigger": "a caller invokes ComputeIntentHash with a PRD body string containing a ## Intent section"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-23.E1",
+          "ears_pattern": "unwanted",
+          "system": "ComputeIntentHash",
+          "action": "returns an IntentError indicating the section is missing",
+          "return_contract": "returns (\"\", IntentError) wrapping SpecError",
+          "error_condition": "the PRD body does not contain a ## Intent section"
+        },
+        {
+          "id": "01-REQ-23.E2",
+          "ears_pattern": "event_driven",
+          "system": "ComputeIntentHash",
+          "action": "returns an IntentError since no ## Intent section can be found in an empty body",
+          "return_contract": "returns (\"\", IntentError) wrapping SpecError",
+          "trigger": "a caller invokes ComputeIntentHash with an empty string"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-24",
+      "title": "TestSpec.ComputeCoverage — compute test coverage against requirements",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call ts.ComputeCoverage(req) to determine which requirements are covered by test entries",
+        "benefit": "so that I can identify gaps in test coverage before publishing a spec"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-24.1",
+          "ears_pattern": "event_driven",
+          "system": "TestSpec.ComputeCoverage",
+          "action": "scans all test entries against requirement IDs, correctness property IDs, and execution path IDs in the Requirements struct and returns a coverage report indicating which entities are covered and which are not",
+          "return_contract": "returns a coverage report struct or map with covered and uncovered entity IDs",
+          "trigger": "a caller invokes ts.ComputeCoverage with a Requirements struct"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-24.E1",
+          "ears_pattern": "event_driven",
+          "system": "TestSpec.ComputeCoverage",
+          "action": "returns a coverage report indicating 100% coverage (no requirements to cover)",
+          "return_contract": "returns coverage report with empty uncovered list",
+          "trigger": "a caller invokes ts.ComputeCoverage with an empty Requirements struct"
+        },
+        {
+          "id": "01-REQ-24.E2",
+          "ears_pattern": "event_driven",
+          "system": "TestSpec.ComputeCoverage",
+          "action": "returns a coverage report indicating 0% coverage with all requirement IDs in the uncovered list",
+          "return_contract": "returns coverage report with all requirement IDs in uncovered list",
+          "trigger": "a caller invokes ts.ComputeCoverage with a TestSpec that has no test entries"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-25",
+      "title": "CreateSpec — create a new spec with initialized artifacts",
+      "user_story": {
+        "role": "Go program",
+        "goal": "call CreateSpec(specID, specName) to create a new Spec in draft state",
+        "benefit": "so that I can start a new spec without manually initializing each artifact"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-25.1",
+          "ears_pattern": "event_driven",
+          "system": "CreateSpec",
+          "action": "returns a Spec with status set to draft, all sub-artifacts initialized to their zero/empty values, and specID and specName set from the arguments",
+          "return_contract": "returns *Spec with status draft and all artifacts initialized",
+          "trigger": "a caller invokes CreateSpec with a specID and specName"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-25.E1",
+          "ears_pattern": "event_driven",
+          "system": "CreateSpec",
+          "action": "returns a Spec with the empty values set; validation of the ID and name is deferred to spec.Validate",
+          "return_contract": "returns *Spec with empty specID or specName fields",
+          "trigger": "a caller invokes CreateSpec with an empty specID or specName"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-26",
+      "title": "Error type hierarchy — SpecError wrapping and errors.As traversal",
+      "user_story": {
+        "role": "Go program",
+        "goal": "use errors.As and errors.Is to inspect errors returned by the afspec library",
+        "benefit": "so that I can handle specific error types while also catching all afspec errors with a single base type check"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-26.1",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec error types",
+          "action": "implement the error interface and wrap SpecError such that errors.As(err, &SpecError{}) returns true for any LoadError, SaveError, LifecycleError, IntentError, or BootstrapError value",
+          "return_contract": null
+        },
+        {
+          "id": "01-REQ-26.2",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec error types",
+          "action": "implement errors.As traversal from specific to base type: errors.As(loadErr, &LoadError{}) returns true, and errors.As(loadErr, &SpecError{}) also returns true for the same error value",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-26.E1",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec library",
+          "action": "never calls os.Exit or panics in response to invalid input; all error conditions are signaled via return values following Go's (result, error) convention, since the library is consumed by CLI and server programs that must handle errors gracefully",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-27",
+      "title": "Round-trip fidelity — byte-for-byte output matching Python library",
+      "user_story": {
+        "role": "Go program",
+        "goal": "load a spec with LoadSpec and save it with spec.Save and get byte-for-byte identical output to the Python library",
+        "benefit": "so that Go and Python tools can interoperate on the same spec directories without corruption"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-27.1",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec library",
+          "action": "produces byte-for-byte identical JSON output to the Python library for all artifact types, verified by golden-file tests in testdata/ that load each fixture via LoadSpec, save to a temp directory, and compare output byte-for-byte using go-cmp",
+          "return_contract": null
+        },
+        {
+          "id": "01-REQ-27.2",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec library",
+          "action": "produces byte-for-byte identical PRD frontmatter output to the Python library using the hand-written renderer with fixed field order and explicit value formatting, not yaml.Marshal",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-27.E1",
+          "ears_pattern": "event_driven",
+          "system": "afspec test suite",
+          "action": "outputs the full go-cmp diff (expected vs. actual) to the test log and fails the test, identifying the exact field or formatting rule that diverges",
+          "return_contract": "test fails with human-readable diff in test log",
+          "trigger": "a golden-file test detects a byte-level difference between Go output and the Python fixture"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-28",
+      "title": "Concurrency model — no goroutine-safety guarantees",
+      "user_story": {
+        "role": "Go program",
+        "goal": "understand the concurrency contract of the afspec library",
+        "benefit": "so that I can synchronize access to Spec instances correctly in concurrent programs"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-28.1",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec library",
+          "action": "treats Spec structs as value types — mutation methods return new Spec copies rather than modifying the receiver in place, matching the Python immutable Pydantic model pattern",
+          "return_contract": null
+        },
+        {
+          "id": "01-REQ-28.2",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec library",
+          "action": "provides no goroutine-safety guarantees; callers are responsible for synchronizing concurrent access to Spec instances externally",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-28.E1",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec library",
+          "action": "documents the lack of goroutine-safety in package-level godoc so that callers are not surprised by data races under concurrent use",
+          "return_contract": null
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [
+    {
+      "id": "01-PROP-1",
+      "title": "LoadSpec and Save are inverse operations",
+      "for_any": "valid spec directory in testdata/",
+      "invariant": "LoadSpec(dir) followed by spec.Save(tmpDir) produces byte-for-byte identical files to the originals in dir for all artifacts",
+      "validates": [
+        "01-REQ-1.1",
+        "01-REQ-2.1",
+        "01-REQ-27.1"
+      ]
+    },
+    {
+      "id": "01-PROP-2",
+      "title": "MarshalJSON is deterministic",
+      "for_any": "spec artifact struct value v",
+      "invariant": "MarshalJSON(v) called twice on the same value returns identical byte slices",
+      "validates": [
+        "01-REQ-3.1",
+        "01-REQ-3.2"
+      ]
+    },
+    {
+      "id": "01-PROP-3",
+      "title": "ValidTransition is consistent with Transition",
+      "for_any": "current state and target state pair",
+      "invariant": "if ValidTransition(current, target) returns false then spec.Transition(target, dir) returns a LifecycleError; if ValidTransition returns true then spec.Transition succeeds (assuming no I/O errors)",
+      "validates": [
+        "01-REQ-9.1",
+        "01-REQ-9.2",
+        "01-REQ-9.E1"
+      ]
+    },
+    {
+      "id": "01-PROP-4",
+      "title": "Validate Valid field is consistent with Errors",
+      "for_any": "any Spec value",
+      "invariant": "ValidationResult.Valid is true if and only if ValidationResult.Errors is empty",
+      "validates": [
+        "01-REQ-4.1",
+        "01-REQ-4.2"
+      ]
+    },
+    {
+      "id": "01-PROP-5",
+      "title": "TransitionSubtask only allows defined transitions",
+      "for_any": "subtask in any state and any target state not in the allowed transition table",
+      "invariant": "tasks.TransitionSubtask returns a LifecycleError and leaves the subtask state unchanged",
+      "validates": [
+        "01-REQ-16.1",
+        "01-REQ-16.E1"
+      ]
+    },
+    {
+      "id": "01-PROP-6",
+      "title": "BootstrapSpec.Finalize returns nil Spec on any error",
+      "for_any": "BootstrapSpec with any combination of set and missing artifacts",
+      "invariant": "if BootstrapSpec.Finalize returns a non-empty error slice then the returned Spec pointer is nil; if the error slice is nil then the Spec pointer is non-nil",
+      "validates": [
+        "01-REQ-21.2",
+        "01-REQ-21.3",
+        "01-REQ-21.4"
+      ]
+    },
+    {
+      "id": "01-PROP-7",
+      "title": "errors.As traverses from specific to base error type",
+      "for_any": "any error returned by the afspec library",
+      "invariant": "errors.As(err, &SpecError{}) returns true for every non-nil error returned by any afspec function or method",
+      "validates": [
+        "01-REQ-26.1",
+        "01-REQ-26.2"
+      ]
+    },
+    {
+      "id": "01-PROP-8",
+      "title": "TopologicalSort order is consistent with dependency edges",
+      "for_any": "acyclic DependencyGraph",
+      "invariant": "for every DependencyEdge (FromSpec, ToSpec) in the graph, ToSpec appears before FromSpec in the slice returned by TopologicalSort",
+      "validates": [
+        "01-REQ-13.2"
+      ]
+    },
+    {
+      "id": "01-PROP-9",
+      "title": "Sealed specs cannot be saved",
+      "for_any": "Spec in the sealed lifecycle state",
+      "invariant": "spec.Save returns a LifecycleError and no files are written to disk",
+      "validates": [
+        "01-REQ-2.2"
+      ]
+    },
+    {
+      "id": "01-PROP-10",
+      "title": "map keys are always sorted in MarshalJSON output",
+      "for_any": "spec artifact struct containing one or more map[string]T fields",
+      "invariant": "the JSON output of MarshalJSON has all map keys in alphabetical order regardless of insertion order",
+      "validates": [
+        "01-REQ-3.1"
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "01-PATH-1",
+      "title": "Load, validate, and save a spec round-trip",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls LoadSpec(dir) with a valid spec directory path"
+        },
+        {
+          "actor": "LoadSpec",
+          "action": "reads prd.md, requirements.json, test_spec.json, tasks.json, and optionally architecture.md from the directory"
+        },
+        {
+          "actor": "LoadSpec",
+          "action": "parses YAML frontmatter from prd.md using yaml.Unmarshal and extracts the Markdown body"
+        },
+        {
+          "actor": "LoadSpec",
+          "action": "unmarshals each JSON artifact into the corresponding Go struct"
+        },
+        {
+          "actor": "LoadSpec",
+          "action": "returns a populated *Spec to the caller"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls spec.Validate() to check the loaded spec"
+        },
+        {
+          "actor": "Spec.Validate",
+          "action": "runs ValidateSchema and ValidateCrossFile and returns a ValidationResult"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls spec.Save(tmpDir) to persist the spec"
+        },
+        {
+          "actor": "Spec.Save",
+          "action": "serializes each artifact using MarshalJSON and the hand-written PRD renderer"
+        },
+        {
+          "actor": "Spec.Save",
+          "action": "writes each artifact to a temp file then renames atomically to the final path"
+        },
+        {
+          "actor": "Caller",
+          "action": "observes byte-for-byte identical output files in tmpDir compared to the original dir"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-2",
+      "title": "Discover specs and build dependency graph",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls DiscoverSpecs(root) with a workspace root path"
+        },
+        {
+          "actor": "DiscoverSpecs",
+          "action": "scans root for subdirectories matching the NN_snake_case pattern"
+        },
+        {
+          "actor": "DiscoverSpecs",
+          "action": "parses PRD frontmatter from each matching directory and returns a []SpecMeta"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls BuildDependencyGraph(metas, root) with the returned SpecMeta slice"
+        },
+        {
+          "actor": "BuildDependencyGraph",
+          "action": "reads tasks.json for each spec and extracts cross-spec dependency declarations"
+        },
+        {
+          "actor": "BuildDependencyGraph",
+          "action": "constructs a DependencyGraph with all edges and returns it"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls DependencyGraph.TopologicalSort() to determine build order"
+        },
+        {
+          "actor": "DependencyGraph.TopologicalSort",
+          "action": "runs Kahn's algorithm and returns spec IDs in dependency order or an error if a cycle is detected"
+        },
+        {
+          "actor": "Caller",
+          "action": "observes the ordered spec ID slice for use in sequential processing"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-3",
+      "title": "Bootstrap a new spec incrementally and finalize",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls NewBootstrapSpec(specID, specName) to create a BootstrapSpec"
+        },
+        {
+          "actor": "NewBootstrapSpec",
+          "action": "returns a *BootstrapSpec with specID and specName set and all artifact fields empty"
+        },
+        {
+          "actor": "Caller",
+          "action": "sets requirements, test spec, tasks, and PRD artifacts on the BootstrapSpec"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls BootstrapSpec.Finalize()"
+        },
+        {
+          "actor": "BootstrapSpec.Finalize",
+          "action": "checks that all required artifacts are set; returns (nil, []ValidationError) if any are missing"
+        },
+        {
+          "actor": "BootstrapSpec.Finalize",
+          "action": "assembles a Spec from all set artifacts"
+        },
+        {
+          "actor": "BootstrapSpec.Finalize",
+          "action": "runs full schema and cross-file validation on the assembled Spec"
+        },
+        {
+          "actor": "BootstrapSpec.Finalize",
+          "action": "returns (*Spec, nil) on success or (nil, []ValidationError) on failure"
+        },
+        {
+          "actor": "Caller",
+          "action": "observes the assembled and validated *Spec or the list of validation errors"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-4",
+      "title": "Transition a spec through its lifecycle and archive it",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls CreateSpec(specID, specName) to create a new draft Spec"
+        },
+        {
+          "actor": "CreateSpec",
+          "action": "returns a *Spec with status draft and initialized artifacts"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls spec.Transition('active', dir) to advance to active state"
+        },
+        {
+          "actor": "Spec.Transition",
+          "action": "calls ValidTransition('draft', 'active') to verify the transition is allowed"
+        },
+        {
+          "actor": "Spec.Transition",
+          "action": "updates the status field and persists the spec to disk atomically"
+        },
+        {
+          "actor": "Spec.Transition",
+          "action": "returns the updated *Spec with status active"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls spec.Transition('sealed', dir) to advance to sealed state"
+        },
+        {
+          "actor": "Spec.Transition",
+          "action": "updates status to sealed and persists atomically"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls MoveToArchive(specDir, root) to archive the spec"
+        },
+        {
+          "actor": "MoveToArchive",
+          "action": "transitions the spec to archived state and moves the directory to {root}/archive/"
+        },
+        {
+          "actor": "Caller",
+          "action": "observes the spec directory at {root}/archive/{specDir}"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-5",
+      "title": "Transition subtask states through the state machine",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls LoadSpec(dir) to load a spec with tasks"
+        },
+        {
+          "actor": "LoadSpec",
+          "action": "returns a *Spec with a populated Tasks struct containing subtasks in pending state"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls tasks.TransitionSubtask(subtaskID, 'queued')"
+        },
+        {
+          "actor": "Tasks.TransitionSubtask",
+          "action": "verifies pending→queued is in the allowed transition table"
+        },
+        {
+          "actor": "Tasks.TransitionSubtask",
+          "action": "returns updated *Tasks with the subtask in queued state"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls tasks.TransitionSubtask(subtaskID, 'in_progress')"
+        },
+        {
+          "actor": "Tasks.TransitionSubtask",
+          "action": "verifies queued→in_progress is allowed and returns updated *Tasks"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls tasks.TransitionSubtask(subtaskID, 'done')"
+        },
+        {
+          "actor": "Tasks.TransitionSubtask",
+          "action": "verifies in_progress→done is allowed and returns updated *Tasks"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls spec.Save(dir) to persist the updated task states to disk"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-6",
+      "title": "Render a spec scoped to a target task group",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls LoadSpec(dir) to load a spec"
+        },
+        {
+          "actor": "LoadSpec",
+          "action": "returns a *Spec with requirements, test spec, and tasks populated"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls spec.RenderIndividualScoped(targetGroup) with a task group ID"
+        },
+        {
+          "actor": "Spec.RenderIndividualScoped",
+          "action": "collects all requirement_refs and test_spec_refs from every subtask in targetGroup"
+        },
+        {
+          "actor": "Spec.RenderIndividualScoped",
+          "action": "renders only the referenced requirements with a Spec Overview listing all requirements"
+        },
+        {
+          "actor": "Spec.RenderIndividualScoped",
+          "action": "renders only the referenced test entries"
+        },
+        {
+          "actor": "Spec.RenderIndividualScoped",
+          "action": "renders targetGroup with full subtask detail and all other groups as one-line summaries"
+        },
+        {
+          "actor": "Spec.RenderIndividualScoped",
+          "action": "includes PRD body and architecture unfiltered"
+        },
+        {
+          "actor": "Caller",
+          "action": "observes a map[string]string with scoped Markdown content per artifact"
+        }
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "id": "01-ERR-1",
+      "condition": "LoadSpec is called with a directory missing a required artifact",
+      "behavior": "returns (nil, LoadError) wrapping SpecError; the LoadError message identifies the missing file name",
+      "requirement_id": "01-REQ-1.E1"
+    },
+    {
+      "id": "01-ERR-2",
+      "condition": "LoadSpec encounters malformed JSON in any artifact",
+      "behavior": "returns (nil, LoadError) wrapping the JSON parse error and SpecError",
+      "requirement_id": "01-REQ-1.E2"
+    },
+    {
+      "id": "01-ERR-3",
+      "condition": "LoadSpec encounters malformed YAML frontmatter in prd.md",
+      "behavior": "returns (nil, LoadError) wrapping the yaml.Unmarshal error with line/column info and SpecError",
+      "requirement_id": "01-REQ-1.E3"
+    },
+    {
+      "id": "01-ERR-4",
+      "condition": "Spec.Save is called on a sealed Spec",
+      "behavior": "returns LifecycleError wrapping SpecError without writing any files",
+      "requirement_id": "01-REQ-2.2"
+    },
+    {
+      "id": "01-ERR-5",
+      "condition": "Spec.Save encounters a filesystem error during temp file creation or rename",
+      "behavior": "cleans up any partially written temp files and returns SaveError wrapping SpecError",
+      "requirement_id": "01-REQ-2.E1"
+    },
+    {
+      "id": "01-ERR-6",
+      "condition": "Spec.Transition is called with an invalid target state",
+      "behavior": "returns (nil, LifecycleError) wrapping SpecError without modifying the spec or writing to disk",
+      "requirement_id": "01-REQ-9.E1"
+    },
+    {
+      "id": "01-ERR-7",
+      "condition": "Tasks.TransitionSubtask is called with a transition not in the allowed table",
+      "behavior": "returns (nil, LifecycleError) wrapping SpecError without modifying any subtask state",
+      "requirement_id": "01-REQ-16.E1"
+    },
+    {
+      "id": "01-ERR-8",
+      "condition": "Tasks.TransitionSubtask is called with a subtask ID that does not exist",
+      "behavior": "returns (nil, LifecycleError) wrapping SpecError identifying the missing subtask ID",
+      "requirement_id": "01-REQ-16.E2"
+    },
+    {
+      "id": "01-ERR-9",
+      "condition": "BootstrapSpec.Finalize is called with one or more required artifacts missing",
+      "behavior": "returns (nil, []ValidationError) where each missing artifact produces a ValidationError with rule 'bootstrap' and message 'Missing artifact: {name}'",
+      "requirement_id": "01-REQ-21.3"
+    },
+    {
+      "id": "01-ERR-10",
+      "condition": "ComputeIntentHash is called with a PRD body that has no ## Intent section",
+      "behavior": "returns (\"\", IntentError) wrapping SpecError",
+      "requirement_id": "01-REQ-23.E1"
+    },
+    {
+      "id": "01-ERR-11",
+      "condition": "A bundled JSON Schema file is structurally invalid or has a bad $ref at compile time",
+      "behavior": "returns LoadError wrapping SpecError at library initialization, preventing use of the library with corrupt schemas",
+      "requirement_id": "01-REQ-5.E1"
+    },
+    {
+      "id": "01-ERR-12",
+      "condition": "Spec.Supersede is called on a spec that is not in the sealed state",
+      "behavior": "returns (nil, LifecycleError) wrapping SpecError without modifying the spec or writing to disk",
+      "requirement_id": "01-REQ-10.E1"
+    },
+    {
+      "id": "01-ERR-13",
+      "condition": "MoveToArchive encounters a naming conflict in the archive directory",
+      "behavior": "returns SaveError wrapping SpecError without overwriting the existing archive entry",
+      "requirement_id": "01-REQ-11.E2"
+    },
+    {
+      "id": "01-ERR-14",
+      "condition": "DiscoverSpecs is called with a root directory that does not exist or is not readable",
+      "behavior": "returns (nil, LoadError) wrapping SpecError",
+      "requirement_id": "01-REQ-12.E2"
+    },
+    {
+      "id": "01-ERR-15",
+      "condition": "BuildDependencyGraph encounters a tasks.json that references an unknown spec ID",
+      "behavior": "returns (*DependencyGraph, error) with the partial graph and a descriptive error identifying the dangling reference",
+      "requirement_id": "01-REQ-13.E2"
+    },
+    {
+      "id": "01-ERR-16",
+      "condition": "DependencyGraph.TopologicalSort detects a cycle in the dependency graph",
+      "behavior": "returns (nil, error) describing the cycle; the error message identifies the specs involved",
+      "requirement_id": "01-REQ-13.3"
+    },
+    {
+      "id": "01-ERR-17",
+      "condition": "MarshalJSON is called with a value containing an unmarshalable type (channel, function)",
+      "behavior": "returns (nil, error) from the marshaling step",
+      "requirement_id": "01-REQ-3.E1"
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "github.com/santhosh-tekuri/jsonschema/v6",
+      "version": "v6",
+      "symbols": [
+        {
+          "name": "UnmarshalJSON",
+          "import_path": "github.com/santhosh-tekuri/jsonschema/v6",
+          "signature": "func UnmarshalJSON(r io.Reader) (any, error)",
+          "notes": "Loads a schema document from embedded bytes. Returns parsed schema value; returns error on malformed JSON."
+        },
+        {
+          "name": "Compiler.Compile",
+          "import_path": "github.com/santhosh-tekuri/jsonschema/v6",
+          "signature": "func (c *Compiler) Compile(url string) (*Schema, error)",
+          "notes": "Compiles a schema URL against the loader. Returns *jsonschema.Schema; returns error if $ref resolution fails or schema is structurally invalid."
+        },
+        {
+          "name": "Schema.Validate",
+          "import_path": "github.com/santhosh-tekuri/jsonschema/v6",
+          "signature": "func (s *Schema) Validate(instance any) error",
+          "notes": "Validates a JSON value against the compiled schema. Returns nil on success; returns *jsonschema.ValidationError on failure — a tree of errors each carrying InstanceLocation, KeywordLocation, and Message."
+        }
+      ]
+    },
+    {
+      "package": "github.com/goccy/go-yaml",
+      "version": "latest",
+      "symbols": [
+        {
+          "name": "Unmarshal",
+          "import_path": "github.com/goccy/go-yaml",
+          "signature": "func Unmarshal(data []byte, v interface{}) error",
+          "notes": "Parses frontmatter bytes into a Go struct or map[string]interface{}. Returns error with line/column info on syntax errors or type mismatches. Used exclusively for parsing YAML frontmatter in prd.md; yaml.Marshal is NOT used for writing."
+        }
+      ]
+    },
+    {
+      "package": "github.com/google/go-cmp",
+      "version": "latest",
+      "symbols": [
+        {
+          "name": "Diff",
+          "import_path": "github.com/google/go-cmp/cmp",
+          "signature": "func Diff(x, y interface{}, opts ...Option) string",
+          "notes": "Used in golden-file tests to produce human-readable structured diffs between expected fixture content and actual Save output. An empty string return indicates no difference."
+        }
+      ]
+    }
+  ]
+}
