@@ -162,6 +162,13 @@ func (s *Spec) Save(dir string) error {
 		}
 	}
 
+	return s.saveToDisk(dir)
+}
+
+// saveToDisk is the internal save method that bypasses lifecycle checks.
+// It is used by Transition, Supersede, and MoveToArchive which need to
+// persist specs in sealed, superseded, or archived states.
+func (s *Spec) saveToDisk(dir string) error {
 	// Verify directory exists
 	if _, err := os.Stat(dir); err != nil {
 		return &SaveError{
