@@ -123,5 +123,21 @@ func (b *BootstrapSpec) Finalize() (*Spec, []ValidationError) {
 		return nil, errs
 	}
 
+	// Run full validation (schema + cross-file) on the assembled spec.
+	result := spec.Validate()
+	if !result.Valid {
+		for _, e := range result.Errors {
+			rule := e.Category
+			if e.Check != "" {
+				rule = e.Check
+			}
+			errs = append(errs, ValidationError{
+				Rule:    rule,
+				Message: e.Message,
+			})
+		}
+		return nil, errs
+	}
+
 	return spec, nil
 }

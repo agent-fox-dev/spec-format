@@ -724,7 +724,7 @@ func buildSpecWithDanglingRef(danglingID string) *Spec {
 					AcceptanceCriteria: []Criterion{
 						{
 							Id:             "01-REQ-1.1",
-							EarsPattern:    CriterionEarsPatternEventDriven,
+							EarsPattern:    CriterionEarsPatternUbiquitous,
 							System:         "the system",
 							Action:         "return a populated Spec",
 							ReturnContract: nil,
@@ -805,7 +805,7 @@ func buildSpecWithWarnings() *Spec {
 					AcceptanceCriteria: []Criterion{
 						{
 							Id:             "01-REQ-1.1",
-							EarsPattern:    CriterionEarsPatternEventDriven,
+							EarsPattern:    CriterionEarsPatternUbiquitous,
 							System:         "the system",
 							Action:         "return a populated Spec",
 							ReturnContract: nil,
@@ -907,7 +907,7 @@ func buildSpecWithNoTestEntries() *Spec {
 					AcceptanceCriteria: []Criterion{
 						{
 							Id:             "01-REQ-1.1",
-							EarsPattern:    CriterionEarsPatternEventDriven,
+							EarsPattern:    CriterionEarsPatternUbiquitous,
 							System:         "the system",
 							Action:         "return a populated Spec",
 							ReturnContract: nil,
