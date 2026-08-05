@@ -564,7 +564,7 @@
           "requirement_refs": [
             "01-REQ-22.1"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -584,7 +584,7 @@
             "01-REQ-26.1",
             "01-REQ-26.2"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -607,7 +607,7 @@
             "01-REQ-4.1",
             "01-REQ-8.1"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -633,7 +633,7 @@
             "01-REQ-21.4",
             "01-REQ-25.1"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -656,7 +656,7 @@
             "01-REQ-14.3",
             "01-REQ-23.1"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],

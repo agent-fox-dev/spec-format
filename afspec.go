@@ -1,5 +1,10 @@
 package afspec
 
+import (
+	"fmt"
+	"os"
+)
+
 // Spec represents a complete specification package with all artifacts.
 // The PRD frontmatter fields are stored directly on the struct, while
 // the PRD Markdown body is stored in PRDBody. The three JSON artifacts
@@ -35,6 +40,22 @@ type Spec struct {
 // populated Spec struct. It reads prd.md, requirements.json,
 // test_spec.json, tasks.json, and optionally architecture.md.
 func LoadSpec(dir string) (*Spec, error) {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return nil, &LoadError{
+			Msg:  fmt.Sprintf("cannot access spec directory: %s", err),
+			File: dir,
+			Err:  &SpecError{Msg: fmt.Sprintf("cannot access spec directory: %s", err)},
+		}
+	}
+	if !info.IsDir() {
+		return nil, &LoadError{
+			Msg:  fmt.Sprintf("not a directory: %s", dir),
+			File: dir,
+			Err:  &SpecError{Msg: fmt.Sprintf("not a directory: %s", dir)},
+		}
+	}
+
 	panic("not implemented")
 }
 
@@ -42,6 +63,13 @@ func LoadSpec(dir string) (*Spec, error) {
 // Each artifact is written to a temporary file first, then renamed
 // to its final name. Returns a LifecycleError if the spec is sealed.
 func (s *Spec) Save(dir string) error {
+	if s.Status == "sealed" || s.Status == "superseded" || s.Status == "archived" {
+		return &LifecycleError{
+			Msg: fmt.Sprintf("cannot save spec in %s state", s.Status),
+			Err: &SpecError{Msg: fmt.Sprintf("cannot save spec in %s state", s.Status)},
+		}
+	}
+
 	panic("not implemented")
 }
 

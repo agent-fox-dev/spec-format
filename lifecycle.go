@@ -1,5 +1,14 @@
 package afspec
 
+import "fmt"
+
+// validTransitions maps each spec status to the set of statuses it can transition to.
+var validTransitions = map[string][]string{
+	"draft":  {"active"},
+	"active": {"sealed", "superseded"},
+	"sealed": {"superseded"},
+}
+
 // ValidTransition checks the transition table and returns true if the
 // transition from current to target state is allowed, false otherwise.
 // This is a pure function with no side effects.
@@ -11,7 +20,19 @@ package afspec
 //   - sealed   -> superseded
 //   - any      -> archived
 func ValidTransition(current, target string) bool {
-	panic("not implemented")
+	if target == "archived" {
+		return true
+	}
+	allowed, ok := validTransitions[current]
+	if !ok {
+		return false
+	}
+	for _, a := range allowed {
+		if a == target {
+			return true
+		}
+	}
+	return false
 }
 
 // Transition updates the spec's status field to the target state,
@@ -21,6 +42,13 @@ func ValidTransition(current, target string) bool {
 // Returns a LifecycleError if the transition is not allowed.
 // Returns a SaveError if disk persistence fails.
 func (s *Spec) Transition(target, dir string) (*Spec, error) {
+	if !ValidTransition(s.Status, target) {
+		return nil, &LifecycleError{
+			Msg: fmt.Sprintf("invalid transition from %q to %q", s.Status, target),
+			Err: &SpecError{Msg: fmt.Sprintf("invalid transition from %q to %q", s.Status, target)},
+		}
+	}
+
 	panic("not implemented")
 }
 
