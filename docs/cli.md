@@ -242,6 +242,8 @@ spec campaign -p campaigns/q3-auth -n "Q3 Auth Overhaul"
 | `AF_SPEC_MODEL` | Override the default Claude model used for AI operations. |
 | `AF_AGENT` | Set to `1` to enable agent mode. Suppresses the banner and forces JSON output for `render`. |
 | `SPEC_DIR` | Override the default spec root directory (`.specs`). The `--spec-dir` CLI flag takes precedence over this env var. |
+| `CLAUDE_CODE_USE_VERTEX` | Set to `1` to use Google Vertex AI as the provider (requires `google-auth` and `anthropic[vertex]`). |
+| `CLAUDE_CODE_USE_BEDROCK` | Set to `1` to use AWS Bedrock as the provider (requires `boto3` and `anthropic[bedrock]`). |
 
 ---
 

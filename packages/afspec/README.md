@@ -107,6 +107,7 @@ All symbols are importable from the top-level package: `from afspec import <symb
 | `EdgeCaseTest` | `id`, `requirement_id`, `kind`, `description`, `preconditions`, `input`, `expected`, `assertion_pseudocode` |
 | `SmokeTest` | `id`, `execution_path_id`, `description`, `trigger`, `real_components`, `mockable`, `expected_effects` |
 | `VerificationSubtask` | `id`, `checks: list[str]` |
+| `TestCommands` | `spec_tests`, `all_tests`, `linter` |
 | `TaskDependency` | `depends_on_spec`, `from_group`, `to_group`, `relationship`, `sentinel` |
 | `TraceabilityEntry` | `requirement_id`, `test_spec_id`, `task_id`, `test_path` |
 | `Coverage` | `requirements_covered`, `properties_covered`, `paths_covered`, `gaps` |

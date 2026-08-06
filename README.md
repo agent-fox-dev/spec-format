@@ -42,7 +42,12 @@ optional artifact:
 
 The full specification — field-level schemas, EARS pattern definitions, ID
 formats, validation rules, subtask state machine, and rendering — is at
-**[spec-format.md](reference/spec-format.md)**.
+**[spec-format.md](specification/spec-format.md)**.
+
+JSON Schemas for all artifacts are available in `specification/schemas/`
+(`prd-frontmatter.v1.json`, `requirements.v1.json`, `test_spec.v1.json`,
+`tasks.v1.json`). These schemas can be used for external validation or code
+generation. Both the Go and Python packages bundle them.
 
 ## Creating a Spec Package
 
@@ -73,63 +78,40 @@ spec status 01_my_feature          # show session state
 
 ## Installation
 
-Install the `spec` CLI:
+Install the spec CLI via the install script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/agent-fox-dev/spec-format/refs/heads/main/install.sh | sh
 ```
 
+### Python packages
+
+```bash
+# CLI only
+pip install "spec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/spec"
+
+# Library only (no AI, no CLI)
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/afspec"
+```
+
+### Go library
+
+```bash
+go get github.com/agent-fox-dev/spec-format@v1.3.4
+```
+
 ## Development
 
-The repository is a [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/)
-with three packages:
-
-| Package | Description |
-|---------|-------------|
-| `packages/afspec/` | Standalone library for the spec format (v1.3.4) |
-| `packages/agentspec/` | AI-powered spec creation library |
-| `packages/spec/` | CLI for AI-powered spec creation (`spec` command) |
-
+This is a uv workspace (Python 3.12+) with a Go module. See [Development Guide](docs/development.md) for setup, testing, and contributing.
 
 ```bash
-uv sync                      # install all packages in editable mode
+make check          # full quality suite: lint + all tests
 ```
-
-| Command | What it does |
-|---------|-------------|
-| `make check` | Lint + all tests (use before committing) |
-| `make test` | All tests |
-| `make lint` | Check lint + formatting |
-| `make format` | Auto-format code |
-
-Changes are immediately reflected via editable install. To run the local
-version explicitly (rather than a globally installed release):
-
-```bash
-uv run spec <command>
-```
-
-## Using packages as standalone libraries
-
-`afspec` and `agentspec` are designed for reuse outside the CLI. Install either
-package directly from git:
-
-```bash
-pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/afspec"
-pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/agentspec"
-```
-
-- **afspec** — load, validate, mutate, and render specs. See
-  [`packages/afspec/README.md`](packages/afspec/README.md) for the full API
-  reference.
-- **agentspec** — AI-powered spec creation library. Drives PRD assessment,
-  refinement, and artifact generation via Claude (Anthropic API). Provides
-  `SpecSession` for managing the full spec lifecycle and `Campaign` for
-  organizing related specs. Depends on afspec and the Anthropic SDK.
 
 ## Documentation
 
-- [Spec Format Reference](reference/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
+- [Spec Format Reference](specification/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
 - [CLI Reference](docs/cli.md) — commands, flags, and usage
 - [Configuration](docs/configuration.md) — LLM provider setup, model selection, and config files
-- [afspec API](packages/afspec/README.md) — library API for loading and manipulating specs
+- [afspec API (Python)](packages/afspec/README.md) — Python afspec library API for loading and manipulating specs
+- [afspec API (Golang)](golang/README.md) — Golang afspec library API for loading and manipulating specs

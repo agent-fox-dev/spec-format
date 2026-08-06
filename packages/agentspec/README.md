@@ -96,5 +96,5 @@ An `ANTHROPIC_API_KEY` environment variable is required for API authentication.
 
 - Python 3.12+
 - [afspec](../afspec/) >= 1.3.4
-- [anthropic](https://pypi.org/project/anthropic/) >= 0.111
+- [anthropic\[bedrock,vertex\]](https://pypi.org/project/anthropic/) >= 0.111
 - [PyYAML](https://pypi.org/project/PyYAML/) >= 6.0

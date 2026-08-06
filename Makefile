@@ -3,7 +3,7 @@
 GOLANG_DIR := $(CURDIR)/golang
 PYTHON_DIR := $(CURDIR)/packages/afspec
 
-SCHEMAS_DIR := $(CURDIR)/schemas
+SCHEMAS_DIR := $(CURDIR)/specification/schemas
 GO_SCHEMAS_DIR := $(GOLANG_DIR)/schemas
 PYTHON_SCHEMAS_DIR := $(PYTHON_DIR)/afspec/schemas
 

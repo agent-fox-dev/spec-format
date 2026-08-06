@@ -78,19 +78,24 @@ To use Claude through Google Cloud Vertex AI:
    export CLAUDE_CODE_USE_VERTEX=1
    ```
 
-2. Configure your Google Cloud project and region in your TOML config file:
+2. Set the `CLOUD_ML_REGION` environment variable (required by the Anthropic
+   SDK):
 
-   ```toml
-   [provider]
-   vertex_project = "my-gcp-project"
-   vertex_region = "us-east5"
+   ```sh
+   export CLOUD_ML_REGION="us-east5"
    ```
 
 3. Authenticate with Google Cloud using Application Default Credentials
-   (e.g., `gcloud auth application-default login`).
+   (e.g., `gcloud auth application-default login`). The project ID is
+   auto-detected from your credentials.
 
 When Vertex AI is enabled, `ANTHROPIC_API_KEY` is not needed -- authentication
 is handled through `google-auth`.
+
+Note: The `[provider]` section in the TOML config file accepts
+`vertex_project` and `vertex_region` fields, but these are not currently
+passed to the Anthropic SDK client. Use the `CLOUD_ML_REGION` environment
+variable and Application Default Credentials instead.
 
 ### AWS Bedrock
 
@@ -157,8 +162,8 @@ section controls authentication and cloud provider settings.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `auth_method` | string | `""` | Authentication method hint |
-| `vertex_project` | string | `""` | Google Cloud project ID for Vertex AI |
-| `vertex_region` | string | `""` | Google Cloud region for Vertex AI |
+| `vertex_project` | string | `""` | Google Cloud project ID (loaded but not currently used by the client) |
+| `vertex_region` | string | `""` | Google Cloud region (loaded but not currently used by the client) |
 
 ## Configuration Precedence
 
@@ -183,6 +188,7 @@ that provides a value wins:
 | `ANTHROPIC_API_KEY` | API key for direct Anthropic API access |
 | `AF_SPEC_MODEL` | Override model tier (`SIMPLE`, `STANDARD`, `ADVANCED`) or model ID |
 | `CLAUDE_CODE_USE_VERTEX` | Set to `1` to route requests through Google Vertex AI |
+| `CLOUD_ML_REGION` | Google Cloud region for Vertex AI (required when Vertex is enabled) |
 | `CLAUDE_CODE_USE_BEDROCK` | Set to `1` to route requests through AWS Bedrock |
 | `AF_AGENT` | Set to `1` for agent mode (suppresses banner, routes errors to JSON on stdout) |
 

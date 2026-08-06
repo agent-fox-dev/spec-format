@@ -56,6 +56,7 @@ spec list
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | API key for Anthropic (required for `new`, `refine`, `generate`) |
 | `AF_SPEC_MODEL` | Override the default model used for AI calls |
+| `AF_AGENT` | Set to `1` to force agent mode: suppresses the banner, forces quiet output, and wraps errors as JSON |
 | `SPEC_DIR` | Override the default spec root directory (`.specs`). `--spec-dir` flag takes precedence. |
 
 ## Requirements
