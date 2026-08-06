@@ -88,16 +88,16 @@ curl -fsSL https://raw.githubusercontent.com/agent-fox-dev/spec-format/refs/head
 
 ```bash
 # CLI only
-pip install "spec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/spec"
+pip install "spec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.5#subdirectory=packages/spec"
 
 # Library only (no AI, no CLI)
-pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.4#subdirectory=packages/afspec"
+pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.5#subdirectory=packages/afspec"
 ```
 
 ### Go library
 
 ```bash
-go get github.com/agent-fox-dev/spec-format@v1.3.4
+go get github.com/agent-fox-dev/spec-format@v1.3.5
 ```
 
 ## Development
