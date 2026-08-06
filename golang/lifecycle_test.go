@@ -667,10 +667,10 @@ Build a test feature that validates the spec library works correctly.
 }`
 
 	files := map[string]string{
-		"prd.md":             prd,
-		"requirements.json":  reqJSON,
-		"test_spec.json":     testSpecJSON,
-		"tasks.json":         tasksJSON,
+		"prd.md":            prd,
+		"requirements.json": reqJSON,
+		"test_spec.json":    testSpecJSON,
+		"tasks.json":        tasksJSON,
 	}
 
 	for name, content := range files {
@@ -680,4 +680,3 @@ Build a test feature that validates the spec library works correctly.
 		}
 	}
 }
-

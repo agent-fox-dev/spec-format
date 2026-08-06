@@ -14,7 +14,7 @@ import (
 func TestRoundTrip_ValidSpec(t *testing.T) {
 	defer requireImplemented(t)
 
-	fixtureDir := "testdata/valid_spec"
+	fixtureDir := "./../testdata/valid_spec"
 	spec, err := LoadSpec(fixtureDir)
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
@@ -104,7 +104,7 @@ func TestRoundTrip_DraftSpec(t *testing.T) {
 func TestRoundTrip_PRDFrontmatter(t *testing.T) {
 	defer requireImplemented(t)
 
-	fixtureDir := "testdata/valid_spec"
+	fixtureDir := "./../testdata/valid_spec"
 	spec, err := LoadSpec(fixtureDir)
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
@@ -137,7 +137,7 @@ func TestRoundTrip_AllFixtures(t *testing.T) {
 	defer requireImplemented(t)
 
 	fixtures := []string{
-		"testdata/valid_spec",
+		"./../testdata/valid_spec",
 	}
 
 	// Add draft_spec if available

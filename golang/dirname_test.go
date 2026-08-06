@@ -44,18 +44,18 @@ func TestIsSpecDirName_InvalidNames(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"my_spec", false},        // no numeric prefix
-		{"01-my-spec", false},     // hyphens instead of underscores
-		{"1_spec", false},         // single digit prefix
-		{"abc_spec", false},       // non-numeric prefix
-		{"01_", false},            // no name after underscore
-		{"01", false},             // no underscore or name
-		{"01_Foo", false},         // uppercase letters
-		{"001_foo", false},        // three-digit prefix
-		{"01_foo-bar", false},     // hyphen in name
-		{"01_foo bar", false},     // space in name
-		{"_01_foo", false},        // leading underscore
-		{"01__foo", false},        // double underscore
+		{"my_spec", false},    // no numeric prefix
+		{"01-my-spec", false}, // hyphens instead of underscores
+		{"1_spec", false},     // single digit prefix
+		{"abc_spec", false},   // non-numeric prefix
+		{"01_", false},        // no name after underscore
+		{"01", false},         // no underscore or name
+		{"01_Foo", false},     // uppercase letters
+		{"001_foo", false},    // three-digit prefix
+		{"01_foo-bar", false}, // hyphen in name
+		{"01_foo bar", false}, // space in name
+		{"_01_foo", false},    // leading underscore
+		{"01__foo", false},    // double underscore
 	}
 
 	for _, tt := range tests {
@@ -88,8 +88,8 @@ func TestParseSpecDirName_ValidName(t *testing.T) {
 	defer requireImplemented(t)
 
 	tests := []struct {
-		input   string
-		wantNum string
+		input    string
+		wantNum  string
 		wantName string
 	}{
 		{"01_my_spec", "01", "my_spec"},

@@ -14,12 +14,12 @@ import (
 // ---------------------------------------------------------------------------
 
 // TestSmokeLoadRenderSave exercises the full LoadSpec → RenderCombined →
-// Save round-trip on testdata/valid_spec, verifying byte-for-byte fidelity
+// Save round-trip on ./../testdata/valid_spec, verifying byte-for-byte fidelity
 // for all artifact files.
 // Test Spec: TS-01-SMOKE-1, TS-01-1, TS-01-35, TS-01-4, TS-01-52
 // Requirements: 01-REQ-1.1, 01-REQ-18.1, 01-REQ-2.1, 01-REQ-27.1
 func TestSmokeLoadRenderSave(t *testing.T) {
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestSmokeLoadRenderSave(t *testing.T) {
 	// Compare each artifact file byte-for-byte with the golden fixture.
 	artifacts := []string{"prd.md", "requirements.json", "test_spec.json", "tasks.json"}
 	for _, name := range artifacts {
-		golden, err := os.ReadFile(filepath.Join("testdata/valid_spec", name))
+		golden, err := os.ReadFile(filepath.Join("./../testdata/valid_spec", name))
 		if err != nil {
 			t.Fatalf("cannot read golden %s: %v", name, err)
 		}
@@ -88,12 +88,12 @@ func TestSmokeLoadRenderSave(t *testing.T) {
 }
 
 // TestSmokeBootstrapFinalize exercises the full NewBootstrapSpec → set
-// artifacts → Finalize → Validate chain using content from testdata/valid_spec.
+// artifacts → Finalize → Validate chain using content from ./../testdata/valid_spec.
 // Test Spec: TS-01-SMOKE-3, TS-01-42, TS-01-43
 // Requirements: 01-REQ-21.1, 01-REQ-21.2
 func TestSmokeBootstrapFinalize(t *testing.T) {
 	// Load artifact content from the golden fixture to populate the bootstrap.
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestSmokeLifecycleAndArchive(t *testing.T) {
 // Test Spec: TS-01-SMOKE-5
 // Requirements: 01-REQ-16.1
 func TestSmokeSubtaskTransitions(t *testing.T) {
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestSmokeSubtaskTransitions(t *testing.T) {
 // Test Spec: TS-01-SMOKE-6, TS-01-37
 // Requirements: 01-REQ-19.1
 func TestSmokeRenderScoped(t *testing.T) {
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestSmokeRenderScoped(t *testing.T) {
 // Test Spec: TS-01-14
 // Requirements: 01-REQ-7.1
 func TestSmokeValidateCrossSpec(t *testing.T) {
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestSmokeValidateCrossSpec(t *testing.T) {
 // Test Spec: TS-01-47
 // Requirements: 01-REQ-23.1
 func TestSmokeComputeIntentHash(t *testing.T) {
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}

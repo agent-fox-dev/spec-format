@@ -15,7 +15,7 @@ import (
 func TestSave_RoundTrip(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestSave_RoundTrip(t *testing.T) {
 
 	for _, name := range artifactFiles {
 		t.Run(name, func(t *testing.T) {
-			expected, err := os.ReadFile(filepath.Join("testdata/valid_spec", name))
+			expected, err := os.ReadFile(filepath.Join("./../testdata/valid_spec", name))
 			if err != nil {
 				t.Fatalf("failed to read expected file: %v", err)
 			}

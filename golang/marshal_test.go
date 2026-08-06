@@ -108,7 +108,7 @@ func TestMarshalJSON_Deterministic(t *testing.T) {
 func TestMarshalJSON_GoldenRequirements(t *testing.T) {
 	defer requireImplemented(t)
 
-	goldenPath := filepath.Join("testdata", "valid_spec", "requirements.json")
+	goldenPath := filepath.Join("./../testdata", "valid_spec", "requirements.json")
 	goldenData, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Fatalf("failed to read golden fixture: %v", err)
@@ -136,7 +136,7 @@ func TestMarshalJSON_GoldenRequirements(t *testing.T) {
 func TestMarshalJSON_GoldenTestSpec(t *testing.T) {
 	defer requireImplemented(t)
 
-	goldenPath := filepath.Join("testdata", "valid_spec", "test_spec.json")
+	goldenPath := filepath.Join("./../testdata", "valid_spec", "test_spec.json")
 	goldenData, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Fatalf("failed to read golden fixture: %v", err)
@@ -162,7 +162,7 @@ func TestMarshalJSON_GoldenTestSpec(t *testing.T) {
 func TestMarshalJSON_GoldenTasks(t *testing.T) {
 	defer requireImplemented(t)
 
-	goldenPath := filepath.Join("testdata", "valid_spec", "tasks.json")
+	goldenPath := filepath.Join("./../testdata", "valid_spec", "tasks.json")
 	goldenData, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Fatalf("failed to read golden fixture: %v", err)

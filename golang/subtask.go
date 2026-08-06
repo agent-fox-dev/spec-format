@@ -4,12 +4,12 @@ import "fmt"
 
 // subtaskTransitions defines the allowed state transitions for subtasks.
 var subtaskTransitions = map[SubtaskState][]SubtaskState{
-	SubtaskStatePending:            {SubtaskStateQueued, SubtaskStateDropped},
-	SubtaskStateQueued:             {SubtaskStateInProgress, SubtaskStatePending, SubtaskStateDropped},
-	SubtaskStateInProgress:         {SubtaskStateDone, SubtaskStatePendingReevaluation},
-	SubtaskStateDone:               {SubtaskStatePendingReevaluation},
+	SubtaskStatePending:             {SubtaskStateQueued, SubtaskStateDropped},
+	SubtaskStateQueued:              {SubtaskStateInProgress, SubtaskStatePending, SubtaskStateDropped},
+	SubtaskStateInProgress:          {SubtaskStateDone, SubtaskStatePendingReevaluation},
+	SubtaskStateDone:                {SubtaskStatePendingReevaluation},
 	SubtaskStatePendingReevaluation: {SubtaskStatePending, SubtaskStateDropped},
-	SubtaskStateDropped:            {},
+	SubtaskStateDropped:             {},
 }
 
 // TransitionSubtask looks up a subtask by ID, verifies that the

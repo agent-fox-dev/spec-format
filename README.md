@@ -42,7 +42,7 @@ optional artifact:
 
 The full specification — field-level schemas, EARS pattern definitions, ID
 formats, validation rules, subtask state machine, and rendering — is at
-**[spec-format.md](docs/spec-format.md)**.
+**[spec-format.md](reference/spec-format.md)**.
 
 ## Creating a Spec Package
 
@@ -129,7 +129,7 @@ pip install "agentspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1
 
 ## Documentation
 
-- [Spec Format Reference](docs/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
+- [Spec Format Reference](reference/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
 - [CLI Reference](docs/cli.md) — commands, flags, and usage
 - [Configuration](docs/configuration.md) — LLM provider setup, model selection, and config files
 - [afspec API](packages/afspec/README.md) — library API for loading and manipulating specs

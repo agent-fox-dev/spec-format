@@ -47,13 +47,13 @@ func init() {
 		reflect.TypeOf(Coverage{}):       {"requirements_covered", "properties_covered", "paths_covered", "gaps"},
 
 		// tasks.v1.json
-		reflect.TypeOf(TasksV1Json{}):       {"$schema", "spec_id", "spec_name", "schema_version", "test_commands", "dependencies", "task_groups", "traceability"},
-		reflect.TypeOf(TestCommands{}):      {"spec_tests", "all_tests", "linter"},
-		reflect.TypeOf(TaskDependency{}):    {"depends_on_spec", "from_group", "to_group", "relationship", "sentinel"},
-		reflect.TypeOf(Subtask{}):           {"id", "title", "details", "test_spec_refs", "requirement_refs", "state", "optional"},
+		reflect.TypeOf(TasksV1Json{}):         {"$schema", "spec_id", "spec_name", "schema_version", "test_commands", "dependencies", "task_groups", "traceability"},
+		reflect.TypeOf(TestCommands{}):        {"spec_tests", "all_tests", "linter"},
+		reflect.TypeOf(TaskDependency{}):      {"depends_on_spec", "from_group", "to_group", "relationship", "sentinel"},
+		reflect.TypeOf(Subtask{}):             {"id", "title", "details", "test_spec_refs", "requirement_refs", "state", "optional"},
 		reflect.TypeOf(VerificationSubtask{}): {"id", "checks"},
-		reflect.TypeOf(TaskGroup{}):         {"id", "kind", "title", "subtasks", "verification"},
-		reflect.TypeOf(TraceabilityEntry{}): {"requirement_id", "test_spec_id", "task_id", "test_path"},
+		reflect.TypeOf(TaskGroup{}):           {"id", "kind", "title", "subtasks", "verification"},
+		reflect.TypeOf(TraceabilityEntry{}):   {"requirement_id", "test_spec_id", "task_id", "test_path"},
 	}
 
 	// Fields that should be omitted when nil. This matches the Python library's

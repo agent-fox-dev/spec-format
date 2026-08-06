@@ -14,7 +14,7 @@ import (
 func TestPRDParsing_ValidFrontmatter(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestPRDParsing_ValidFrontmatter(t *testing.T) {
 func TestPRDParsing_BodyExtraction(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestPRDParsing_BodyExtraction(t *testing.T) {
 func TestPRDParsing_EmptyTags(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/draft_spec")
+	spec, err := LoadSpec("./../testdata/draft_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestPRDParsing_EmptyTags(t *testing.T) {
 func TestPRDRenderer_FieldOrder(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestPRDRenderer_FieldOrder(t *testing.T) {
 func TestPRDRenderer_GoldenMatch(t *testing.T) {
 	defer requireImplemented(t)
 
-	fixtureDir := "testdata/valid_spec"
+	fixtureDir := "./../testdata/valid_spec"
 	spec, err := LoadSpec(fixtureDir)
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
@@ -208,7 +208,7 @@ func TestPRDRenderer_GoldenMatch(t *testing.T) {
 func TestPRDRenderer_ValueFormatting(t *testing.T) {
 	defer requireImplemented(t)
 
-	fixtureDir := "testdata/valid_spec"
+	fixtureDir := "./../testdata/valid_spec"
 	spec, err := LoadSpec(fixtureDir)
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)
@@ -274,7 +274,7 @@ func TestPRDRenderer_ValueFormatting(t *testing.T) {
 func TestPRDRenderer_DraftFixtureMatch(t *testing.T) {
 	defer requireImplemented(t)
 
-	fixtureDir := "testdata/draft_spec"
+	fixtureDir := "./../testdata/draft_spec"
 	spec, err := LoadSpec(fixtureDir)
 	if err != nil {
 		t.Fatalf("LoadSpec failed: %v", err)

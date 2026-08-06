@@ -15,7 +15,7 @@ import (
 func TestValidate_FullyValidSpec(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestValidate_MinimalSpec(t *testing.T) {
 		Source:        "https://example.com",
 		SchemaVersion: 1,
 		PRDBody:       "# Minimal\n",
-		Requirements:  &RequirementsV1Json{
+		Requirements: &RequirementsV1Json{
 			SpecId:                "01",
 			SpecName:              "minimal",
 			SchemaVersion:         1,
@@ -112,9 +112,9 @@ func TestValidate_MinimalSpec(t *testing.T) {
 				AllTests:  "go test ./...",
 				Linter:    "go vet ./...",
 			},
-			Dependencies:  []TaskDependency{},
-			TaskGroups:    []TaskGroup{},
-			Traceability:  []TraceabilityEntry{},
+			Dependencies: []TaskDependency{},
+			TaskGroups:   []TaskGroup{},
+			Traceability: []TraceabilityEntry{},
 		},
 	}
 
@@ -130,7 +130,7 @@ func TestValidate_ValidFieldConsistentWithErrors(t *testing.T) {
 	defer requireImplemented(t)
 
 	// Valid spec: Valid should be true, Errors empty
-	validSpec, err := LoadSpec("testdata/valid_spec")
+	validSpec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestValidate_ValidFieldConsistentWithErrors(t *testing.T) {
 func TestValidateSchema_ValidSpec(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestValidateSchema_MultipleArtifactErrors(t *testing.T) {
 func TestValidateCrossFile_ConsistentReferences(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestValidateCrossSpec_GlossaryConflict(t *testing.T) {
 func TestValidateStructured_ValidSpec(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -578,7 +578,7 @@ func TestValidateStructured_WithWarnings(t *testing.T) {
 func TestValidateStructured_NoWarningsKey(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}

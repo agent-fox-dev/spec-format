@@ -11,7 +11,7 @@ import (
 func TestLoadSpec_ValidSpec(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestLoadSpec_ValidSpec(t *testing.T) {
 func TestLoadSpec_FrontmatterFields(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec")
+	spec, err := LoadSpec("./../testdata/valid_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestLoadSpec_FrontmatterFields(t *testing.T) {
 func TestLoadSpec_NoArchitecture(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/no_arch_spec")
+	spec, err := LoadSpec("./../testdata/no_arch_spec")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestLoadSpec_NoArchitecture(t *testing.T) {
 func TestLoadSpec_WithArchitecture(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec_with_arch")
+	spec, err := LoadSpec("./../testdata/valid_spec_with_arch")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}

@@ -16,7 +16,7 @@ import (
 func TestRenderCombined(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec_with_arch")
+	spec, err := LoadSpec("./../testdata/valid_spec_with_arch")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRenderCombined_EmptyRequirements(t *testing.T) {
 func TestRenderIndividual(t *testing.T) {
 	defer requireImplemented(t)
 
-	spec, err := LoadSpec("testdata/valid_spec_with_arch")
+	spec, err := LoadSpec("./../testdata/valid_spec_with_arch")
 	if err != nil {
 		t.Fatalf("LoadSpec returned unexpected error: %v", err)
 	}
