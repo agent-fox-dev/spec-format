@@ -45,7 +45,11 @@ from afspec.models import (
     UserStory,
     VerificationSubtask,
 )
-from afspec.render import render_individual, render_individual_scoped
+from afspec.render import (
+    render_individual,
+    render_individual_scoped,
+    render_tasks_scoped,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers — build structurally valid specs with configurable traceability
@@ -1114,3 +1118,270 @@ class TestTextInferenceInfoLogAndTraceabilityPriority:
         # NOT be applied — test_spec should be full (no scoping)
         unscoped = render_individual(spec)
         assert result["test_spec"] == unscoped["test_spec"]
+
+
+# ---------------------------------------------------------------------------
+# TS-02-8: Partial inference — only requirement refs inferred
+# (02-REQ-3.1)
+# ---------------------------------------------------------------------------
+
+
+class TestPartialInferenceReqRefsOnly:
+    """When inference yields requirement_refs but no test_spec_refs,
+    scoped rendering activates for requirements and falls back to full
+    rendering for the test spec section (TS-02-8, 02-REQ-3.1).
+
+    The OR condition ``if inferred_req or inferred_ts`` enables scoped
+    rendering even when only one ref type is available.
+    """
+
+    def test_requirements_scoped_to_inferred_req(self) -> None:
+        """Requirements section includes only the inferred requirement."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id=_REQ_ID_A,
+                    test_spec_id="",  # empty — no TS ref from traceability
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        assert _REQ_ID_A in result["requirements"]
+
+    def test_unreferenced_requirement_excluded(self) -> None:
+        """Requirement not matched by inferred refs is excluded."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id=_REQ_ID_A,
+                    test_spec_id="",
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        assert _REQ_ID_B not in result["requirements"]
+
+    def test_test_spec_fully_rendered(self) -> None:
+        """Test spec is fully rendered when no test spec refs are inferred."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id=_REQ_ID_A,
+                    test_spec_id="",
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        unscoped = render_individual(spec)
+        # All test specs should be present (full render, not scoped)
+        assert _TS_ID_A in result["test_spec"]
+        assert _TS_ID_B in result["test_spec"]
+        assert result["test_spec"] == unscoped["test_spec"]
+
+    def test_requirements_differ_from_unscoped(self) -> None:
+        """Scoped requirements differ from the full unscoped render."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id=_REQ_ID_A,
+                    test_spec_id="",
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        unscoped = render_individual(spec)
+        assert result["requirements"] != unscoped["requirements"]
+
+    def test_tasks_section_scoped_to_target_group(self) -> None:
+        """Tasks section is scoped to the target group."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id=_REQ_ID_A,
+                    test_spec_id="",
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        expected_tasks = render_tasks_scoped(spec.tasks, target_group=4)
+        assert result["tasks"] == expected_tasks
+
+
+# ---------------------------------------------------------------------------
+# Partial inference — only test spec refs inferred
+# (02-REQ-3.1 mirror case)
+# ---------------------------------------------------------------------------
+
+
+class TestPartialInferenceTSRefsOnly:
+    """When inference yields test_spec_refs but no requirement_refs,
+    scoped rendering activates for test spec and falls back to full
+    rendering for requirements (02-REQ-3.1).
+    """
+
+    def test_test_spec_scoped_to_inferred_ts(self) -> None:
+        """Test spec section includes only the inferred test spec."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id="",  # empty — no req ref from traceability
+                    test_spec_id=_TS_ID_A,
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        assert _TS_ID_A in result["test_spec"]
+
+    def test_unreferenced_test_spec_excluded(self) -> None:
+        """Test spec not matched by inferred refs is excluded."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id="",
+                    test_spec_id=_TS_ID_A,
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        assert _TS_ID_B not in result["test_spec"]
+
+    def test_requirements_fully_rendered(self) -> None:
+        """Requirements are fully rendered when no requirement refs inferred."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id="",
+                    test_spec_id=_TS_ID_A,
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        unscoped = render_individual(spec)
+        # All requirements should be present (full render, not scoped)
+        assert _REQ_ID_A in result["requirements"]
+        assert _REQ_ID_B in result["requirements"]
+        assert result["requirements"] == unscoped["requirements"]
+
+    def test_test_spec_differs_from_unscoped(self) -> None:
+        """Scoped test spec differs from the full unscoped render."""
+        spec = _build_spec_with_traceability(
+            target_group=4,
+            traceability=[
+                TraceabilityEntry(
+                    task_id="4.1",
+                    requirement_id="",
+                    test_spec_id=_TS_ID_A,
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=4)
+        unscoped = render_individual(spec)
+        assert result["test_spec"] != unscoped["test_spec"]
+
+
+# ---------------------------------------------------------------------------
+# TS-02-9 / TS-02-10: Unscoped fallback with scoped tasks
+# (02-REQ-3.2, 02-REQ-3.3)
+# ---------------------------------------------------------------------------
+
+
+class TestUnscopedFallbackWithScopedTasks:
+    """When both inference strategies return empty collections for both ref
+    types, render_individual_scoped falls back to full unscoped rendering
+    for requirements and test spec, but still scopes tasks to the target
+    group (TS-02-9, TS-02-10, 02-REQ-3.2, 02-REQ-3.3).
+    """
+
+    def test_full_requirements_in_fallback(self) -> None:
+        """All requirements are present in the fallback output."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Do some work",
+            subtask_details=["Plain detail with no IDs"],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        assert _REQ_ID_A in result["requirements"]
+        assert _REQ_ID_B in result["requirements"]
+
+    def test_full_test_spec_in_fallback(self) -> None:
+        """All test specs are present in the fallback output."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Do some work",
+            subtask_details=["Plain detail with no IDs"],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        assert _TS_ID_A in result["test_spec"]
+        assert _TS_ID_B in result["test_spec"]
+
+    def test_requirements_match_unscoped(self) -> None:
+        """Requirements match the full unscoped output exactly."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Do some work",
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        unscoped = render_individual(spec)
+        assert result["requirements"] == unscoped["requirements"]
+
+    def test_test_spec_matches_unscoped(self) -> None:
+        """Test spec matches the full unscoped output exactly."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Do some work",
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        unscoped = render_individual(spec)
+        assert result["test_spec"] == unscoped["test_spec"]
+
+    def test_tasks_scoped_to_target_group(self) -> None:
+        """Tasks section contains target group subtasks in detail, not others."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Do some work",
+            subtask_details=["Plain detail with no IDs"],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        # Target group subtask should be present in full detail
+        assert "2.1" in result["tasks"]
+        assert "Do some work" in result["tasks"]
+        # Group 1's subtask should NOT appear in full detail
+        # (group 1 is summarised as a one-liner, subtask IDs not listed)
+        assert "1.1 Write tests" not in result["tasks"]
+
+    def test_tasks_not_fully_unscoped(self) -> None:
+        """Tasks section differs from the fully unscoped tasks render."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Do some work",
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        unscoped = render_individual(spec)
+        # Scoped tasks should differ from fully unscoped tasks
+        assert result["tasks"] != unscoped["tasks"]
+
+    def test_tasks_match_render_tasks_scoped(self) -> None:
+        """Tasks section matches render_tasks_scoped output exactly."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Do some work",
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        expected_tasks = render_tasks_scoped(spec.tasks, target_group=2)
+        assert result["tasks"] == expected_tasks
