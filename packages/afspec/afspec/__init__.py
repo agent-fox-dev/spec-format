@@ -68,6 +68,7 @@ from afspec.models import (
 )
 from afspec.mutate import complete_subtask_states, reset_subtask_states, transition_subtask
 from afspec.render import (
+    estimate_tokens,
     render_combined,
     render_individual,
     render_individual_scoped,
@@ -123,6 +124,7 @@ __all__ = [
     "SubtaskState",
     "TaskGroupKind",
     # Functions
+    "estimate_tokens",
     "valid_transition",
     "load_spec",
     "save",

@@ -24,6 +24,20 @@ from afspec.models import (
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Token estimation utility (03-REQ-1)
+# ---------------------------------------------------------------------------
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimate the number of LLM tokens in *text* using the chars/4 heuristic.
+
+    Returns ``len(text) // 4`` — a fast, dependency-free approximation.
+    """
+    return len(text) // 4
+
+
 # ---------------------------------------------------------------------------
 # Module-level compiled regex constants for ref inference (02-REQ-2.2)
 # ---------------------------------------------------------------------------
