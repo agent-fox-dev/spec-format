@@ -110,3 +110,65 @@ func TestEstimateTokens_ArbitraryString(t *testing.T) {
 		t.Errorf("EstimateTokens(%q) = %d, want %d", text, result, expected)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TS-03-23: Go afspec package exports RenderOption, WithMaxTokens, and
+//           EstimateTokens with correct types; renderConfig is unexported
+// Requirement: 03-REQ-7.1
+// ---------------------------------------------------------------------------
+
+func TestWithMaxTokens_ReturnsRenderOption(t *testing.T) {
+	defer requireImplemented(t)
+
+	// WithMaxTokens must return a RenderOption (compile-time check via
+	// explicit type assignment).
+	var opt RenderOption = WithMaxTokens(100)
+	if opt == nil {
+		t.Fatal("WithMaxTokens(100) returned nil RenderOption")
+	}
+}
+
+func TestEstimateTokens_FourCharString_ReturnsOne(t *testing.T) {
+	// TS-03-23 assertion: EstimateTokens("test") == 1
+	defer requireImplemented(t)
+
+	result := EstimateTokens("test")
+	if result != 1 {
+		t.Errorf("EstimateTokens(\"test\") = %d, want 1", result)
+	}
+}
+
+func TestWithMaxTokens_AppliesOptionToConfig(t *testing.T) {
+	defer requireImplemented(t)
+
+	// Verify that WithMaxTokens creates a valid option that can be applied
+	// to a renderConfig (internal check — we are in the same package).
+	cfg := &renderConfig{}
+	opt := WithMaxTokens(500)
+	opt(cfg)
+	if cfg.maxTokens != 500 {
+		t.Errorf("WithMaxTokens(500) set maxTokens to %d, want 500", cfg.maxTokens)
+	}
+}
+
+func TestWithMaxTokens_Zero_SetsZero(t *testing.T) {
+	defer requireImplemented(t)
+
+	cfg := &renderConfig{}
+	opt := WithMaxTokens(0)
+	opt(cfg)
+	if cfg.maxTokens != 0 {
+		t.Errorf("WithMaxTokens(0) set maxTokens to %d, want 0", cfg.maxTokens)
+	}
+}
+
+func TestWithMaxTokens_Negative_SetsNegative(t *testing.T) {
+	defer requireImplemented(t)
+
+	cfg := &renderConfig{}
+	opt := WithMaxTokens(-10)
+	opt(cfg)
+	if cfg.maxTokens != -10 {
+		t.Errorf("WithMaxTokens(-10) set maxTokens to %d, want -10", cfg.maxTokens)
+	}
+}

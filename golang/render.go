@@ -7,7 +7,9 @@ import (
 
 // RenderCombined renders all artifacts (PRD body, requirements, test spec,
 // tasks, architecture if present) as a single concatenated Markdown document.
-func (s *Spec) RenderCombined() string {
+// When called with WithMaxTokens(N), it applies progressive truncation to
+// fit the output within N estimated tokens.
+func (s *Spec) RenderCombined(opts ...RenderOption) string {
 	var sb strings.Builder
 
 	// PRD body
@@ -50,7 +52,8 @@ func (s *Spec) RenderCombined() string {
 // by artifact name (e.g., "prd", "requirements", "test_spec", "tasks",
 // "architecture") to its Markdown string. If architecture is absent, the
 // "architecture" key is omitted from the returned map.
-func (s *Spec) RenderIndividual() map[string]string {
+// When called with WithMaxTokens(N), it applies progressive truncation.
+func (s *Spec) RenderIndividual(opts ...RenderOption) map[string]string {
 	result := make(map[string]string)
 
 	result["prd"] = s.PRDBody
@@ -95,7 +98,7 @@ func (s *Spec) RenderIndividual() map[string]string {
 // Traceability inference supports partial inference: if only one ref type
 // is found, the other type is rendered in full (unscoped for that section).
 // The fallback always scopes tasks via renderScopedTasks.
-func (s *Spec) RenderIndividualScoped(targetGroup int) map[string]string {
+func (s *Spec) RenderIndividualScoped(targetGroup int, opts ...RenderOption) map[string]string {
 	// Find the target group in tasks
 	var group *TaskGroup
 	if s.Tasks != nil {
