@@ -85,8 +85,16 @@ func (s *Spec) RenderIndividual() map[string]string {
 // from every subtask in targetGroup, renders only the referenced
 // requirements and test entries, renders the target group with full subtask
 // detail and all other groups as one-line summaries, and includes PRD body
-// and architecture unfiltered. If the target group has no refs or does not
-// exist, it falls back to full unscoped rendering.
+// and architecture unfiltered.
+//
+// When subtasks have no explicit refs, the inference chain is invoked:
+//  1. Traceability-based inference (inferRefsFromTraceability)
+//  2. Text-based inference (inferRefsFromSubtaskText)
+//  3. Unscoped fallback with scoped tasks
+//
+// Traceability inference supports partial inference: if only one ref type
+// is found, the other type is rendered in full (unscoped for that section).
+// The fallback always scopes tasks via renderScopedTasks.
 func (s *Spec) RenderIndividualScoped(targetGroup int) map[string]string {
 	// Find the target group in tasks
 	var group *TaskGroup
@@ -104,7 +112,7 @@ func (s *Spec) RenderIndividualScoped(targetGroup int) map[string]string {
 		return s.RenderIndividual()
 	}
 
-	// Collect all refs from subtasks in the target group
+	// Collect all explicit refs from subtasks in the target group
 	reqRefs := make(map[string]bool)
 	tsRefs := make(map[string]bool)
 	for _, sub := range group.Subtasks {
@@ -116,9 +124,46 @@ func (s *Spec) RenderIndividualScoped(targetGroup int) map[string]string {
 		}
 	}
 
-	// If no refs found, fall back to full rendering
+	// partialInference tracks whether the inferred refs came from
+	// traceability. When true and one ref type is empty, that section
+	// is rendered in full rather than scoped to an empty set.
+	partialInference := false
+
+	// If no explicit refs found, run the inference chain
 	if len(reqRefs) == 0 && len(tsRefs) == 0 {
-		return s.RenderIndividual()
+		// Step 1: traceability-based inference
+		inferredReq, inferredTS := inferRefsFromTraceability(s, targetGroup)
+		if len(inferredReq) > 0 || len(inferredTS) > 0 {
+			// Traceability yielded refs — activate partial inference
+			partialInference = true
+			for _, r := range inferredReq {
+				reqRefs[r] = true
+			}
+			for _, r := range inferredTS {
+				tsRefs[r] = true
+			}
+		} else {
+			// Step 2: text-based inference
+			inferredReq, inferredTS = inferRefsFromSubtaskText(s, targetGroup)
+			if len(inferredReq) > 0 || len(inferredTS) > 0 {
+				for _, r := range inferredReq {
+					reqRefs[r] = true
+				}
+				for _, r := range inferredTS {
+					tsRefs[r] = true
+				}
+			} else {
+				// Step 3: both inference strategies returned empty —
+				// full unscoped fallback, but still scope tasks to
+				// the target group (fixes the pre-existing Go bug
+				// where return s.RenderIndividual() was used).
+				result := s.RenderIndividual()
+				if s.Tasks != nil {
+					result["tasks"] = s.renderScopedTasks(targetGroup)
+				}
+				return result
+			}
+		}
 	}
 
 	result := make(map[string]string)
@@ -129,21 +174,39 @@ func (s *Spec) RenderIndividualScoped(targetGroup int) map[string]string {
 		result["architecture"] = s.Architecture
 	}
 
-	// Render scoped requirements
-	if s.Requirements != nil {
-		result["requirements"] = s.renderScopedRequirements(reqRefs)
+	// Render requirements: scoped when refs available, full when partial
+	// inference found no req refs (traceability only).
+	if partialInference && len(reqRefs) == 0 {
+		if s.Requirements != nil {
+			result["requirements"] = s.Requirements.Render()
+		} else {
+			result["requirements"] = ""
+		}
 	} else {
-		result["requirements"] = ""
+		if s.Requirements != nil {
+			result["requirements"] = s.renderScopedRequirements(reqRefs)
+		} else {
+			result["requirements"] = ""
+		}
 	}
 
-	// Render scoped test spec
-	if s.TestSpec != nil {
-		result["test_spec"] = s.renderScopedTestSpec(tsRefs)
+	// Render test spec: scoped when refs available, full when partial
+	// inference found no ts refs (traceability only).
+	if partialInference && len(tsRefs) == 0 {
+		if s.TestSpec != nil {
+			result["test_spec"] = s.TestSpec.Render()
+		} else {
+			result["test_spec"] = ""
+		}
 	} else {
-		result["test_spec"] = ""
+		if s.TestSpec != nil {
+			result["test_spec"] = s.renderScopedTestSpec(tsRefs)
+		} else {
+			result["test_spec"] = ""
+		}
 	}
 
-	// Render scoped tasks
+	// Render scoped tasks — always scoped to the target group
 	if s.Tasks != nil {
 		result["tasks"] = s.renderScopedTasks(targetGroup)
 	} else {
