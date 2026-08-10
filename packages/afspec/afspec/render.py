@@ -902,16 +902,14 @@ def render_individual_scoped(spec: Spec, target_group: int) -> dict[str, str]:
             inferred_req, inferred_ts = _infer_refs_from_subtask_text(spec, target_group)
             if inferred_req or inferred_ts:
                 logger.info(
-                    "Inferred refs from subtask text for group %d: "
-                    "req=%s, ts=%s",
+                    "Inferred refs from subtask text for group %d: req=%s, ts=%s",
                     target_group,
                     inferred_req,
                     inferred_ts,
                 )
         else:
             logger.info(
-                "Inferred refs from traceability for group %d: "
-                "req=%s, ts=%s",
+                "Inferred refs from traceability for group %d: req=%s, ts=%s",
                 target_group,
                 inferred_req,
                 inferred_ts,

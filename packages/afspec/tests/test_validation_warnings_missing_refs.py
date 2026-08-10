@@ -231,9 +231,7 @@ class TestValidateInvokesCheckMissingSubtaskRefs:
         )
         result = validate(spec)
         warning_ids = [w.entity_id for w in result.warnings]
-        assert "2.1" in warning_ids, (
-            f"Expected warning for subtask '2.1', got entity_ids: {warning_ids}"
-        )
+        assert "2.1" in warning_ids, f"Expected warning for subtask '2.1', got entity_ids: {warning_ids}"
 
     def test_warning_message_contains_requirement_refs(self) -> None:
         """Warning message references 'requirement_refs' when only req refs empty."""
@@ -257,9 +255,7 @@ class TestValidateInvokesCheckMissingSubtaskRefs:
         )
         result = validate(spec)
         subtask_warnings = [w for w in result.warnings if w.entity_id == "2.1"]
-        assert len(subtask_warnings) >= 1, (
-            f"Expected at least one warning for subtask 2.1, got: {result.warnings}"
-        )
+        assert len(subtask_warnings) >= 1, f"Expected at least one warning for subtask 2.1, got: {result.warnings}"
         assert "requirement_refs" in subtask_warnings[0].message
 
     def test_warning_message_matches_expected_format(self) -> None:
@@ -284,13 +280,9 @@ class TestValidateInvokesCheckMissingSubtaskRefs:
         )
         result = validate(spec)
         subtask_warnings = [w for w in result.warnings if w.entity_id == "2.1"]
-        expected_msg = (
-            "Subtask 2.1 has empty requirement_refs "
-            "— scoped rendering will fall back to full spec dump"
-        )
+        expected_msg = "Subtask 2.1 has empty requirement_refs — scoped rendering will fall back to full spec dump"
         assert any(w.message == expected_msg for w in subtask_warnings), (
-            f"Expected message '{expected_msg}', got: "
-            f"{[w.message for w in subtask_warnings]}"
+            f"Expected message '{expected_msg}', got: {[w.message for w in subtask_warnings]}"
         )
 
     def test_warnings_collection_has_at_least_one_entry(self) -> None:
@@ -338,9 +330,7 @@ class TestCheckMissingSubtaskRefsMessageFormat:
 
     def test_exactly_three_warnings_for_three_affected_subtasks(self) -> None:
         """Three subtasks with different empty-ref combos produce exactly 3 warnings."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -372,9 +362,7 @@ class TestCheckMissingSubtaskRefsMessageFormat:
 
     def test_empty_requirement_refs_only_message(self) -> None:
         """Subtask with empty requirement_refs only produces correct message."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -403,17 +391,12 @@ class TestCheckMissingSubtaskRefsMessageFormat:
         )
         warnings = validation_mod._check_missing_subtask_refs(group)
         messages = {w.message for w in warnings}
-        expected = (
-            "Subtask 2.1 has empty requirement_refs "
-            "— scoped rendering will fall back to full spec dump"
-        )
+        expected = "Subtask 2.1 has empty requirement_refs — scoped rendering will fall back to full spec dump"
         assert expected in messages
 
     def test_empty_test_spec_refs_only_message(self) -> None:
         """Subtask with empty test_spec_refs only produces correct message."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -442,17 +425,12 @@ class TestCheckMissingSubtaskRefsMessageFormat:
         )
         warnings = validation_mod._check_missing_subtask_refs(group)
         messages = {w.message for w in warnings}
-        expected = (
-            "Subtask 2.2 has empty test_spec_refs "
-            "— scoped rendering will fall back to full spec dump"
-        )
+        expected = "Subtask 2.2 has empty test_spec_refs — scoped rendering will fall back to full spec dump"
         assert expected in messages
 
     def test_both_empty_message(self) -> None:
         """Subtask with both empty produces message with joined field names."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -489,9 +467,7 @@ class TestCheckMissingSubtaskRefsMessageFormat:
 
     def test_no_warning_for_subtask_with_populated_refs(self) -> None:
         """Subtask with both refs populated does not trigger a warning."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -514,9 +490,7 @@ class TestCheckMissingSubtaskRefsMessageFormat:
         """Non-empty refs with placeholder strings like 'TBD' do not trigger
         a warning (02-REQ-4.E2).
         """
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -547,9 +521,7 @@ class TestCheckMissingSubtaskRefsSkipsWiringVerification:
 
     def test_no_warning_for_wv_group(self) -> None:
         """No warning emitted for subtasks in a WIRING_VERIFICATION group."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         wv_group = TaskGroup(
             id=1,
             kind=TaskGroupKind.WIRING_VERIFICATION,
@@ -570,9 +542,7 @@ class TestCheckMissingSubtaskRefsSkipsWiringVerification:
 
     def test_warning_emitted_for_standard_group(self) -> None:
         """Warning IS emitted for a STANDARD group with empty refs."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         std_group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -596,9 +566,7 @@ class TestCheckMissingSubtaskRefsSkipsWiringVerification:
         This mirrors how validate() calls the check per group, collecting
         results across all groups.
         """
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         wv_group = TaskGroup(
             id=1,
             kind=TaskGroupKind.WIRING_VERIFICATION,
@@ -627,9 +595,7 @@ class TestCheckMissingSubtaskRefsSkipsWiringVerification:
         )
         all_warnings = []
         for group in [wv_group, std_group]:
-            all_warnings.extend(
-                validation_mod._check_missing_subtask_refs(group)
-            )
+            all_warnings.extend(validation_mod._check_missing_subtask_refs(group))
         warning_ids = [w.entity_id for w in all_warnings]
         assert "W.1" not in warning_ids
         assert "S.1" in warning_ids
@@ -637,9 +603,7 @@ class TestCheckMissingSubtaskRefsSkipsWiringVerification:
 
     def test_no_warnings_when_all_groups_are_wv(self) -> None:
         """No warnings when all TaskGroups are WIRING_VERIFICATION (02-REQ-4.E3)."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         wv_group = TaskGroup(
             id=1,
             kind=TaskGroupKind.WIRING_VERIFICATION,
@@ -660,9 +624,7 @@ class TestCheckMissingSubtaskRefsSkipsWiringVerification:
         """All subtasks in a WV group are skipped, even if multiple have empty
         refs (02-REQ-4.E4).
         """
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         wv_group = TaskGroup(
             id=1,
             kind=TaskGroupKind.WIRING_VERIFICATION,
@@ -699,9 +661,7 @@ class TestFieldNamesJoinedWithAnd:
 
     def test_both_empty_joined_with_and(self) -> None:
         """Message contains 'requirement_refs and test_spec_refs' when both empty."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -722,9 +682,7 @@ class TestFieldNamesJoinedWithAnd:
 
     def test_no_comma_in_joined_field_names(self) -> None:
         """Joined field names use ' and ', not a comma separator."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,
@@ -745,9 +703,7 @@ class TestFieldNamesJoinedWithAnd:
 
     def test_single_empty_field_has_no_and_joiner(self) -> None:
         """When only one ref type is empty, ' and ' joiner is not present."""
-        assert hasattr(validation_mod, "_check_missing_subtask_refs"), (
-            "_check_missing_subtask_refs not defined"
-        )
+        assert hasattr(validation_mod, "_check_missing_subtask_refs"), "_check_missing_subtask_refs not defined"
         group = TaskGroup(
             id=2,
             kind=TaskGroupKind.STANDARD,

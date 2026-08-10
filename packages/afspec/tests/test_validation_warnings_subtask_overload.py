@@ -321,8 +321,7 @@ class TestEmptyRefsNoOverloadWarning:
         spec = _build_spec_with_subtask_refs([-1, 0])
         result = validate(spec)
         overload_warnings = [
-            w for w in result.warnings
-            if ("1.1" in str(w) or "1.2" in str(w)) and "references" in w.message
+            w for w in result.warnings if ("1.1" in str(w) or "1.2" in str(w)) and "references" in w.message
         ]
         assert len(overload_warnings) == 0, (
             f"Expected no overload warnings for subtasks with no/empty refs, got: {overload_warnings}"

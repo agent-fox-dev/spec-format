@@ -510,8 +510,5 @@ class TestEmptyGroupNoWarning:
         spec = _build_spec_with_refs(total_refs=0)
         result = validate(spec)
         # Filter for group-level refs count warnings only (not missing-refs warnings)
-        refs_warnings = [
-            w for w in result.warnings
-            if "test_spec_refs" in str(w).lower() and "limit" in w.message
-        ]
+        refs_warnings = [w for w in result.warnings if "test_spec_refs" in str(w).lower() and "limit" in w.message]
         assert len(refs_warnings) == 0

@@ -526,13 +526,9 @@ class TestTraceabilityInferenceShortCircuits:
         infer_logs = [
             r
             for r in caplog.records
-            if r.levelno == logging.INFO
-            and r.name == "afspec.render"
-            and "infer" in r.message.lower()
+            if r.levelno == logging.INFO and r.name == "afspec.render" and "infer" in r.message.lower()
         ]
-        assert len(infer_logs) >= 1, (
-            "Expected an INFO log from afspec.render mentioning inference"
-        )
+        assert len(infer_logs) >= 1, "Expected an INFO log from afspec.render mentioning inference"
 
     def test_empty_traceability_proceeds_to_next_strategy(self) -> None:
         """When traceability is empty, the chain proceeds (no short-circuit).
@@ -874,33 +870,25 @@ class TestRegexPatternsAreModuleLevelConstants:
         """_REQ_ID_RE is a re.Pattern at module level."""
         import re
 
-        assert hasattr(render_mod, "_REQ_ID_RE"), (
-            "_REQ_ID_RE not defined at module level in afspec.render"
-        )
+        assert hasattr(render_mod, "_REQ_ID_RE"), "_REQ_ID_RE not defined at module level in afspec.render"
         assert isinstance(render_mod._REQ_ID_RE, re.Pattern)
 
     def test_ts_id_re_is_compiled_pattern(self) -> None:
         """_TS_ID_RE is a re.Pattern at module level."""
         import re
 
-        assert hasattr(render_mod, "_TS_ID_RE"), (
-            "_TS_ID_RE not defined at module level in afspec.render"
-        )
+        assert hasattr(render_mod, "_TS_ID_RE"), "_TS_ID_RE not defined at module level in afspec.render"
         assert isinstance(render_mod._TS_ID_RE, re.Pattern)
 
     def test_req_id_re_matches_requirement_id_pattern(self) -> None:
         """_REQ_ID_RE matches requirement ID strings like '02-REQ-1'."""
-        assert hasattr(render_mod, "_REQ_ID_RE"), (
-            "_REQ_ID_RE not defined at module level"
-        )
+        assert hasattr(render_mod, "_REQ_ID_RE"), "_REQ_ID_RE not defined at module level"
         match = render_mod._REQ_ID_RE.search("Implement 02-REQ-1 logic")
         assert match is not None
 
     def test_ts_id_re_matches_test_spec_id_pattern(self) -> None:
         """_TS_ID_RE matches test spec ID strings like 'TS-02-1'."""
-        assert hasattr(render_mod, "_TS_ID_RE"), (
-            "_TS_ID_RE not defined at module level"
-        )
+        assert hasattr(render_mod, "_TS_ID_RE"), "_TS_ID_RE not defined at module level"
         match = render_mod._TS_ID_RE.search("See TS-02-1 for tests")
         assert match is not None
 
@@ -930,9 +918,7 @@ class TestTextInferenceFiltersToKnownIDs:
         assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
             "_infer_refs_from_subtask_text not defined in afspec.render"
         )
-        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
-            spec, target_group=2
-        )
+        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(spec, target_group=2)
         assert _REQ_ID_A in req_refs
         assert _TS_ID_A in ts_refs
 
@@ -943,12 +929,8 @@ class TestTextInferenceFiltersToKnownIDs:
             subtask_title="Work on 99-REQ-999",
             subtask_details=["Also mentions 99-REQ-888"],
         )
-        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
-            "_infer_refs_from_subtask_text not defined"
-        )
-        req_refs, _ts_refs = render_mod._infer_refs_from_subtask_text(
-            spec, target_group=2
-        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), "_infer_refs_from_subtask_text not defined"
+        req_refs, _ts_refs = render_mod._infer_refs_from_subtask_text(spec, target_group=2)
         assert "99-REQ-999" not in req_refs
         assert "99-REQ-888" not in req_refs
 
@@ -958,12 +940,8 @@ class TestTextInferenceFiltersToKnownIDs:
             target_group=2,
             subtask_title="See TS-99-1 for tests",
         )
-        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
-            "_infer_refs_from_subtask_text not defined"
-        )
-        _req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
-            spec, target_group=2
-        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), "_infer_refs_from_subtask_text not defined"
+        _req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(spec, target_group=2)
         assert "TS-99-1" not in ts_refs
 
     def test_unmentioned_spec_ids_are_not_inferred(self) -> None:
@@ -973,12 +951,8 @@ class TestTextInferenceFiltersToKnownIDs:
             subtask_title=f"Work on {_REQ_ID_A}",
             subtask_details=[f"See {_TS_ID_A} for tests"],
         )
-        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
-            "_infer_refs_from_subtask_text not defined"
-        )
-        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
-            spec, target_group=2
-        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), "_infer_refs_from_subtask_text not defined"
+        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(spec, target_group=2)
         # REQ-B and TS-B exist in spec but weren't mentioned in text
         assert _REQ_ID_B not in req_refs
         assert _TS_ID_B not in ts_refs
@@ -1002,12 +976,8 @@ class TestTextInferenceFiltersToKnownIDs:
             subtask_title="Plain title with no IDs",
             subtask_details=["Plain detail with no IDs"],
         )
-        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
-            "_infer_refs_from_subtask_text not defined"
-        )
-        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
-            spec, target_group=2
-        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), "_infer_refs_from_subtask_text not defined"
+        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(spec, target_group=2)
         assert len(req_refs) == 0
         assert len(ts_refs) == 0
 
@@ -1018,12 +988,8 @@ class TestTextInferenceFiltersToKnownIDs:
             subtask_title=f"Implement {_REQ_ID_A} logic",
             subtask_details=[],
         )
-        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
-            "_infer_refs_from_subtask_text not defined"
-        )
-        req_refs, _ts_refs = render_mod._infer_refs_from_subtask_text(
-            spec, target_group=2
-        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), "_infer_refs_from_subtask_text not defined"
+        req_refs, _ts_refs = render_mod._infer_refs_from_subtask_text(spec, target_group=2)
         assert _REQ_ID_A in req_refs
 
 
@@ -1060,13 +1026,9 @@ class TestTextInferenceInfoLogAndTraceabilityPriority:
         infer_logs = [
             r
             for r in caplog.records
-            if r.levelno == logging.INFO
-            and r.name == "afspec.render"
-            and "infer" in r.message.lower()
+            if r.levelno == logging.INFO and r.name == "afspec.render" and "infer" in r.message.lower()
         ]
-        assert len(infer_logs) >= 1, (
-            "Expected an INFO log from afspec.render mentioning inference"
-        )
+        assert len(infer_logs) >= 1, "Expected an INFO log from afspec.render mentioning inference"
 
     def test_traceability_takes_priority_over_text_inference(self) -> None:
         """When traceability yields refs, text inference is not applied.

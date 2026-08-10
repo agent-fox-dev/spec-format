@@ -60,8 +60,8 @@ func buildInferenceSpec(targetGroup int, traceability []TraceabilityEntry, title
 	} else {
 		// Add a tests group at id=1 with populated refs
 		groups = append(groups, TaskGroup{
-			Id:   1,
-			Kind: TaskGroupKindTests,
+			Id:    1,
+			Kind:  TaskGroupKindTests,
 			Title: "Tests group",
 			Subtasks: []Subtask{
 				{
@@ -399,7 +399,7 @@ func TestInferRefsTraceabilityShortCircuits(t *testing.T) {
 	t.Run("empty_traceability_falls_through_to_unscoped", func(t *testing.T) {
 		spec := buildInferenceSpec(3,
 			[]TraceabilityEntry{}, // no traceability
-			"Do some work",       // no IDs in text
+			"Do some work",        // no IDs in text
 			[]string{"Plain detail with no IDs"},
 		)
 		result := spec.RenderIndividualScoped(3)
