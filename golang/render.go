@@ -9,36 +9,63 @@ import (
 // tasks, architecture if present) as a single concatenated Markdown document.
 // When called with WithMaxTokens(N), it applies progressive truncation to
 // fit the output within N estimated tokens.
+//
+// Progressive truncation levels:
+//   - Level 0: full render (returned if within budget)
+//   - Level 1: drop architecture section
+//   - Level 2: re-render test spec in slim mode (architecture already dropped)
 func (s *Spec) RenderCombined(opts ...RenderOption) string {
+	cfg := resolveOpts(opts)
+
+	// Level 0 — full render
+	result := s.renderCombinedFull()
+
+	if !budgetActive(cfg) {
+		return result
+	}
+
+	if EstimateTokens(result) <= cfg.maxTokens {
+		return result
+	}
+
+	// Level 1 — drop architecture
+	if s.Architecture != "" {
+		result = s.renderCombinedLevel1()
+		if EstimateTokens(result) <= cfg.maxTokens {
+			return result
+		}
+	}
+
+	// Level 2 — slim test spec (architecture already dropped)
+	return s.renderCombinedSlim()
+}
+
+// renderCombinedFull renders all artifacts including architecture.
+func (s *Spec) renderCombinedFull() string {
 	var sb strings.Builder
 
-	// PRD body
 	sb.WriteString("# PRD\n\n")
 	sb.WriteString(s.PRDBody)
 	sb.WriteString("\n")
 
-	// Requirements
 	sb.WriteString("# Requirements\n\n")
 	if s.Requirements != nil {
 		sb.WriteString(s.Requirements.Render())
 	}
 	sb.WriteString("\n")
 
-	// Test Spec
 	sb.WriteString("# Test Specification\n\n")
 	if s.TestSpec != nil {
 		sb.WriteString(s.TestSpec.Render())
 	}
 	sb.WriteString("\n")
 
-	// Tasks
 	sb.WriteString("# Tasks\n\n")
 	if s.Tasks != nil {
 		sb.WriteString(s.Tasks.Render())
 	}
 	sb.WriteString("\n")
 
-	// Architecture (optional)
 	if s.Architecture != "" {
 		sb.WriteString("# Architecture\n\n")
 		sb.WriteString(s.Architecture)
@@ -52,8 +79,15 @@ func (s *Spec) RenderCombined(opts ...RenderOption) string {
 // by artifact name (e.g., "prd", "requirements", "test_spec", "tasks",
 // "architecture") to its Markdown string. If architecture is absent, the
 // "architecture" key is omitted from the returned map.
-// When called with WithMaxTokens(N), it applies progressive truncation.
+//
+// When called with WithMaxTokens(N), it applies progressive truncation:
+//   - Level 0: full render (returned if within budget)
+//   - Level 1: drop architecture key
+//   - Level 2: re-render test_spec in slim mode (architecture already dropped)
 func (s *Spec) RenderIndividual(opts ...RenderOption) map[string]string {
+	cfg := resolveOpts(opts)
+
+	// Level 0 — full render
 	result := make(map[string]string)
 
 	result["prd"] = s.PRDBody
@@ -80,6 +114,27 @@ func (s *Spec) RenderIndividual(opts ...RenderOption) map[string]string {
 		result["architecture"] = s.Architecture
 	}
 
+	if !budgetActive(cfg) {
+		return result
+	}
+
+	// Budget evaluation — Level 0
+	if sumMapTokens(result) <= cfg.maxTokens {
+		return result
+	}
+
+	// Level 1 — drop architecture
+	if _, hasArch := result["architecture"]; hasArch {
+		delete(result, "architecture")
+		if sumMapTokens(result) <= cfg.maxTokens {
+			return result
+		}
+	}
+
+	// Level 2 — slim test spec
+	if s.TestSpec != nil {
+		result["test_spec"] = renderTestSpecSlim(s.TestSpec)
+	}
 	return result
 }
 
@@ -98,7 +153,14 @@ func (s *Spec) RenderIndividual(opts ...RenderOption) map[string]string {
 // Traceability inference supports partial inference: if only one ref type
 // is found, the other type is rendered in full (unscoped for that section).
 // The fallback always scopes tasks via renderScopedTasks.
+//
+// When called with WithMaxTokens(N), it applies progressive truncation:
+//   - Level 0: full scoped render (returned if within budget)
+//   - Level 1: drop architecture key
+//   - Level 2: re-render test_spec in slim mode (scoped or full)
 func (s *Spec) RenderIndividualScoped(targetGroup int, opts ...RenderOption) map[string]string {
+	cfg := resolveOpts(opts)
+
 	// Find the target group in tasks
 	var group *TaskGroup
 	if s.Tasks != nil {
@@ -112,7 +174,7 @@ func (s *Spec) RenderIndividualScoped(targetGroup int, opts ...RenderOption) map
 
 	// If the group doesn't exist, fall back to full rendering
 	if group == nil {
-		return s.RenderIndividual()
+		return s.RenderIndividual(opts...)
 	}
 
 	// Collect all explicit refs from subtasks in the target group
@@ -160,7 +222,7 @@ func (s *Spec) RenderIndividualScoped(targetGroup int, opts ...RenderOption) map
 				// full unscoped fallback, but still scope tasks to
 				// the target group (fixes the pre-existing Go bug
 				// where return s.RenderIndividual() was used).
-				result := s.RenderIndividual()
+				result := s.RenderIndividual(opts...)
 				if s.Tasks != nil {
 					result["tasks"] = s.renderScopedTasks(targetGroup)
 				}
@@ -214,6 +276,33 @@ func (s *Spec) RenderIndividualScoped(targetGroup int, opts ...RenderOption) map
 		result["tasks"] = s.renderScopedTasks(targetGroup)
 	} else {
 		result["tasks"] = ""
+	}
+
+	// Budget evaluation
+	if !budgetActive(cfg) {
+		return result
+	}
+
+	// Budget check — Level 0
+	if sumMapTokens(result) <= cfg.maxTokens {
+		return result
+	}
+
+	// Level 1 — drop architecture
+	if _, hasArch := result["architecture"]; hasArch {
+		delete(result, "architecture")
+		if sumMapTokens(result) <= cfg.maxTokens {
+			return result
+		}
+	}
+
+	// Level 2 — slim test spec (scoped or full depending on available IDs)
+	if s.TestSpec != nil {
+		if len(tsRefs) > 0 {
+			result["test_spec"] = renderTestSpecScopedSlim(s.TestSpec, tsRefs)
+		} else {
+			result["test_spec"] = renderTestSpecSlim(s.TestSpec)
+		}
 	}
 
 	return result
