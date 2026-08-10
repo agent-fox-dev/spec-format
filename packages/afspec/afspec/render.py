@@ -714,6 +714,166 @@ def render_test_spec_scoped(ts: TestSpec, test_spec_ids: set[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Level 2 slim rendering helpers (03-REQ-6)
+# ---------------------------------------------------------------------------
+
+
+def _render_test_spec_slim(ts: TestSpec) -> str:
+    """Render test spec in slim mode, omitting verbose assertion fields.
+
+    Omits ``assertion_pseudocode``, ``input``, and ``expected`` from test
+    case and edge case entries; ``for_any_strategy`` and ``invariant_check``
+    from property test entries; and ``expected_effects`` from smoke test
+    entries.  Preserves ``id``, ``description``, type, and requirement
+    linkage fields for every entry.
+    """
+    lines: list[str] = []
+
+    # Title
+    lines.append(f"# Test Specification: {ts.spec_name}")
+    lines.append("")
+
+    # Test Cases — slim
+    lines.append("## Test Cases")
+    lines.append("")
+    for tc in ts.test_cases:
+        lines.append(f"### {tc.id}: {tc.description}")
+        lines.append("")
+        lines.append(f"**Requirement:** {tc.requirement_id}")
+        lines.append(f"**Type:** {tc.kind}")
+        lines.append("")
+
+    # Property Tests — slim
+    lines.append("## Property Tests")
+    lines.append("")
+    for pt in ts.property_tests:
+        lines.append(f"### {pt.id}: {pt.description}")
+        lines.append("")
+        lines.append(f"**Property:** {pt.property_id}")
+        lines.append("")
+        if pt.validates:
+            lines.append(f"**Validates:** {', '.join(pt.validates)}")
+            lines.append("")
+
+    # Edge Case Tests — slim
+    lines.append("## Edge Case Tests")
+    lines.append("")
+    for et in ts.edge_case_tests:
+        lines.append(f"### {et.id}: {et.description}")
+        lines.append("")
+        lines.append(f"**Requirement:** {et.requirement_id}")
+        lines.append(f"**Type:** {et.kind}")
+        lines.append("")
+
+    # Smoke Tests — slim
+    lines.append("## Smoke Tests")
+    lines.append("")
+    for st in ts.smoke_tests:
+        lines.append(f"### {st.id}: {st.description}")
+        lines.append("")
+        lines.append(f"**Execution Path:** {st.execution_path_id}")
+        lines.append("")
+
+    # Coverage
+    lines.append("## Coverage")
+    lines.append("")
+    if ts.coverage.requirements_covered:
+        lines.append(f"**Requirements covered:** {', '.join(ts.coverage.requirements_covered)}")
+        lines.append("")
+    if ts.coverage.properties_covered:
+        lines.append(f"**Properties covered:** {', '.join(ts.coverage.properties_covered)}")
+        lines.append("")
+    if ts.coverage.paths_covered:
+        lines.append(f"**Paths covered:** {', '.join(ts.coverage.paths_covered)}")
+        lines.append("")
+    if ts.coverage.gaps:
+        lines.append(f"**Gaps:** {', '.join(ts.coverage.gaps)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _render_test_spec_scoped_slim(ts: TestSpec, test_spec_ids: set[str]) -> str:
+    """Render test spec in slim mode, filtered to a subset of test spec IDs.
+
+    Applies the same field omissions as :func:`_render_test_spec_slim` but
+    only includes entries whose IDs are in *test_spec_ids*.
+    """
+    lines: list[str] = []
+
+    # Title
+    lines.append(f"# Test Specification: {ts.spec_name}")
+    lines.append("")
+
+    # Test Cases — scoped slim
+    lines.append("## Test Cases")
+    lines.append("")
+    for tc in ts.test_cases:
+        if tc.id not in test_spec_ids:
+            continue
+        lines.append(f"### {tc.id}: {tc.description}")
+        lines.append("")
+        lines.append(f"**Requirement:** {tc.requirement_id}")
+        lines.append(f"**Type:** {tc.kind}")
+        lines.append("")
+
+    # Property Tests — scoped slim
+    lines.append("## Property Tests")
+    lines.append("")
+    for pt in ts.property_tests:
+        if pt.id not in test_spec_ids:
+            continue
+        lines.append(f"### {pt.id}: {pt.description}")
+        lines.append("")
+        lines.append(f"**Property:** {pt.property_id}")
+        lines.append("")
+        if pt.validates:
+            lines.append(f"**Validates:** {', '.join(pt.validates)}")
+            lines.append("")
+
+    # Edge Case Tests — scoped slim
+    lines.append("## Edge Case Tests")
+    lines.append("")
+    for et in ts.edge_case_tests:
+        if et.id not in test_spec_ids:
+            continue
+        lines.append(f"### {et.id}: {et.description}")
+        lines.append("")
+        lines.append(f"**Requirement:** {et.requirement_id}")
+        lines.append(f"**Type:** {et.kind}")
+        lines.append("")
+
+    # Smoke Tests — scoped slim
+    lines.append("## Smoke Tests")
+    lines.append("")
+    for st in ts.smoke_tests:
+        if st.id not in test_spec_ids:
+            continue
+        lines.append(f"### {st.id}: {st.description}")
+        lines.append("")
+        lines.append(f"**Execution Path:** {st.execution_path_id}")
+        lines.append("")
+
+    # Coverage
+    lines.append("## Coverage")
+    lines.append("")
+    if ts.coverage.requirements_covered:
+        lines.append(f"**Requirements covered:** {', '.join(ts.coverage.requirements_covered)}")
+        lines.append("")
+    if ts.coverage.properties_covered:
+        lines.append(f"**Properties covered:** {', '.join(ts.coverage.properties_covered)}")
+        lines.append("")
+    if ts.coverage.paths_covered:
+        lines.append(f"**Paths covered:** {', '.join(ts.coverage.paths_covered)}")
+        lines.append("")
+    if ts.coverage.gaps:
+        lines.append(f"**Gaps:** {', '.join(ts.coverage.gaps)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Inference helpers for scoped rendering (02-REQ-1, 02-REQ-2)
 # ---------------------------------------------------------------------------
 
