@@ -600,6 +600,13 @@ func (s *Spec) Validate() ValidationResult {
 	allWarnings = append(allWarnings, schemaResult.Warnings...)
 	allWarnings = append(allWarnings, crossFileResult.Warnings...)
 
+	// Check for subtasks with missing refs (produces warnings, not errors).
+	if s.Tasks != nil {
+		for _, group := range s.Tasks.TaskGroups {
+			allWarnings = append(allWarnings, checkMissingSubtaskRefs(group)...)
+		}
+	}
+
 	return ValidationResult{
 		Valid:    len(allErrors) == 0,
 		Errors:   allErrors,

@@ -728,7 +728,7 @@
             "02-REQ-4.4",
             "02-REQ-6.3"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -747,7 +747,7 @@
             "02-REQ-4.1",
             "02-REQ-6.3"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -771,7 +771,7 @@
             "02-REQ-5.1",
             "02-REQ-5.2"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],
