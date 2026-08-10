@@ -1,0 +1,277 @@
+{
+  "state": "generated",
+  "prd_path": "prd.md",
+  "assessment_history": [
+    {
+      "quality": "ready",
+      "summary": "The PRD for \"scoped_rendering_ref_inference\" is well-structured and highly detailed. It clearly articulates the problem, goals, non-goals, proposed changes, file-level impact, design decisions, and a thorough Verified External API section covering both Python and Go surfaces. The tech stack is explicitly named with language, package paths, and test tooling. One potential overlap exists with the active `afspec_go` spec, since this PRD modifies Go rendering and validation code (`golang/render.go`, `golang/validate.go`) that likely falls within the `afspec_go` spec's scope. This warrants a clarification question but does not fundamentally undermine the PRD's completeness. All other dimensions are well-covered.",
+      "gaps": [
+        "Potential scope overlap with active spec 'afspec_go': this PRD modifies golang/render.go and golang/validate.go (adding inferRefsFromTraceability(), inferRefsFromSubtaskText(), fixing RenderIndividualScoped() fallback, and adding checkMissingSubtaskRefs()), which appears to fall squarely within the afspec_go spec's domain of Go-native spec package functionality. It is unclear whether this PRD should be treated as a sub-task of, a dependency of, or a superseding spec relative to afspec_go.",
+        "The 'owner' field is empty, meaning there is no named accountable party for this spec."
+      ],
+      "questions": [
+        {
+          "id": "q1",
+          "text": "This PRD modifies Go rendering and validation code (golang/render.go, golang/validate.go) that appears to overlap with the active 'afspec_go' spec (which covers Go-native spec package functionality). How should the relationship between these two specs be structured?",
+          "context": "Overlapping active specs can cause conflicting or duplicated artifact generation. Clarifying the relationship ensures the right dependency or supersession is declared and avoids double-work or merge conflicts on the same files.",
+          "options": [
+            "This PRD is a sub-task/child of afspec_go and should declare a dependency on it.",
+            "This PRD extends afspec_go with new functionality and afspec_go should declare a dependency on this spec.",
+            "This PRD supersedes the relevant portions of afspec_go for Go rendering/validation.",
+            "The scopes are actually distinct \u2014 afspec_go covers different Go symbols/files and there is no real overlap."
+          ],
+          "required": true
+        },
+        {
+          "id": "q2",
+          "text": "The 'owner' field is empty. Who is the designated owner or accountable party for this spec?",
+          "context": "An owner is needed for accountability, review sign-off, and artifact generation workflows that may require an assignee.",
+          "options": [],
+          "required": false
+        }
+      ]
+    },
+    {
+      "quality": "ready",
+      "summary": "This is a well-structured, thorough PRD. It clearly articulates the problem (silent token inflation due to missing refs triggering unscoped fallback), the goals, and the proposed solution (inference chain + validation warning + template update + Go bug fix). The external API surface is comprehensively documented for both Python and Go. The tech stack, test coverage plan, and design decisions are all explicit. The PRD is largely implementation-ready with only a few minor gaps worth clarifying before a developer picks it up.",
+      "gaps": [
+        "The regex patterns for text-based inference are defined only for Python. The Go equivalent (regexp package syntax) is not specified, which could lead to subtle discrepancies if the patterns are not exactly translated.",
+        "The 'wiring-verification subtask' exclusion criterion for the validation warning is stated but not fully defined \u2014 it is unclear whether the check skips the entire TaskGroup when kind == WIRING_VERIFICATION, or only individual subtasks whose ID matches some pattern.",
+        "The fallback behavior when inference partially succeeds (e.g., traceability yields requirement_refs but no test_spec_refs) is not specified \u2014 should partial inference be accepted or should both ref types be required for inference to 'count'?",
+        "The warning message format uses {field_names} (plural) but it is not specified how multiple missing fields are serialised (e.g., comma-separated, 'and'-joined, separate warnings per field).",
+        "There is no mention of performance constraints or caching for the text-inference regex compilation in Go (Python specifies compiled patterns via _REQ_ID_RE / _TS_ID_RE module-level constants, but Go's equivalent idiom is not addressed).",
+        "The template file path 'packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md' is listed in Files to Modify but the exact insertion point within the file (e.g., after which existing section heading) is not specified beyond 'after the existing traceability guidance'."
+      ],
+      "questions": [
+        {
+          "id": "q1",
+          "text": "For text-based inference, when traceability yields some refs but not others (e.g., requirement_refs found but test_spec_refs empty), should the inference be considered successful and proceed with partial refs, or must both ref types be non-empty for inference to activate scoped rendering?",
+          "context": "The current PRD describes the inference chain at a high level but does not specify the partial-success case. This affects both Python and Go implementations and determines whether a subtask with only traceability-linked requirements (but no test spec links) gets scoped or unscoped test spec rendering.",
+          "options": [
+            "Accept partial inference \u2014 use whatever refs were inferred, even if only one ref type is populated.",
+            "Require both ref types to be non-empty for inference to count; otherwise fall through to the next inference method or full fallback.",
+            "Accept partial inference per ref type independently \u2014 infer requirements refs and test spec refs separately, each falling back individually."
+          ],
+          "required": true
+        },
+        {
+          "id": "q2",
+          "text": "For the validation warning, does the WIRING_VERIFICATION exclusion apply at the TaskGroup level (skip the entire group when group.kind == WIRING_VERIFICATION) or at the individual subtask level (skip only subtasks whose ID or structure marks them as wiring-verification subtasks)?",
+          "context": "The PRD states 'non-wiring-verification subtasks' are warned about, but TaskGroupKind is a group-level property, not a subtask-level property. Clarifying the exclusion granularity ensures the check is implemented consistently in both Python and Go.",
+          "options": [
+            "Skip the entire TaskGroup when its kind is WIRING_VERIFICATION.",
+            "Inspect each subtask individually \u2014 only skip subtasks that have a wiring-verification marker in their ID or title.",
+            "Skip both: skip the group if kind is WIRING_VERIFICATION, and also skip any subtask whose ID starts with a wiring-verification prefix."
+          ],
+          "required": true
+        },
+        {
+          "id": "q3",
+          "text": "How should the warning message serialise multiple missing field names when both requirement_refs and test_spec_refs are empty on the same subtask?",
+          "context": "The format string 'Subtask {id} has empty {field_names} \u2014 scoped rendering will fall back to full spec dump' uses a plural placeholder, but the serialisation convention is not specified. This matters for test assertions and cross-implementation parity.",
+          "options": [
+            "Emit a single warning with both field names joined by ' and ' (e.g., 'requirement_refs and test_spec_refs').",
+            "Emit two separate warnings, one per missing field.",
+            "Emit a single warning with field names comma-separated (e.g., 'requirement_refs, test_spec_refs')."
+          ],
+          "required": true
+        },
+        {
+          "id": "q4",
+          "text": "Should Go regex patterns for text-based inference be defined as package-level compiled variables (analogous to Python's module-level _REQ_ID_RE / _TS_ID_RE), or compiled on each function call?",
+          "context": "Python explicitly specifies compiled module-level constants for performance. Go's regexp package also supports pre-compiled patterns via regexp.MustCompile at package init time. Leaving this unspecified could lead to inconsistent implementations or unnecessary per-call compilation overhead.",
+          "options": [
+            "Package-level var blocks using regexp.MustCompile (mirrors Python's module-level constants \u2014 recommended).",
+            "Compile inside the function on each call (simpler but less efficient).",
+            "Use sync.Once for lazy initialisation."
+          ],
+          "required": false
+        },
+        {
+          "id": "q5",
+          "text": "In the generation template update, what is the exact insertion point within generation_user_tasks.md for the new '### Subtask refs (MANDATORY)' section?",
+          "context": "The PRD says 'after the existing traceability guidance' but does not name the preceding section heading. Developers need a precise anchor to avoid inserting the section in the wrong place, especially if the file has multiple traceability-related sections.",
+          "options": [],
+          "required": false
+        }
+      ]
+    },
+    {
+      "quality": "ready",
+      "summary": "This is a high-quality, well-structured PRD that is largely ready for implementation. It clearly identifies a real problem (silent token inflation due to missing refs), specifies concrete solutions across two language implementations (Python and Go), documents precise behavioral contracts, and provides detailed API surfaces. The document is unusually thorough for a backport spec: it names exact regex patterns, insertion line numbers, warning message formats, and design rationale for every significant decision. Minor gaps exist around test fixture expectations, rollout/observability, and a few edge-case behavioral questions, but none block implementation.",
+      "gaps": [
+        "Test files are listed but test fixture structure and expected assertion patterns are not described \u2014 implementers must infer fixture shape from the API surface table alone.",
+        "The 'Subtask refs (MANDATORY)' section content to be added to generation_user_tasks.md is not provided \u2014 only the insertion point is specified.",
+        "No definition of 'empty' refs is given (null vs. empty list vs. absent key) \u2014 relevant for both validation warning trigger and inference activation guard.",
+        "No rollout or observability plan: it is unclear whether the inference activation or fallback events are logged/metered anywhere (Go explicitly omits logging, but Python logging level/channel is unspecified).",
+        "Behavior when inferred refs do not intersect with any actual spec content is not fully specified \u2014 validated matches are required, but the fallback path if zero validated matches remain after filtering is implicit.",
+        "The PRD does not address thread-safety or concurrency concerns for the package-level compiled regexes in Go (though regexp is documented as safe, explicit acknowledgment would aid review)."
+      ],
+      "questions": [
+        {
+          "id": "q1",
+          "text": "What is the exact content of the '### Subtask refs (MANDATORY)' section to be inserted into generation_user_tasks.md?",
+          "context": "The PRD specifies the insertion point precisely (after line 52, before '### Smoke test authoring') but does not include the actual text of the new section. Without it, the template change cannot be implemented or reviewed.",
+          "options": [],
+          "required": true
+        },
+        {
+          "id": "q2",
+          "text": "What constitutes 'empty' requirement_refs or test_spec_refs for the purposes of triggering the validation warning and the inference fallback?",
+          "context": "Both the warning check and the inference guard need a precise definition. Options include: (a) field is absent/null, (b) field is an empty list [], (c) either absent or empty list. Misalignment between Python and Go could cause parity failures.",
+          "options": [
+            "Absent or null only",
+            "Empty list [] only",
+            "Either absent/null or empty list (any falsy value)",
+            "Other \u2014 please describe"
+          ],
+          "required": true
+        },
+        {
+          "id": "q3",
+          "text": "At what log level and via which logger should Python emit the inference info log mentioned in Design Decision 7?",
+          "context": "The PRD notes that Go omits the inference info log but that Python has one. The level and logger name are not specified, which affects test assertions and consistency with the existing afspec logging style.",
+          "options": [
+            "logging.INFO via the module-level logger (logging.getLogger(__name__))",
+            "logging.DEBUG via the module-level logger",
+            "No log \u2014 remove the Python log as well for symmetry with Go",
+            "Other \u2014 please describe"
+          ],
+          "required": false
+        },
+        {
+          "id": "q4",
+          "text": "Should the inference fallback also activate when refs fields are present but contain only whitespace or clearly invalid IDs (e.g., placeholder strings)?",
+          "context": "The current spec handles only the 'empty refs' case. If specs can contain placeholder values like 'TBD' or empty strings inside the list, the inference would not trigger, silently failing to improve token usage.",
+          "options": [
+            "No \u2014 only trigger on truly empty lists; invalid-ID cleanup is out of scope",
+            "Yes \u2014 also treat lists whose items don't match the known ID sets as effectively empty",
+            "Out of scope; address in a follow-up"
+          ],
+          "required": false
+        },
+        {
+          "id": "q5",
+          "text": "What are the expected test fixture shapes for the new test files? Specifically: should fixtures be minimal inline dicts, shared JSON files, or Pydantic model factories?",
+          "context": "Four new test files are listed but no fixture strategy is described. Consistency with the existing test suite style reduces reviewer friction and avoids duplicated fixture scaffolding.",
+          "options": [
+            "Follow the existing test suite convention (please describe it briefly)",
+            "Minimal inline dicts / Go struct literals \u2014 no shared fixtures",
+            "Shared JSON fixture files loaded in both Python and Go tests",
+            "Pydantic model factories (Python) / constructor helpers (Go)"
+          ],
+          "required": false
+        }
+      ]
+    },
+    {
+      "quality": "ready",
+      "summary": "This PRD is exceptionally well-specified and implementation-ready. It covers intent, goals, non-goals, background, tech stack, proposed changes, file mapping, test strategy, external API surface, impact, and design decisions with a high degree of precision. All major quality dimensions are satisfied. The document is internally consistent \u2014 definitions (e.g., \"empty\" refs) are shared between features, cross-language parity is explicitly addressed, and design rationale is documented for every non-obvious decision. Only a handful of minor ambiguities remain that could be clarified before implementation begins, but none are blockers.",
+      "gaps": [
+        "No explicit `## Intent` section is present \u2014 the PRD opens with `## Problem` instead. The Intent section (a single-paragraph operator goal statement) is a required quality dimension and is missing.",
+        "The `## Problem` section serves as intent but is not labelled `## Intent`, which may cause tooling or template compliance issues.",
+        "Test coverage expectations are listed by file but no minimum coverage threshold or specific scenario count is stated, making it hard to verify completeness.",
+        "The inference chain describes 'traceability first, then text, then unscoped fallback' but does not explicitly state what happens when traceability returns refs for one type and text scanning augments the other \u2014 i.e., whether the two inference strategies are additive or mutually exclusive per ref type.",
+        "No rollback or feature-flag strategy is mentioned; if inference produces incorrect matches in production, there is no documented escape hatch.",
+        "The `generation_user_tasks.md` change references 'line 52' as an absolute insertion point, which is fragile if the file is edited between now and implementation. A content-based anchor (the exact preceding line text) is given, but the line number could mislead if they diverge.",
+        "No mention of whether the new `_check_missing_subtask_refs` warning is categorised under a specific `Category` or `Check` value in `ValidationEntry`, which is needed for consistent tooling and test assertions in Go."
+      ],
+      "questions": [
+        {
+          "id": "q1",
+          "text": "The PRD is missing a formal `## Intent` section \u2014 a single-paragraph statement of the operator's goal. Can you provide one, or should the `## Problem` section be relabelled and condensed into an Intent statement?",
+          "context": "The Intent section is a required quality dimension. It must be a clear, single-paragraph operator-goal statement. The current `## Problem` section is close but is labelled incorrectly and is more than one paragraph.",
+          "options": [
+            "Relabel `## Problem` as `## Intent` and condense it to one paragraph",
+            "Add a new `## Intent` section above `## Problem` with a one-paragraph summary",
+            "Keep the current structure \u2014 `## Problem` satisfies the intent requirement"
+          ],
+          "required": true
+        },
+        {
+          "id": "q2",
+          "text": "Are the two inference strategies (traceability-based and text-based) additive per ref type, or mutually exclusive? Specifically: if traceability yields `requirement_refs` but not `test_spec_refs`, does text inference then run to attempt filling `test_spec_refs`, or does the chain stop at traceability regardless?",
+          "context": "The PRD says 'try traceability first; if empty, try text' \u2014 which implies the strategies are tried in sequence for the combined result. However 'if empty' could mean 'if both ref types are empty' or 'if either ref type is empty'. Clarifying this prevents divergent Python vs. Go implementations.",
+          "options": [
+            "Additive: text inference runs for any ref type that traceability did not fill, even if traceability succeeded for the other type",
+            "Sequential and exclusive: if traceability returns ANY refs (for either type), text inference is skipped entirely",
+            "Sequential per ref type: traceability and text are tried independently for each ref type (requirement_refs and test_spec_refs evaluated separately)"
+          ],
+          "required": true
+        },
+        {
+          "id": "q3",
+          "text": "What `Category` and `Check` values should the new `ValidationEntry` warnings use in Go (and the equivalent field grouping in Python's `ValidationWarning`)?",
+          "context": "Go's `ValidationEntry` has `.Category`, `.Check`, `.Message`, `.EntityID`, and `.Artifact` fields. Test assertions will need to match exact values. Without specifying these, Go and Python tests may use inconsistent identifiers, breaking cross-implementation parity.",
+          "options": [
+            "Use `Category: \"tasks\"`, `Check: \"missing_subtask_refs\"` (mirrors the check name pattern in existing validators)",
+            "Use `Category: \"render\"`, `Check: \"missing_refs\"` (ties the warning to its rendering consequence)",
+            "Match whatever category/check the agent-fox implementation uses \u2014 provide the exact values from issue #752"
+          ],
+          "required": false
+        },
+        {
+          "id": "q4",
+          "text": "Is there a feature flag, configuration option, or escape hatch planned if inference produces incorrect ref matches in production (e.g., a false-positive regex match causes wrong scoping)?",
+          "context": "If inferred refs are incorrect, scoped rendering will silently omit requirements or test specs that should be included. Without a rollback mechanism, users would have no way to disable inference without a code change.",
+          "options": [
+            "No flag needed \u2014 validated-match filtering (against actual spec IDs) is sufficient protection",
+            "Add an opt-out environment variable or config key to disable inference",
+            "Log a warning when inference activates so users can detect unexpected behaviour",
+            "Document the limitation in Non-Goals and accept the risk"
+          ],
+          "required": false
+        },
+        {
+          "id": "q5",
+          "text": "Should the `generation_user_tasks.md` insertion point be specified by content anchor only (the exact surrounding line text) rather than by line number, to avoid brittleness?",
+          "context": "Line numbers shift whenever the file is edited. The PRD already provides the surrounding text as an anchor, so the line number is redundant \u2014 but it could mislead an implementer if the two disagree.",
+          "options": [
+            "Remove the line number; rely solely on the content anchor (surrounding line text)",
+            "Keep both the line number and content anchor, with a note that content anchor takes precedence on conflict",
+            "Keep only the line number as the authoritative reference"
+          ],
+          "required": false
+        }
+      ]
+    }
+  ],
+  "qa_exchanges": [
+    {
+      "assessment_index": 0,
+      "answers": {
+        "q1": "The scopes are actually distinct \u2014 afspec_go covered the initial Go port of core afspec functionality (load, validate, render, marshal). This PRD adds NEW functionality (inference fallback, missing-refs warning) that did not exist when afspec_go was written. Both specs modify golang/render.go and golang/validate.go but in different functions. No dependency or supersession is needed \u2014 they are independent features on the same codebase.",
+        "q2": "mickume"
+      },
+      "timestamp": "2026-08-10T11:10:51.904261+00:00"
+    },
+    {
+      "assessment_index": 1,
+      "answers": {
+        "q1": "Accept partial inference \u2014 use whatever refs were inferred, even if only one ref type is populated. This matches the agent-fox implementation where the condition is 'if inferred_req or inferred_ts' (logical OR, not AND). If traceability yields requirement_refs but not test_spec_refs, scoped rendering uses the inferred requirement_refs and falls back to full test_spec rendering for the missing type.",
+        "q2": "Skip the entire TaskGroup when its kind is WIRING_VERIFICATION. TaskGroupKind is a group-level property, and the agent-fox implementation checks group.kind.value == 'wiring_verification' at the top of the function, returning early for the entire group. There is no subtask-level marker.",
+        "q3": "Emit a single warning with both field names joined by ' and ' (e.g., 'requirement_refs and test_spec_refs'). This matches the agent-fox implementation which uses ' and '.join(missing).",
+        "q4": "Package-level var blocks using regexp.MustCompile (mirrors Python's module-level constants). Define as: var reqIDRe = regexp.MustCompile(...) and var tsIDRe = regexp.MustCompile(...) at package level.",
+        "q5": "Insert after line 52 which reads 'Reference both requirement IDs and test IDs from the previously generated artifacts in subtask requirement_refs and test_spec_refs fields.' and before '### Smoke test authoring' (line 54). Add a blank line, then the new section, then a blank line before Smoke test authoring."
+      },
+      "timestamp": "2026-08-10T11:12:33.144615+00:00"
+    },
+    {
+      "assessment_index": 2,
+      "answers": {
+        "q1": "The exact content is:\n\n### Subtask refs (MANDATORY)\nEvery subtask MUST have non-empty `requirement_refs` and `test_spec_refs`. These fields control scoped rendering \u2014 when they are empty, the entire requirements and test spec are dumped into the coding session (~15,000+ extra tokens). Populate both fields for every subtask by cross-referencing the requirement IDs and test spec IDs from the previously generated artifacts.",
+        "q2": "Either absent/null or empty list (any falsy value). In Python, both `requirement_refs: list[str] = Field(default_factory=list)` defaults to `[]` and the check is `if not subtask.requirement_refs` which is falsy for empty lists. In Go, `[]string` defaults to nil, and the check is `len(subtask.RequirementRefs) == 0` which catches both nil and empty slices. The existing render code already uses this same pattern (`if not requirement_ids and not test_spec_ids` in Python, `len(reqRefs) == 0` in Go).",
+        "q3": "logging.INFO via the module-level logger (logging.getLogger(__name__)). This matches the agent-fox implementation and is appropriate for surfacing inference activation to users who enable logging.",
+        "q4": "No \u2014 only trigger on truly empty lists; invalid-ID cleanup is out of scope. Specs with placeholder values would need to be addressed separately.",
+        "q5": "Follow the existing test suite convention: Python tests use inline Pydantic model construction (building Spec, Requirements, TestSpec, Tasks, etc. directly in each test function or via pytest fixtures). Go tests use inline struct literals. See packages/afspec/tests/test_render.py and golang/render_test.go for examples."
+      },
+      "timestamp": "2026-08-10T11:14:22.458229+00:00"
+    }
+  ],
+  "generated_artifacts": [
+    "requirements",
+    "test_spec",
+    "tasks"
+  ],
+  "mode": "interactive"
+}

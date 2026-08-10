@@ -1,0 +1,1100 @@
+{
+  "$schema": null,
+  "spec_id": "02",
+  "spec_name": "scoped_rendering_ref_inference",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "pytest packages/afspec/tests/test_render_inference.py packages/afspec/tests/test_validation_warnings_missing_refs.py -q && go test ./golang/... -run 'TestInferRefs|TestValidateMissingRefs' -count=1 -v",
+    "all_tests": "pytest packages/afspec/tests/ -q && go test ./golang/... -count=1",
+    "linter": "ruff check packages/afspec/ && go vet ./golang/..."
+  },
+  "dependencies": [],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write tests: traceability-based inference (Python)",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write test: traceability inference activates scoped rendering",
+          "details": [
+            "In `packages/afspec/tests/test_render_inference.py`, build a `Spec` with a `TaskGroup` whose subtasks have empty `requirement_refs` and `test_spec_refs`.",
+            "Populate `spec.tasks.traceability` with entries whose `task_id` starts with the target group prefix.",
+            "Assert that `render_individual_scoped(spec, target_group)` returns output scoped to the traceability-inferred requirement and test spec IDs (TS-02-1).",
+            "Assert that the full unscoped dump is NOT returned (i.e., only referenced sections appear)."
+          ],
+          "test_spec_refs": [
+            "TS-02-1"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write test: traceability inference collects requirement_id and test_spec_id from matching entries",
+          "details": [
+            "Build a `Spec` with multiple traceability entries; only some have `task_id` starting with the target group prefix.",
+            "Assert that only the matching entries' `requirement_id` and `test_spec_id` values are used for scoped rendering (TS-02-2).",
+            "Assert that non-matching entries are excluded from the inferred refs."
+          ],
+          "test_spec_refs": [
+            "TS-02-2"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write test: traceability inference skipped when traceability is empty",
+          "details": [
+            "Build a `Spec` with empty `spec.tasks.traceability` and subtasks with empty refs.",
+            "Assert that traceability inference yields no refs and the chain proceeds to text-based inference (TS-02-3).",
+            "Use a spy/mock or inspect the returned output to confirm the traceability path was not used."
+          ],
+          "test_spec_refs": [
+            "TS-02-3"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All new tests in `packages/afspec/tests/test_render_inference.py` for traceability inference are collected by pytest: `pytest packages/afspec/tests/test_render_inference.py -q --collect-only`",
+          "Tests fail (red) before implementation \u2014 confirming they are genuine tests, not vacuous assertions.",
+          "No linter warnings introduced: `ruff check packages/afspec/`",
+          "All existing tests still pass: `pytest packages/afspec/tests/ -q`"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write tests: text-based inference (Python)",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write test: text inference matches requirement IDs in subtask title and details",
+          "details": [
+            "In `packages/afspec/tests/test_render_inference.py`, build a `Spec` with subtasks whose `title` or `details` contain requirement ID strings matching `_REQ_ID_RE` pattern.",
+            "Populate the spec's requirements with those IDs so they are 'known'.",
+            "Assert that `render_individual_scoped` returns output scoped to the matched requirement IDs (TS-02-4)."
+          ],
+          "test_spec_refs": [
+            "TS-02-4"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write test: text inference matches test spec IDs in subtask title and details",
+          "details": [
+            "Build a `Spec` with subtasks whose `title` or `details` contain test spec ID strings matching `_TS_ID_RE` pattern.",
+            "Populate the spec's test_spec with those IDs so they are 'known'.",
+            "Assert that `render_individual_scoped` returns output scoped to the matched test spec IDs (TS-02-5)."
+          ],
+          "test_spec_refs": [
+            "TS-02-5"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write test: text inference excludes matches not present in the actual spec",
+          "details": [
+            "Build a `Spec` where subtask text contains ID-like strings that do NOT correspond to any known requirement or test spec ID.",
+            "Assert that those strings are filtered out and do not appear in the inferred refs (TS-02-6).",
+            "Assert that if no validated matches remain, the chain falls through to unscoped fallback."
+          ],
+          "test_spec_refs": [
+            "TS-02-6"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.4",
+          "title": "Write test: text inference is skipped when traceability inference succeeds",
+          "details": [
+            "Build a `Spec` where traceability entries match the target group AND subtask text also contains valid IDs.",
+            "Assert that the result uses traceability-inferred refs (traceability-first order) and text inference is not applied on top (TS-02-7).",
+            "Confirm by checking that only traceability-sourced IDs appear in the scoped output."
+          ],
+          "test_spec_refs": [
+            "TS-02-7"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All new tests in `packages/afspec/tests/test_render_inference.py` for text-based inference are collected: `pytest packages/afspec/tests/test_render_inference.py -q --collect-only`",
+          "Tests fail (red) before implementation.",
+          "No linter warnings introduced: `ruff check packages/afspec/`",
+          "All existing tests still pass: `pytest packages/afspec/tests/ -q`"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Write tests: partial inference OR logic and unscoped fallback (Python)",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write test: partial inference activates scoped rendering when only requirement refs are inferred",
+          "details": [
+            "Build a `Spec` where inference yields `requirement_refs` but no `test_spec_refs`.",
+            "Assert that `render_individual_scoped` activates scoped rendering for requirements and falls back to full rendering for the test spec section only (TS-02-8).",
+            "Confirm the OR condition: `if inferred_req or inferred_ts`."
+          ],
+          "test_spec_refs": [
+            "TS-02-8"
+          ],
+          "requirement_refs": [
+            "02-REQ-3.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write test: partial inference activates scoped rendering when only test spec refs are inferred",
+          "details": [
+            "Build a `Spec` where inference yields `test_spec_refs` but no `requirement_refs`.",
+            "Assert that scoped rendering activates for the test spec section and falls back to full rendering for requirements (TS-02-9)."
+          ],
+          "test_spec_refs": [
+            "TS-02-9"
+          ],
+          "requirement_refs": [
+            "02-REQ-3.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Write test: unscoped fallback with scoped tasks when both inference strategies yield nothing",
+          "details": [
+            "Build a `Spec` with empty traceability and subtask text containing no valid ID patterns.",
+            "Assert that `render_individual_scoped` falls back to full unscoped rendering but still scopes tasks via `renderScopedTasks`-equivalent logic (TS-02-10).",
+            "Assert that the tasks section in the output is scoped to the target group, not the full task list."
+          ],
+          "test_spec_refs": [
+            "TS-02-10"
+          ],
+          "requirement_refs": [
+            "02-REQ-3.3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "All partial-inference and fallback tests collected: `pytest packages/afspec/tests/test_render_inference.py -q --collect-only`",
+          "Tests fail (red) before implementation.",
+          "No linter warnings introduced: `ruff check packages/afspec/`",
+          "All existing tests still pass: `pytest packages/afspec/tests/ -q`"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "tests",
+      "title": "Write tests: missing subtask refs validation warning (Python)",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Write test: warning emitted when subtask has empty requirement_refs",
+          "details": [
+            "In `packages/afspec/tests/test_validation_warnings_missing_refs.py`, build a `Spec` with a non-WIRING_VERIFICATION group containing a subtask with empty `requirement_refs` and non-empty `test_spec_refs`.",
+            "Call `validate(spec)` and assert a `ValidationWarning` is present with message containing `'requirement_refs'` and the subtask ID (TS-02-11).",
+            "Assert the message format: `'Subtask {id} has empty requirement_refs \u2014 scoped rendering will fall back to full spec dump'`."
+          ],
+          "test_spec_refs": [
+            "TS-02-11"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Write test: warning emitted when subtask has empty test_spec_refs",
+          "details": [
+            "Build a `Spec` with a subtask having non-empty `requirement_refs` but empty `test_spec_refs`.",
+            "Assert warning message contains `'test_spec_refs'` and the subtask ID (TS-02-12)."
+          ],
+          "test_spec_refs": [
+            "TS-02-12"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.3",
+          "title": "Write test: single warning with joined field names when both refs are empty",
+          "details": [
+            "Build a `Spec` with a subtask having both `requirement_refs=[]` and `test_spec_refs=[]`.",
+            "Assert exactly one warning is emitted for that subtask (not two) (TS-02-13).",
+            "Assert the message contains `'requirement_refs and test_spec_refs'` (joined with `' and '`)."
+          ],
+          "test_spec_refs": [
+            "TS-02-13"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.4",
+          "title": "Write test: WIRING_VERIFICATION groups are entirely skipped by missing-refs check",
+          "details": [
+            "Build a `Spec` with a `TaskGroup` of `kind=WIRING_VERIFICATION` containing subtasks with empty refs.",
+            "Assert that `validate(spec)` emits NO warnings for those subtasks (TS-02-14).",
+            "Also assert that a non-WIRING_VERIFICATION group in the same spec still triggers warnings for its empty-ref subtasks."
+          ],
+          "test_spec_refs": [
+            "TS-02-14"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "All validation warning tests collected: `pytest packages/afspec/tests/test_validation_warnings_missing_refs.py -q --collect-only`",
+          "Tests fail (red) before implementation.",
+          "No linter warnings introduced: `ruff check packages/afspec/`",
+          "All existing tests still pass: `pytest packages/afspec/tests/ -q`"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "tests",
+      "title": "Write tests: Go render inference and validation warnings",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Write Go tests: traceability-based inference in RenderIndividualScoped",
+          "details": [
+            "In `golang/render_inference_test.go`, write table-driven tests using inline struct literals mirroring `golang/render_test.go` conventions.",
+            "Test that `RenderIndividualScoped` with empty subtask refs but populated traceability entries scopes output to inferred IDs (TS-02-1, TS-02-2, TS-02-3).",
+            "Test that non-matching traceability entries are excluded.",
+            "Test that empty traceability falls through to text inference."
+          ],
+          "test_spec_refs": [
+            "TS-02-1",
+            "TS-02-2",
+            "TS-02-3",
+            "TS-02-17"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.1",
+            "02-REQ-1.2",
+            "02-REQ-1.3",
+            "02-REQ-6.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Write Go tests: text-based inference and partial OR logic in RenderIndividualScoped",
+          "details": [
+            "In `golang/render_inference_test.go`, write tests for `inferRefsFromSubtaskText` using `reqIDRe` and `tsIDRe` package-level vars.",
+            "Test that matches not present in the actual spec are filtered out (TS-02-4, TS-02-5, TS-02-6, TS-02-7).",
+            "Test partial inference OR logic: only req refs inferred, only ts refs inferred, both empty fallback (TS-02-8, TS-02-9, TS-02-10).",
+            "Test that the unscoped fallback still scopes tasks via `renderScopedTasks` (TS-02-10)."
+          ],
+          "test_spec_refs": [
+            "TS-02-4",
+            "TS-02-5",
+            "TS-02-6",
+            "TS-02-7",
+            "TS-02-8",
+            "TS-02-9",
+            "TS-02-10",
+            "TS-02-18"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.1",
+            "02-REQ-2.2",
+            "02-REQ-2.3",
+            "02-REQ-2.4",
+            "02-REQ-3.1",
+            "02-REQ-3.2",
+            "02-REQ-3.3",
+            "02-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Write Go tests: missing subtask refs validation warnings",
+          "details": [
+            "In `golang/validate_missing_refs_test.go`, write table-driven tests using inline struct literals.",
+            "Test warning for empty `RequirementRefs`, empty `TestSpecRefs`, both empty (joined message), and WIRING_VERIFICATION group skip (TS-02-11, TS-02-12, TS-02-13, TS-02-14).",
+            "Assert `ValidationResult.Warnings` contains entries with correct `Message` and `EntityID` fields.",
+            "Assert WIRING_VERIFICATION groups produce zero warnings."
+          ],
+          "test_spec_refs": [
+            "TS-02-11",
+            "TS-02-12",
+            "TS-02-13",
+            "TS-02-14",
+            "TS-02-19"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.1",
+            "02-REQ-4.2",
+            "02-REQ-4.3",
+            "02-REQ-4.4",
+            "02-REQ-6.3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "All Go test files compile without errors: `go build ./golang/...`",
+          "Go tests are collected and fail (red) before implementation: `go test ./golang/... -run 'TestInferRefs|TestValidateMissingRefs' -count=1 -v`",
+          "No vet warnings: `go vet ./golang/...`",
+          "All existing Go tests still pass: `go test ./golang/... -count=1`"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement Python render inference helpers",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Add module-level compiled regex constants to render.py",
+          "details": [
+            "In `packages/afspec/afspec/render.py`, add at module level:",
+            "`_REQ_ID_RE = re.compile(r'\\b(\\w+-REQ-\\d+(?:\\.\\d+|\\.E\\d+)?)\\b')`",
+            "`_TS_ID_RE = re.compile(r'\\b(TS-\\w+-(?:\\d+|P\\d+|E\\d+|SMOKE-\\d+))\\b')`",
+            "Import `re` if not already imported.",
+            "Import `logging` and add `logger = logging.getLogger(__name__)` at module level."
+          ],
+          "test_spec_refs": [
+            "TS-02-4",
+            "TS-02-5"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.1",
+            "02-REQ-2.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement _infer_refs_from_traceability() in render.py",
+          "details": [
+            "Add `_infer_refs_from_traceability(spec: Spec, target_group: int) -> tuple[list[str], list[str]]` to `packages/afspec/afspec/render.py`.",
+            "Filter `spec.tasks.traceability` entries where `entry.task_id.startswith(f'{target_group}.')`.",
+            "Collect `entry.requirement_id` values into `req_ids` and `entry.test_spec_id` values into `ts_ids`.",
+            "Return `(list(req_ids), list(ts_ids))` \u2014 deduplicated sets converted to lists."
+          ],
+          "test_spec_refs": [
+            "TS-02-1",
+            "TS-02-2"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.1",
+            "02-REQ-1.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.3",
+          "title": "Implement _infer_refs_from_subtask_text() in render.py",
+          "details": [
+            "Add `_infer_refs_from_subtask_text(spec: Spec, target_group: int) -> tuple[list[str], list[str]]` to `packages/afspec/afspec/render.py`.",
+            "Find the target `TaskGroup` by `group.id == target_group`.",
+            "For each subtask, scan `subtask.title` and each item in `subtask.details` using `_REQ_ID_RE` and `_TS_ID_RE`.",
+            "Collect all regex matches, then filter to only those present in the actual spec's known requirement IDs and test spec IDs.",
+            "Return `(validated_req_ids, validated_ts_ids)` as deduplicated lists."
+          ],
+          "test_spec_refs": [
+            "TS-02-4",
+            "TS-02-5",
+            "TS-02-6"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.1",
+            "02-REQ-2.2",
+            "02-REQ-2.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.4",
+          "title": "Modify render_individual_scoped() fallback to use inference chain",
+          "details": [
+            "In `packages/afspec/afspec/render.py`, in `render_individual_scoped()`, before the unscoped fallback branch, add the inference chain:",
+            "1. If subtasks have empty refs, call `_infer_refs_from_traceability(spec, target_group)`.",
+            "2. If traceability yields empty results, call `_infer_refs_from_subtask_text(spec, target_group)`.",
+            "3. If `inferred_req or inferred_ts`, log at INFO: `logger.info('...')` and activate scoped rendering with inferred refs (OR logic: missing type falls back to full rendering for that section).",
+            "4. If both are empty, fall through to unscoped fallback (but still scope tasks).",
+            "Ensure the emptiness check uses `if not subtask.requirement_refs` (catches both `None` and `[]`)."
+          ],
+          "test_spec_refs": [
+            "TS-02-1",
+            "TS-02-3",
+            "TS-02-7",
+            "TS-02-8",
+            "TS-02-9",
+            "TS-02-10"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.1",
+            "02-REQ-1.3",
+            "02-REQ-2.4",
+            "02-REQ-3.1",
+            "02-REQ-3.2",
+            "02-REQ-3.3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "Python render inference tests pass: `pytest packages/afspec/tests/test_render_inference.py -q`",
+          "All existing render tests still pass: `pytest packages/afspec/tests/test_render.py -q`",
+          "No linter warnings: `ruff check packages/afspec/afspec/render.py`",
+          "Requirements 02-REQ-1.1, 02-REQ-1.2, 02-REQ-1.3, 02-REQ-2.1, 02-REQ-2.2, 02-REQ-2.3, 02-REQ-2.4, 02-REQ-3.1, 02-REQ-3.2, 02-REQ-3.3 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement Python validation warning for missing subtask refs",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Implement _check_missing_subtask_refs() in validation.py",
+          "details": [
+            "In `packages/afspec/afspec/validation.py`, add `_check_missing_subtask_refs(spec: Spec) -> list[ValidationWarning]`.",
+            "Iterate over `spec.tasks.task_groups`; skip entire group if `group.kind == TaskGroupKind.WIRING_VERIFICATION`.",
+            "For each subtask in non-skipped groups, check `if not subtask.requirement_refs` and `if not subtask.test_spec_refs`.",
+            "Collect missing field names into a list; if non-empty, join with `' and '` and emit a single `ValidationWarning` with message: `f'Subtask {subtask.id} has empty {field_names} \u2014 scoped rendering will fall back to full spec dump'`.",
+            "Return the list of warnings."
+          ],
+          "test_spec_refs": [
+            "TS-02-11",
+            "TS-02-12",
+            "TS-02-13",
+            "TS-02-14"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.1",
+            "02-REQ-4.2",
+            "02-REQ-4.3",
+            "02-REQ-4.4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Wire _check_missing_subtask_refs() into validate() in validation.py",
+          "details": [
+            "In `packages/afspec/afspec/validation.py`, call `_check_missing_subtask_refs(spec)` inside `validate(spec)`.",
+            "Extend `result.warnings` with the returned list of `ValidationWarning` objects.",
+            "Ensure the function is called after existing validation checks to avoid short-circuiting."
+          ],
+          "test_spec_refs": [
+            "TS-02-11",
+            "TS-02-14"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.1",
+            "02-REQ-4.4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "Python validation warning tests pass: `pytest packages/afspec/tests/test_validation_warnings_missing_refs.py -q`",
+          "All existing validation tests still pass: `pytest packages/afspec/tests/ -q`",
+          "No linter warnings: `ruff check packages/afspec/afspec/validation.py`",
+          "Requirements 02-REQ-4.1, 02-REQ-4.2, 02-REQ-4.3, 02-REQ-4.4 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "standard",
+      "title": "Implement Go render inference helpers and fix fallback",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Add package-level regex vars to golang/render.go",
+          "details": [
+            "In `golang/render.go`, add a `var` block at package level:",
+            "`var reqIDRe = regexp.MustCompile(`\\b(\\w+-REQ-\\d+(?:\\.\\d+|\\.E\\d+)?)\\b`)`",
+            "`var tsIDRe  = regexp.MustCompile(`\\b(TS-\\w+-(?:\\d+|P\\d+|E\\d+|SMOKE-\\d+))\\b`)`",
+            "Import `regexp` if not already imported.",
+            "These are safe for concurrent use per Go documentation; no synchronisation needed."
+          ],
+          "test_spec_refs": [
+            "TS-02-4",
+            "TS-02-5",
+            "TS-02-18"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.1",
+            "02-REQ-2.2",
+            "02-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Implement inferRefsFromTraceability() in golang/render.go",
+          "details": [
+            "Add `func inferRefsFromTraceability(s *Spec, targetGroup int) ([]string, []string)` to `golang/render.go`.",
+            "Iterate `s.Tasks.Traceability`; include entries where `strings.HasPrefix(entry.TaskId, fmt.Sprintf('%d.', targetGroup))`.",
+            "Collect `entry.RequirementId` and `entry.TestSpecId` into deduplicated slices.",
+            "Return `(reqIDs, tsIDs)`; return `(nil, nil)` if no matches."
+          ],
+          "test_spec_refs": [
+            "TS-02-1",
+            "TS-02-2",
+            "TS-02-17"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.1",
+            "02-REQ-1.2",
+            "02-REQ-6.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Implement inferRefsFromSubtaskText() in golang/render.go",
+          "details": [
+            "Add `func inferRefsFromSubtaskText(s *Spec, targetGroup int) ([]string, []string)` to `golang/render.go`.",
+            "Find the target `TaskGroup` by `group.Id == targetGroup`.",
+            "For each subtask, apply `reqIDRe.FindAllString` on `subtask.Title` and each `subtask.Details` item; similarly for `tsIDRe`.",
+            "Filter matches to only those present in the spec's known requirement IDs and test spec IDs.",
+            "Return deduplicated `(validatedReqIDs, validatedTsIDs)`."
+          ],
+          "test_spec_refs": [
+            "TS-02-4",
+            "TS-02-5",
+            "TS-02-6",
+            "TS-02-18"
+          ],
+          "requirement_refs": [
+            "02-REQ-2.1",
+            "02-REQ-2.2",
+            "02-REQ-2.3",
+            "02-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.4",
+          "title": "Modify RenderIndividualScoped() to use inference chain and fix fallback task scoping",
+          "details": [
+            "In `golang/render.go`, in `RenderIndividualScoped(targetGroup int)`, before the unscoped fallback:",
+            "1. Check if all subtasks in the target group have `len(subtask.RequirementRefs) == 0` and `len(subtask.TestSpecRefs) == 0`.",
+            "2. If so, call `inferRefsFromTraceability(s, targetGroup)`; if empty, call `inferRefsFromSubtaskText(s, targetGroup)`.",
+            "3. If `len(inferredReq) > 0 || len(inferredTs) > 0`, activate scoped rendering with inferred refs (OR logic).",
+            "4. In the else-branch (full fallback), replace `return s.RenderIndividual()` with code that also calls `s.renderScopedTasks(targetGroup)` to scope tasks \u2014 fixing the pre-existing Go bug.",
+            "No logging in Go (no logging infrastructure)."
+          ],
+          "test_spec_refs": [
+            "TS-02-1",
+            "TS-02-3",
+            "TS-02-7",
+            "TS-02-8",
+            "TS-02-9",
+            "TS-02-10",
+            "TS-02-17",
+            "TS-02-18"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.1",
+            "02-REQ-1.3",
+            "02-REQ-2.4",
+            "02-REQ-3.1",
+            "02-REQ-3.2",
+            "02-REQ-3.3",
+            "02-REQ-6.1",
+            "02-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "Go render inference tests pass: `go test ./golang/... -run 'TestInferRefs' -count=1 -v`",
+          "All existing Go tests still pass: `go test ./golang/... -count=1`",
+          "No vet warnings: `go vet ./golang/...`",
+          "Requirements 02-REQ-1.1, 02-REQ-1.2, 02-REQ-1.3, 02-REQ-2.1, 02-REQ-2.2, 02-REQ-2.3, 02-REQ-2.4, 02-REQ-3.1, 02-REQ-3.2, 02-REQ-3.3, 02-REQ-6.1, 02-REQ-6.2 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "standard",
+      "title": "Implement Go validation warning and update generation template",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Implement checkMissingSubtaskRefs() in golang/validate.go",
+          "details": [
+            "In `golang/validate.go`, add `func checkMissingSubtaskRefs(s *Spec) []ValidationEntry`.",
+            "Iterate `s.Tasks.TaskGroups`; skip entire group if `group.Kind == TaskGroupKindWiringVerification`.",
+            "For each subtask in non-skipped groups, check `len(subtask.RequirementRefs) == 0` and `len(subtask.TestSpecRefs) == 0`.",
+            "Collect missing field names; if non-empty, join with `' and '` and append a `ValidationEntry` with `Message: fmt.Sprintf('Subtask %s has empty %s \u2014 scoped rendering will fall back to full spec dump', subtask.Id, fieldNames)` and `EntityID: subtask.Id`.",
+            "Return the slice of `ValidationEntry` warnings."
+          ],
+          "test_spec_refs": [
+            "TS-02-11",
+            "TS-02-12",
+            "TS-02-13",
+            "TS-02-14",
+            "TS-02-19"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.1",
+            "02-REQ-4.2",
+            "02-REQ-4.3",
+            "02-REQ-4.4",
+            "02-REQ-6.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Wire checkMissingSubtaskRefs() into Validate() in golang/validate.go",
+          "details": [
+            "In `golang/validate.go`, call `checkMissingSubtaskRefs(s)` inside the `Validate()` method.",
+            "Append the returned `[]ValidationEntry` to `result.Warnings`.",
+            "Ensure the call is placed after existing validation checks."
+          ],
+          "test_spec_refs": [
+            "TS-02-11",
+            "TS-02-19"
+          ],
+          "requirement_refs": [
+            "02-REQ-4.1",
+            "02-REQ-6.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Add mandatory refs section to generation_user_tasks.md",
+          "details": [
+            "In `packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md`, insert after line 52 (after the sentence about referencing requirement IDs and test IDs) and before `### Smoke test authoring`:",
+            "Add a blank line, then the new section:",
+            "```",
+            "### Subtask refs (MANDATORY)",
+            "Every subtask MUST have non-empty `requirement_refs` and `test_spec_refs`. These fields control scoped rendering \u2014 when they are empty, the entire requirements and test spec are dumped into the coding session (~15,000+ extra tokens). Populate both fields for every subtask by cross-referencing the requirement IDs and test spec IDs from the previously generated artifacts.",
+            "```",
+            "Then add a blank line before `### Smoke test authoring`.",
+            "Verify the insertion point is correct by checking surrounding lines."
+          ],
+          "test_spec_refs": [
+            "TS-02-15",
+            "TS-02-16"
+          ],
+          "requirement_refs": [
+            "02-REQ-5.1",
+            "02-REQ-5.2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "Go validation warning tests pass: `go test ./golang/... -run 'TestValidateMissingRefs' -count=1 -v`",
+          "All existing Go tests still pass: `go test ./golang/... -count=1`",
+          "No vet warnings: `go vet ./golang/...`",
+          "Template file `generation_user_tasks.md` contains the `### Subtask refs (MANDATORY)` section at the correct insertion point (after line 52, before `### Smoke test authoring`).",
+          "Requirements 02-REQ-4.1, 02-REQ-4.2, 02-REQ-4.3, 02-REQ-4.4, 02-REQ-5.1, 02-REQ-5.2, 02-REQ-6.3 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "checkpoint",
+      "title": "Cross-implementation parity checkpoint",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Verify Python and Go inference produce equivalent results for identical inputs",
+          "details": [
+            "Manually or via a cross-language fixture, confirm that for the same spec data, `_infer_refs_from_traceability` and `inferRefsFromTraceability` return the same set of IDs.",
+            "Confirm that `_infer_refs_from_subtask_text` and `inferRefsFromSubtaskText` return the same validated matches.",
+            "Document any discrepancies found and resolve them."
+          ],
+          "test_spec_refs": [
+            "TS-02-17",
+            "TS-02-18"
+          ],
+          "requirement_refs": [
+            "02-REQ-6.1",
+            "02-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Verify Python and Go validation warning messages are identical in format",
+          "details": [
+            "Compare warning message strings from `_check_missing_subtask_refs` (Python) and `checkMissingSubtaskRefs` (Go) for the same subtask inputs.",
+            "Assert both produce: `'Subtask {id} has empty {field_names} \u2014 scoped rendering will fall back to full spec dump'` with identical `' and '` join serialisation.",
+            "Confirm WIRING_VERIFICATION skip behavior is identical in both implementations."
+          ],
+          "test_spec_refs": [
+            "TS-02-19"
+          ],
+          "requirement_refs": [
+            "02-REQ-6.3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.3",
+          "title": "Verify Go fallback fix aligns with Python scoped-tasks behavior",
+          "details": [
+            "Confirm that the Go `RenderIndividualScoped` unscoped fallback now calls `renderScopedTasks(targetGroup)` and does NOT call `RenderIndividual()` alone.",
+            "Run both Python and Go fallback tests and confirm both scope the tasks section to the target group.",
+            "Check that no `panic('not implemented')` or `// TODO` stubs remain in the modified Go functions."
+          ],
+          "test_spec_refs": [
+            "TS-02-10",
+            "TS-02-17"
+          ],
+          "requirement_refs": [
+            "02-REQ-3.3",
+            "02-REQ-6.1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "All Python inference and validation tests pass: `pytest packages/afspec/tests/test_render_inference.py packages/afspec/tests/test_validation_warnings_missing_refs.py -q`",
+          "All Go inference and validation tests pass: `go test ./golang/... -run 'TestInferRefs|TestValidateMissingRefs' -count=1 -v`",
+          "Full Python test suite passes: `pytest packages/afspec/tests/ -q`",
+          "Full Go test suite passes: `go test ./golang/... -count=1`",
+          "No linter warnings in Python: `ruff check packages/afspec/`",
+          "No vet warnings in Go: `go vet ./golang/...`",
+          "Requirements 02-REQ-6.1, 02-REQ-6.2, 02-REQ-6.3 parity acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "kind": "wiring_verification",
+      "title": "Wiring verification: end-to-end integration and stub audit",
+      "subtasks": [
+        {
+          "id": "11.1",
+          "title": "Trace execution paths: verify inference chain is called from render_individual_scoped / RenderIndividualScoped",
+          "details": [
+            "Confirm that `render_individual_scoped()` in `packages/afspec/afspec/render.py` calls `_infer_refs_from_traceability()` and then `_infer_refs_from_subtask_text()` in the correct order when subtask refs are empty.",
+            "Confirm that `RenderIndividualScoped()` in `golang/render.go` calls `inferRefsFromTraceability()` and then `inferRefsFromSubtaskText()` in the correct order.",
+            "Confirm that `validate()` in `packages/afspec/afspec/validation.py` calls `_check_missing_subtask_refs()` and uses its return value.",
+            "Confirm that `Validate()` in `golang/validate.go` calls `checkMissingSubtaskRefs()` and appends results to `result.Warnings`."
+          ],
+          "test_spec_refs": [
+            "TS-02-1",
+            "TS-02-4",
+            "TS-02-11",
+            "TS-02-17",
+            "TS-02-SMOKE-1",
+            "TS-02-SMOKE-2",
+            "TS-02-SMOKE-3",
+            "TS-02-SMOKE-4",
+            "TS-02-SMOKE-5"
+          ],
+          "requirement_refs": [
+            "02-REQ-1.1",
+            "02-REQ-2.1",
+            "02-REQ-4.1",
+            "02-REQ-6.1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.2",
+          "title": "Verify return value propagation: inferred refs flow into scoped rendering output",
+          "details": [
+            "Confirm that inferred `requirement_ids` and `test_spec_ids` from both inference helpers are passed to the scoped rendering filter in both Python and Go.",
+            "Confirm that the OR logic (`if inferred_req or inferred_ts`) correctly activates partial scoped rendering.",
+            "Confirm that the Go fallback now returns a result that includes `renderScopedTasks(targetGroup)` output rather than the full unscoped task list."
+          ],
+          "test_spec_refs": [
+            "TS-02-8",
+            "TS-02-9",
+            "TS-02-10",
+            "TS-02-18"
+          ],
+          "requirement_refs": [
+            "02-REQ-3.1",
+            "02-REQ-3.2",
+            "02-REQ-3.3",
+            "02-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.3",
+          "title": "Stub and dead-code audit across all modified files",
+          "details": [
+            "Search Python files for stub markers: `grep -rn 'raise NotImplementedError\\|return None\\|pass$' packages/afspec/afspec/render.py packages/afspec/afspec/validation.py`",
+            "Search Go files for stub markers: `grep -rn 'panic(\"not implemented\")\\|// TODO\\|return nil' golang/render.go golang/validate.go`",
+            "Confirm no stub markers remain in the newly added functions (`_infer_refs_from_traceability`, `_infer_refs_from_subtask_text`, `_check_missing_subtask_refs`, `inferRefsFromTraceability`, `inferRefsFromSubtaskText`, `checkMissingSubtaskRefs`).",
+            "Confirm the Go fallback no longer contains a bare `return s.RenderIndividual()` without task scoping."
+          ],
+          "test_spec_refs": [
+            "TS-02-10",
+            "TS-02-17",
+            "TS-02-18"
+          ],
+          "requirement_refs": [
+            "02-REQ-3.3",
+            "02-REQ-6.1",
+            "02-REQ-6.2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.4",
+          "title": "Run full test suites and confirm all tests pass",
+          "details": [
+            "Run `pytest packages/afspec/tests/ -q` \u2014 all tests must pass including new inference and validation warning tests.",
+            "Run `go test ./golang/... -count=1 -v` \u2014 all tests must pass including new Go inference and validation warning tests.",
+            "Confirm no regressions in existing render and validation tests.",
+            "Confirm template file `generation_user_tasks.md` contains the `### Subtask refs (MANDATORY)` section at the correct location."
+          ],
+          "test_spec_refs": [
+            "TS-02-15",
+            "TS-02-16",
+            "TS-02-17",
+            "TS-02-18",
+            "TS-02-19"
+          ],
+          "requirement_refs": [
+            "02-REQ-5.1",
+            "02-REQ-5.2",
+            "02-REQ-6.1",
+            "02-REQ-6.2",
+            "02-REQ-6.3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "11.V",
+        "checks": [
+          "Full Python test suite passes with zero failures: `pytest packages/afspec/tests/ -q`",
+          "Full Go test suite passes with zero failures: `go test ./golang/... -count=1`",
+          "No Python linter warnings: `ruff check packages/afspec/`",
+          "No Go vet warnings: `go vet ./golang/...`",
+          "No stub markers remain in modified Python files: `grep -rn 'raise NotImplementedError' packages/afspec/afspec/render.py packages/afspec/afspec/validation.py` returns empty",
+          "No stub markers remain in modified Go files: `grep -n 'panic(\"not implemented\")' golang/render.go golang/validate.go` returns empty",
+          "Template file contains mandatory refs section: `grep -n 'Subtask refs (MANDATORY)' packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md` returns a match",
+          "All requirements 02-REQ-1 through 02-REQ-6 acceptance criteria verified end-to-end"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "02-REQ-1.1",
+      "test_spec_id": "TS-02-1",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-1.2",
+      "test_spec_id": "TS-02-2",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-1.3",
+      "test_spec_id": "TS-02-3",
+      "task_id": "6.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-2.1",
+      "test_spec_id": "TS-02-4",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-2.2",
+      "test_spec_id": "TS-02-5",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-2.3",
+      "test_spec_id": "TS-02-6",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-2.4",
+      "test_spec_id": "TS-02-7",
+      "task_id": "6.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-3.1",
+      "test_spec_id": "TS-02-8",
+      "task_id": "6.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-3.2",
+      "test_spec_id": "TS-02-9",
+      "task_id": "6.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-3.3",
+      "test_spec_id": "TS-02-10",
+      "task_id": "8.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-4.1",
+      "test_spec_id": "TS-02-11",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-4.2",
+      "test_spec_id": "TS-02-12",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-4.3",
+      "test_spec_id": "TS-02-13",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-4.4",
+      "test_spec_id": "TS-02-14",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-5.1",
+      "test_spec_id": "TS-02-15",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-5.2",
+      "test_spec_id": "TS-02-16",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-6.1",
+      "test_spec_id": "TS-02-17",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-6.2",
+      "test_spec_id": "TS-02-18",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "02-REQ-6.3",
+      "test_spec_id": "TS-02-19",
+      "task_id": "9.1",
+      "test_path": null
+    }
+  ]
+}

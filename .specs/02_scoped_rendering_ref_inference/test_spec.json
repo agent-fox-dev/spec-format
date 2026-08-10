@@ -1,0 +1,760 @@
+{
+  "$schema": null,
+  "spec_id": "02",
+  "spec_name": "scoped_rendering_ref_inference",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-02-1",
+      "requirement_id": "02-REQ-1.1",
+      "kind": "integration",
+      "description": "When all subtasks in the target group have empty refs, render_individual_scoped invokes traceability inference and returns a scoped result filtered to the inferred refs.",
+      "preconditions": [
+        "A Spec is constructed with a TaskGroup id=3 containing subtasks with empty requirement_refs and test_spec_refs",
+        "spec.tasks.traceability contains TraceabilityEntry records with task_id starting with '3.' and non-empty requirement_id and test_spec_id values",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 3 subtasks having empty refs; traceability entries: [{task_id: '3.1', requirement_id: '02-REQ-1', test_spec_id: 'TS-02-1'}]",
+        "target_group": 3
+      },
+      "expected": "Returns a scoped dict/map containing only the requirement and test spec sections referenced by the inferred refs ('02-REQ-1' and 'TS-02-1'); does not contain sections for other requirements or test specs",
+      "assertion_pseudocode": "result = render_individual_scoped(spec, target_group=3)\nassert result is not None\nassert '02-REQ-1' appears in result['requirements']\nassert 'TS-02-1' appears in result['test_spec']\n# Verify unrelated requirement not in result\nassert '02-REQ-2' not in result.get('requirements', '')"
+    },
+    {
+      "id": "TS-02-2",
+      "requirement_id": "02-REQ-1.2",
+      "kind": "unit",
+      "description": "inferRefsFromTraceability / _infer_refs_from_traceability returns only requirement_id and test_spec_id values from entries whose task_id starts with the target group prefix.",
+      "preconditions": [
+        "A Spec is constructed with traceability entries: [{task_id: '3.1', requirement_id: 'REQ-A', test_spec_id: 'TS-A'}, {task_id: '5.1', requirement_id: 'REQ-B', test_spec_id: 'TS-B'}]",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with traceability entries for groups 3 and 5",
+        "target_group": 3
+      },
+      "expected": "Returns (req_refs=['REQ-A'], ts_refs=['TS-A']); does not include REQ-B or TS-B from group 5",
+      "assertion_pseudocode": "req_refs, ts_refs = _infer_refs_from_traceability(spec, target_group=3)\nassert 'REQ-A' in req_refs\nassert 'TS-A' in ts_refs\nassert 'REQ-B' not in req_refs\nassert 'TS-B' not in ts_refs"
+    },
+    {
+      "id": "TS-02-3",
+      "requirement_id": "02-REQ-1.3",
+      "kind": "integration",
+      "description": "When traceability inference yields at least one ref, scoped rendering activates immediately without attempting text inference, and Python emits an INFO log.",
+      "preconditions": [
+        "A Spec is constructed with group 3 subtasks having empty refs",
+        "Traceability entries exist for group 3 with non-empty requirement_id",
+        "Python: logging is configured to capture INFO messages from the afspec.render logger",
+        "Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 3 traceability entries present; subtask text contains no ID patterns",
+        "target_group": 3
+      },
+      "expected": "Returns a scoped result; Python: INFO log message emitted via logging.getLogger(__name__); text-based inference function is NOT called (traceability short-circuits the chain)",
+      "assertion_pseudocode": "with capture_logs(level=INFO, logger='afspec.render') as logs:\n    result = render_individual_scoped(spec, target_group=3)\nassert result is scoped (contains only inferred req refs)\nassert any('infer' in msg.lower() for msg in logs)  # Python only\n# Verify text inference not invoked by checking no text-scan side effects"
+    },
+    {
+      "id": "TS-02-4",
+      "requirement_id": "02-REQ-2.1",
+      "kind": "integration",
+      "description": "When traceability inference returns empty collections, render_individual_scoped invokes text-based inference and returns a scoped result from validated regex matches.",
+      "preconditions": [
+        "A Spec is constructed with group 2 subtasks having empty refs",
+        "spec.tasks.traceability has no entries with task_id starting with '2.'",
+        "Subtask title or details contain known requirement ID strings (e.g., '02-REQ-1') that exist in the spec",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 2; no traceability for group 2; subtask title='Implement 02-REQ-1 logic'",
+        "target_group": 2
+      },
+      "expected": "Returns a scoped dict/map containing only the section for '02-REQ-1'; does not contain sections for other requirements",
+      "assertion_pseudocode": "result = render_individual_scoped(spec, target_group=2)\nassert result is not None\nassert '02-REQ-1' appears in result['requirements']\nassert '02-REQ-2' not in result.get('requirements', '')"
+    },
+    {
+      "id": "TS-02-5",
+      "requirement_id": "02-REQ-2.2",
+      "kind": "unit",
+      "description": "The regex patterns _REQ_ID_RE/_TS_ID_RE (Python) and reqIDRe/tsIDRe (Go) are defined as module/package-level compiled constants, not compiled per function call.",
+      "preconditions": [
+        "Python: afspec.render module is importable",
+        "Go: afspec package is compiled"
+      ],
+      "input": {
+        "description": "Inspect module/package-level symbols"
+      },
+      "expected": "Python: afspec.render._REQ_ID_RE and afspec.render._TS_ID_RE are instances of re.Pattern defined at module level. Go: reqIDRe and tsIDRe are package-level *regexp.Regexp variables initialized via regexp.MustCompile",
+      "assertion_pseudocode": "import afspec.render as render_mod\nimport re\nassert isinstance(render_mod._REQ_ID_RE, re.Pattern)\nassert isinstance(render_mod._TS_ID_RE, re.Pattern)\n# Go: verify via source inspection that var block uses regexp.MustCompile at package level\n# assert reqIDRe is not nil at package init"
+    },
+    {
+      "id": "TS-02-6",
+      "requirement_id": "02-REQ-2.3",
+      "kind": "unit",
+      "description": "inferRefsFromSubtaskText / _infer_refs_from_subtask_text scans title and all details strings, collects regex matches, and filters to only IDs present in the spec.",
+      "preconditions": [
+        "A Spec is constructed with known requirement IDs ['02-REQ-1', '02-REQ-2'] and test spec IDs ['TS-02-1']",
+        "Target group subtasks: [{title: 'Work on 02-REQ-1', details: ['See TS-02-1 for tests', 'Also 99-REQ-999 is mentioned']}]",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with known IDs as above; subtask with title and details containing mixed valid and invalid IDs",
+        "target_group": 2
+      },
+      "expected": "Returns req_refs=['02-REQ-1'] and ts_refs=['TS-02-1']; '99-REQ-999' is discarded because it does not exist in the spec",
+      "assertion_pseudocode": "req_refs, ts_refs = _infer_refs_from_subtask_text(spec, target_group=2)\nassert '02-REQ-1' in req_refs\nassert 'TS-02-1' in ts_refs\nassert '99-REQ-999' not in req_refs\nassert '02-REQ-2' not in req_refs  # not mentioned in subtask text"
+    },
+    {
+      "id": "TS-02-7",
+      "requirement_id": "02-REQ-2.4",
+      "kind": "integration",
+      "description": "When text-based inference yields at least one validated ref, scoped rendering activates and Python emits an INFO log.",
+      "preconditions": [
+        "A Spec is constructed with group 2 subtasks having empty refs and no traceability for group 2",
+        "Subtask title contains a valid requirement ID that exists in the spec",
+        "Python: logging configured to capture INFO from afspec.render logger"
+      ],
+      "input": {
+        "spec": "Spec with group 2; no traceability; subtask title='Handle 02-REQ-1'",
+        "target_group": 2
+      },
+      "expected": "Returns a scoped dict/map; Python: INFO log message emitted via logging.getLogger(__name__)",
+      "assertion_pseudocode": "with capture_logs(level=INFO, logger='afspec.render') as logs:\n    result = render_individual_scoped(spec, target_group=2)\nassert result is scoped to '02-REQ-1'\nassert any('infer' in msg.lower() for msg in logs)  # Python only"
+    },
+    {
+      "id": "TS-02-8",
+      "requirement_id": "02-REQ-3.1",
+      "kind": "integration",
+      "description": "When inference yields refs for only one ref type (partial inference), scoped rendering activates for the available type and the missing type is fully rendered.",
+      "preconditions": [
+        "A Spec is constructed with group 4 subtasks having empty refs",
+        "Traceability entries for group 4 have non-empty requirement_id but empty test_spec_id",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 4; traceability: [{task_id: '4.1', requirement_id: '02-REQ-1', test_spec_id: ''}]",
+        "target_group": 4
+      },
+      "expected": "Returns a dict/map where requirements section is scoped to '02-REQ-1' only, and test_spec section contains the full test spec (not scoped); does NOT fall through to full unscoped fallback",
+      "assertion_pseudocode": "result = render_individual_scoped(spec, target_group=4)\nassert '02-REQ-1' in result['requirements']\nassert '02-REQ-2' not in result['requirements']  # scoped\n# test_spec is fully rendered (all test cases present)\nassert all_test_spec_ids_present_in(result['test_spec'], spec)"
+    },
+    {
+      "id": "TS-02-9",
+      "requirement_id": "02-REQ-3.2",
+      "kind": "integration",
+      "description": "When both inference strategies return empty collections, render_individual_scoped falls back to full unscoped rendering but still scopes the tasks section via renderScopedTasks.",
+      "preconditions": [
+        "A Spec is constructed with group 1 subtasks having empty refs",
+        "No traceability entries for group 1",
+        "Subtask text contains no recognizable ID patterns",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 1; no traceability; subtask title='Do some work'",
+        "target_group": 1
+      },
+      "expected": "Returns a dict/map with full requirements and test spec sections (all content), but tasks section contains only tasks from group 1 (scoped via renderScopedTasks)",
+      "assertion_pseudocode": "result = render_individual_scoped(spec, target_group=1)\n# Full requirements present\nassert all_requirement_ids_present_in(result['requirements'], spec)\n# Full test spec present\nassert all_test_spec_ids_present_in(result['test_spec'], spec)\n# Tasks scoped to group 1 only\nassert only_group_1_tasks_in(result['tasks'])\nassert group_2_tasks_not_in(result['tasks'])"
+    },
+    {
+      "id": "TS-02-10",
+      "requirement_id": "02-REQ-3.3",
+      "kind": "integration",
+      "description": "Go RenderIndividualScoped replaces the old return s.RenderIndividual() in the else-branch with logic that calls s.renderScopedTasks(targetGroup), returning scoped tasks instead of a fully unscoped render.",
+      "preconditions": [
+        "Go afspec package compiled with the fix applied",
+        "A Spec is constructed with two task groups (id=1 and id=2); group 1 subtasks have empty refs; no traceability; no ID patterns in subtask text"
+      ],
+      "input": {
+        "spec": "Go Spec with groups 1 and 2; group 1 subtasks have empty refs; inference fails",
+        "targetGroup": 1
+      },
+      "expected": "Returned map[string]string has tasks section containing only group 1 tasks; group 2 tasks are absent; requirements and test spec are fully rendered",
+      "assertion_pseudocode": "result := spec.RenderIndividualScoped(1)\nassert result != nil\n// Tasks scoped to group 1\nassert strings.Contains(result[\"tasks\"], group1TaskId)\nassert !strings.Contains(result[\"tasks\"], group2TaskId)\n// Full requirements present\nassert len(result[\"requirements\"]) > 0"
+    },
+    {
+      "id": "TS-02-11",
+      "requirement_id": "02-REQ-4.1",
+      "kind": "integration",
+      "description": "validate / Validate invokes checkMissingSubtaskRefs and appends its warnings to the ValidationResult when subtasks have empty refs.",
+      "preconditions": [
+        "A Spec is constructed with a STANDARD TaskGroup containing a subtask with empty requirement_refs and test_spec_refs",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group kind=STANDARD; subtask id='1.1' with requirement_refs=[] and test_spec_refs=[]"
+      },
+      "expected": "ValidationResult.warnings contains at least one ValidationWarning/ValidationEntry for subtask '1.1'",
+      "assertion_pseudocode": "result = validate(spec)  # or spec.Validate()\nassert len(result.warnings) >= 1\nwarning_ids = [w.entity_id for w in result.warnings]  # Python\n# or [w.EntityID for w in result.Warnings]  # Go\nassert '1.1' in warning_ids"
+    },
+    {
+      "id": "TS-02-12",
+      "requirement_id": "02-REQ-4.2",
+      "kind": "unit",
+      "description": "checkMissingSubtaskRefs emits exactly one warning per subtask with the correct message format including the joined field names.",
+      "preconditions": [
+        "A Spec is constructed with a STANDARD TaskGroup containing three subtasks: one with empty requirement_refs only, one with empty test_spec_refs only, one with both empty",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with subtasks: id='1.1' (req_refs=[], ts_refs=['TS-02-1']), id='1.2' (req_refs=['02-REQ-1'], ts_refs=[]), id='1.3' (req_refs=[], ts_refs=[])"
+      },
+      "expected": "Exactly 3 warnings; messages: 'Subtask 1.1 has empty requirement_refs — scoped rendering will fall back to full spec dump', 'Subtask 1.2 has empty test_spec_refs — scoped rendering will fall back to full spec dump', 'Subtask 1.3 has empty requirement_refs and test_spec_refs — scoped rendering will fall back to full spec dump'",
+      "assertion_pseudocode": "warnings = _check_missing_subtask_refs(spec)\nassert len(warnings) == 3\nmessages = {w.message for w in warnings}\nassert 'Subtask 1.1 has empty requirement_refs — scoped rendering will fall back to full spec dump' in messages\nassert 'Subtask 1.2 has empty test_spec_refs — scoped rendering will fall back to full spec dump' in messages\nassert 'Subtask 1.3 has empty requirement_refs and test_spec_refs — scoped rendering will fall back to full spec dump' in messages"
+    },
+    {
+      "id": "TS-02-13",
+      "requirement_id": "02-REQ-4.3",
+      "kind": "unit",
+      "description": "checkMissingSubtaskRefs skips the entire WIRING_VERIFICATION TaskGroup and emits no warnings for its subtasks even if they have empty refs.",
+      "preconditions": [
+        "A Spec is constructed with two TaskGroups: one WIRING_VERIFICATION group with subtasks having empty refs, and one STANDARD group with subtasks having empty refs",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group kind=WIRING_VERIFICATION (subtask id='W.1', refs=[]) and group kind=STANDARD (subtask id='S.1', refs=[])"
+      },
+      "expected": "Exactly 1 warning for subtask 'S.1'; no warning for subtask 'W.1'",
+      "assertion_pseudocode": "warnings = _check_missing_subtask_refs(spec)\nwarning_ids = [w.entity_id for w in warnings]\nassert 'W.1' not in warning_ids\nassert 'S.1' in warning_ids\nassert len(warnings) == 1"
+    },
+    {
+      "id": "TS-02-14",
+      "requirement_id": "02-REQ-4.4",
+      "kind": "unit",
+      "description": "The field_names portion of the warning message uses ' and '.join(missing) serialisation, producing 'requirement_refs and test_spec_refs' when both are empty.",
+      "preconditions": [
+        "A Spec is constructed with a STANDARD TaskGroup containing a subtask with both requirement_refs=[] and test_spec_refs=[]",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with subtask id='1.1', requirement_refs=[], test_spec_refs=[]"
+      },
+      "expected": "Warning message contains exactly 'requirement_refs and test_spec_refs' (joined with ' and ', not comma or other separator)",
+      "assertion_pseudocode": "warnings = _check_missing_subtask_refs(spec)\nassert len(warnings) == 1\nassert 'requirement_refs and test_spec_refs' in warnings[0].message\nassert ',' not in warnings[0].message  # not comma-joined"
+    },
+    {
+      "id": "TS-02-15",
+      "requirement_id": "02-REQ-5.1",
+      "kind": "integration",
+      "description": "generation_user_tasks.md contains the '### Subtask refs (MANDATORY)' section inserted after line 52 and before '### Smoke test authoring', with blank lines before and after.",
+      "preconditions": [
+        "File packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md exists and has been modified per the PRD"
+      ],
+      "input": {
+        "file_path": "packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md"
+      },
+      "expected": "File contains '### Subtask refs (MANDATORY)' section; the section appears after the anchor line containing 'requirement_refs and test_spec_refs fields' and before '### Smoke test authoring'; blank lines surround the new section",
+      "assertion_pseudocode": "lines = read_file('packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md').splitlines()\nanchor_idx = find_line_index(lines, 'requirement_refs` and `test_spec_refs` fields')\nnew_section_idx = find_line_index(lines, '### Subtask refs (MANDATORY)')\nsmoke_idx = find_line_index(lines, '### Smoke test authoring')\nassert anchor_idx < new_section_idx < smoke_idx\nassert lines[new_section_idx - 1].strip() == ''  # blank line before\nassert lines[new_section_idx + 2].strip() == ''  # blank line after section body"
+    },
+    {
+      "id": "TS-02-16",
+      "requirement_id": "02-REQ-5.2",
+      "kind": "integration",
+      "description": "The body of the '### Subtask refs (MANDATORY)' section contains the exact mandatory text about non-empty refs and token waste.",
+      "preconditions": [
+        "File packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md exists and has been modified per the PRD"
+      ],
+      "input": {
+        "file_path": "packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md"
+      },
+      "expected": "File contains the exact body text: 'Every subtask MUST have non-empty requirement_refs and test_spec_refs. These fields control scoped rendering — when they are empty, the entire requirements and test spec are dumped into the coding session (~15,000+ extra tokens). Populate both fields for every subtask by cross-referencing the requirement IDs and test spec IDs from the previously generated artifacts.'",
+      "assertion_pseudocode": "content = read_file('packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md')\nexpected_body = 'Every subtask MUST have non-empty `requirement_refs` and `test_spec_refs`. These fields control scoped rendering — when they are empty, the entire requirements and test spec are dumped into the coding session (~15,000+ extra tokens). Populate both fields for every subtask by cross-referencing the requirement IDs and test spec IDs from the previously generated artifacts.'\nassert expected_body in content"
+    },
+    {
+      "id": "TS-02-17",
+      "requirement_id": "02-REQ-6.1",
+      "kind": "integration",
+      "description": "Both Python render_individual_scoped and Go RenderIndividualScoped follow the same inference chain order: explicit refs → traceability → text → fallback with scoped tasks.",
+      "preconditions": [
+        "Equivalent Spec objects constructed in both Python (Pydantic) and Go (struct literals) with identical data",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 1; no explicit refs; traceability entry for group 1 with requirement_id='02-REQ-1'; subtask text also contains '02-REQ-2'",
+        "target_group": 1
+      },
+      "expected": "Both Python and Go return scoped results using traceability-inferred refs ('02-REQ-1') only; text inference is not attempted; '02-REQ-2' is not in the scoped output",
+      "assertion_pseudocode": "# Python\npy_result = render_individual_scoped(py_spec, target_group=1)\nassert '02-REQ-1' in py_result['requirements']\nassert '02-REQ-2' not in py_result['requirements']\n# Go\ngo_result := goSpec.RenderIndividualScoped(1)\nassert strings.Contains(go_result['requirements'], '02-REQ-1')\nassert !strings.Contains(go_result['requirements'], '02-REQ-2')"
+    },
+    {
+      "id": "TS-02-18",
+      "requirement_id": "02-REQ-6.2",
+      "kind": "integration",
+      "description": "Python _check_missing_subtask_refs and Go checkMissingSubtaskRefs produce warning messages with identical format strings for the same input.",
+      "preconditions": [
+        "Equivalent Spec objects constructed in both Python and Go with a STANDARD group containing a subtask with both refs empty",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with subtask id='1.1', requirement_refs=[], test_spec_refs=[]"
+      },
+      "expected": "Both Python and Go produce the message: 'Subtask 1.1 has empty requirement_refs and test_spec_refs — scoped rendering will fall back to full spec dump'",
+      "assertion_pseudocode": "expected_msg = 'Subtask 1.1 has empty requirement_refs and test_spec_refs — scoped rendering will fall back to full spec dump'\n# Python\npy_warnings = _check_missing_subtask_refs(py_spec)\nassert py_warnings[0].message == expected_msg\n# Go\ngo_result := goSpec.Validate()\nassert go_result.Warnings[0].Message == expected_msg"
+    },
+    {
+      "id": "TS-02-19",
+      "requirement_id": "02-REQ-6.3",
+      "kind": "integration",
+      "description": "Go RenderIndividualScoped does not emit any log messages during inference (no logging infrastructure), while all other inference behavior matches Python.",
+      "preconditions": [
+        "Go afspec package compiled",
+        "A Spec is constructed with group 1 subtasks having empty refs; traceability entries exist for group 1"
+      ],
+      "input": {
+        "spec": "Go Spec with group 1; traceability entries present; subtasks have empty refs",
+        "targetGroup": 1
+      },
+      "expected": "RenderIndividualScoped returns a scoped map[string]string (same scoping as Python would produce); no log output is produced; no compilation errors related to logging",
+      "assertion_pseudocode": "// Go test\nresult := spec.RenderIndividualScoped(1)\nassert result != nil\nassert len(result) > 0\n// Verify scoped (only inferred req present)\nassert strings.Contains(result[\"requirements\"], inferredReqId)\n// No log assertions needed — Go has no logging infrastructure"
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-02-P1",
+      "property_id": "02-PROP-1",
+      "validates": [
+        "02-REQ-1.2",
+        "02-REQ-2.3"
+      ],
+      "description": "For any spec and target group, every ID returned by inference helpers exists in the spec's known ID sets — inference never produces phantom refs.",
+      "for_any_strategy": "Generate random Spec instances with varying traceability entries and subtask text containing a mix of valid spec IDs and random ID-like strings (e.g., 'XX-REQ-999'). Sample at least 50 combinations of spec and target_group values.",
+      "invariant_check": "req_refs, ts_refs = _infer_refs_from_traceability(spec, tg) OR _infer_refs_from_subtask_text(spec, tg)\nknown_req_ids = collect_all_requirement_ids(spec)\nknown_ts_ids = collect_all_test_spec_ids(spec)\nassert all(r in known_req_ids for r in req_refs)\nassert all(t in known_ts_ids for t in ts_refs)"
+    },
+    {
+      "id": "TS-02-P2",
+      "property_id": "02-PROP-2",
+      "validates": [
+        "02-REQ-1.3",
+        "02-REQ-2.4",
+        "02-REQ-3.1"
+      ],
+      "description": "For any spec and target group where inference or explicit refs yield non-empty collections, the scoped rendering output is a subset of the unscoped output.",
+      "for_any_strategy": "Generate random Spec instances with at least one requirement and one test spec entry. For each, construct a target group with subtasks referencing a subset of the spec's IDs. Sample at least 30 combinations.",
+      "invariant_check": "scoped = render_individual_scoped(spec, target_group)\nunscoped = render_individual(spec)\n# Every key in scoped exists in unscoped\nassert all(k in unscoped for k in scoped)\n# Content of each scoped key is a substring of or equal to the unscoped content\nassert all(scoped[k] in unscoped[k] or scoped[k] == unscoped[k] for k in scoped)"
+    },
+    {
+      "id": "TS-02-P3",
+      "property_id": "02-PROP-3",
+      "validates": [
+        "02-REQ-3.2",
+        "02-REQ-3.3"
+      ],
+      "description": "For any spec and target group where both inference strategies return empty collections, the tasks section in the fallback output is always scoped to the target group and never contains tasks from other groups.",
+      "for_any_strategy": "Generate random Spec instances with 2–5 task groups, each with 1–3 subtasks having empty refs and no traceability or ID patterns. For each spec, pick a random target_group from the available group IDs. Sample at least 30 combinations.",
+      "invariant_check": "result = render_individual_scoped(spec, target_group)\ntasks_output = result['tasks']\n# Only target group tasks present\nfor group in spec.tasks.task_groups:\n    if group.id == target_group:\n        assert any(subtask.id in tasks_output for subtask in group.subtasks)\n    else:\n        assert all(subtask.id not in tasks_output for subtask in group.subtasks)"
+    },
+    {
+      "id": "TS-02-P4",
+      "property_id": "02-PROP-4",
+      "validates": [
+        "02-REQ-4.1",
+        "02-REQ-4.2",
+        "02-REQ-4.3"
+      ],
+      "description": "For any spec passed to validate/Validate, checkMissingSubtaskRefs emits exactly one warning per subtask with empty refs (excluding WIRING_VERIFICATION groups), never zero and never more than one per subtask.",
+      "for_any_strategy": "Generate random Spec instances with 1–5 task groups of mixed kinds (STANDARD, TESTS, CHECKPOINT, WIRING_VERIFICATION), each with 0–5 subtasks having randomly empty or non-empty refs. Sample at least 50 specs.",
+      "invariant_check": "warnings = _check_missing_subtask_refs(spec)\naffected_subtask_ids = [\n    s.id for g in spec.tasks.task_groups\n    if g.kind != WIRING_VERIFICATION\n    for s in g.subtasks\n    if not s.requirement_refs or not s.test_spec_refs\n]\n# Exactly one warning per affected subtask\nassert len(warnings) == len(affected_subtask_ids)\nwarning_entity_ids = [w.entity_id for w in warnings]\nassert sorted(warning_entity_ids) == sorted(affected_subtask_ids)"
+    },
+    {
+      "id": "TS-02-P5",
+      "property_id": "02-PROP-5",
+      "validates": [
+        "02-REQ-4.2",
+        "02-REQ-4.4"
+      ],
+      "description": "For any subtask with any combination of empty requirement_refs and test_spec_refs, the warning message always matches the exact template with one of three valid field_names values.",
+      "for_any_strategy": "Enumerate all three combinations of empty refs: (req_empty=True, ts_empty=False), (req_empty=False, ts_empty=True), (req_empty=True, ts_empty=True). For each, generate 10 subtasks with random IDs and run checkMissingSubtaskRefs.",
+      "invariant_check": "import re\nMSG_PATTERN = re.compile(r'^Subtask .+ has empty (requirement_refs|test_spec_refs|requirement_refs and test_spec_refs) — scoped rendering will fall back to full spec dump$')\nfor warning in warnings:\n    assert MSG_PATTERN.match(warning.message), f'Message does not match template: {warning.message}'"
+    },
+    {
+      "id": "TS-02-P6",
+      "property_id": "02-PROP-6",
+      "validates": [
+        "02-REQ-1.3",
+        "02-REQ-2.1"
+      ],
+      "description": "For any spec and target group with empty explicit refs, text-based inference is never attempted when traceability-based inference returns non-empty collections for at least one ref type.",
+      "for_any_strategy": "Generate random Spec instances where traceability entries exist for the target group (ensuring non-empty traceability inference). Instrument _infer_refs_from_subtask_text with a call counter. Sample at least 20 specs.",
+      "invariant_check": "text_inference_call_count = 0\noriginal_fn = _infer_refs_from_subtask_text\ndef counting_fn(spec, tg):\n    nonlocal text_inference_call_count\n    text_inference_call_count += 1\n    return original_fn(spec, tg)\npatch(_infer_refs_from_subtask_text, counting_fn)\nrender_individual_scoped(spec, target_group)\nassert text_inference_call_count == 0, 'Text inference must not be called when traceability inference succeeds'"
+    },
+    {
+      "id": "TS-02-P7",
+      "property_id": "02-PROP-7",
+      "validates": [
+        "02-REQ-2.2"
+      ],
+      "description": "The regex patterns _REQ_ID_RE/_TS_ID_RE (Python) and reqIDRe/tsIDRe (Go) are compiled exactly once at module/package init time across any number of calls to render_individual_scoped/RenderIndividualScoped.",
+      "for_any_strategy": "Call render_individual_scoped N times (N sampled from [1, 10, 100, 1000]) in a single process with varying specs. After each batch, inspect the identity/address of the compiled regex objects.",
+      "invariant_check": "import afspec.render as render_mod\npattern_id_before = id(render_mod._REQ_ID_RE)\nfor _ in range(N):\n    render_individual_scoped(spec, target_group)\npattern_id_after = id(render_mod._REQ_ID_RE)\nassert pattern_id_before == pattern_id_after, 'Regex pattern object must not be recreated per call'\n# Go: verify via source that var block is at package level (static analysis / code review assertion)"
+    }
+  ],
+  "edge_case_tests": [
+    {
+      "id": "TS-02-E1",
+      "requirement_id": "02-REQ-1.E1",
+      "kind": "unit",
+      "description": "When spec.tasks.traceability is empty or has no entries matching the target group prefix, _infer_refs_from_traceability returns empty collections for both ref types.",
+      "preconditions": [
+        "A Spec is constructed with group 3 subtasks having empty refs",
+        "spec.tasks.traceability is empty (no entries at all)",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 3; traceability=[]",
+        "target_group": 3
+      },
+      "expected": "Returns (req_refs=[], ts_refs=[]) — both collections are empty; no exception raised",
+      "assertion_pseudocode": "req_refs, ts_refs = _infer_refs_from_traceability(spec, target_group=3)\nassert req_refs == []\nassert ts_refs == []\n# Verify inference chain continues to text inference\nresult = render_individual_scoped(spec, target_group=3)\nassert result is not None  # no exception"
+    },
+    {
+      "id": "TS-02-E2",
+      "requirement_id": "02-REQ-1.E2",
+      "kind": "unit",
+      "description": "When a TraceabilityEntry matching the target group prefix has an empty requirement_id or test_spec_id, the empty value is skipped and only non-empty IDs are collected.",
+      "preconditions": [
+        "A Spec is constructed with traceability entries: [{task_id: '3.1', requirement_id: '', test_spec_id: 'TS-02-1'}, {task_id: '3.2', requirement_id: '02-REQ-1', test_spec_id: ''}]",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 3; traceability entries with mixed empty/non-empty IDs",
+        "target_group": 3
+      },
+      "expected": "Returns req_refs=['02-REQ-1'] and ts_refs=['TS-02-1']; empty strings are not included in either collection",
+      "assertion_pseudocode": "req_refs, ts_refs = _infer_refs_from_traceability(spec, target_group=3)\nassert '' not in req_refs\nassert '' not in ts_refs\nassert '02-REQ-1' in req_refs\nassert 'TS-02-1' in ts_refs"
+    },
+    {
+      "id": "TS-02-E3",
+      "requirement_id": "02-REQ-1.E3",
+      "kind": "integration",
+      "description": "When subtasks already have non-empty explicit refs, inference is skipped entirely and scoped rendering uses the explicit refs.",
+      "preconditions": [
+        "A Spec is constructed with group 3 subtasks having non-empty requirement_refs=['02-REQ-1'] and test_spec_refs=['TS-02-1']",
+        "Traceability entries also exist for group 3 with different IDs",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 3; subtask requirement_refs=['02-REQ-1'], test_spec_refs=['TS-02-1']; traceability has '02-REQ-2'",
+        "target_group": 3
+      },
+      "expected": "Returns scoped result using explicit refs ('02-REQ-1', 'TS-02-1'); traceability-inferred '02-REQ-2' is NOT included; inference functions are not invoked",
+      "assertion_pseudocode": "result = render_individual_scoped(spec, target_group=3)\nassert '02-REQ-1' in result['requirements']\nassert '02-REQ-2' not in result['requirements']  # traceability ID not used\nassert 'TS-02-1' in result['test_spec']"
+    },
+    {
+      "id": "TS-02-E4",
+      "requirement_id": "02-REQ-2.E1",
+      "kind": "integration",
+      "description": "When regex matches are found in subtask text but none exist in the spec's known ID sets, all matches are discarded and empty collections are returned, causing fallback.",
+      "preconditions": [
+        "A Spec is constructed with known requirement IDs ['02-REQ-1'] only",
+        "Group 2 subtask title='Handle 99-REQ-999 and TS-99-999' (IDs not in spec)",
+        "No traceability entries for group 2",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with known IDs ['02-REQ-1']; subtask text mentions '99-REQ-999' and 'TS-99-999'",
+        "target_group": 2
+      },
+      "expected": "Returns empty collections from text inference; render_individual_scoped falls through to full unscoped fallback with scoped tasks; no exception raised",
+      "assertion_pseudocode": "req_refs, ts_refs = _infer_refs_from_subtask_text(spec, target_group=2)\nassert req_refs == []\nassert ts_refs == []\n# Full fallback activated\nresult = render_individual_scoped(spec, target_group=2)\nassert all_requirement_ids_present_in(result['requirements'], spec)"
+    },
+    {
+      "id": "TS-02-E5",
+      "requirement_id": "02-REQ-2.E2",
+      "kind": "unit",
+      "description": "When subtask title and all details contain no text matching the regex patterns, text inference returns empty collections for both ref types.",
+      "preconditions": [
+        "A Spec is constructed with group 2 subtasks; subtask title='Do some work' and details=['No IDs here', 'Just plain text']",
+        "No traceability entries for group 2",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group 2; subtask text has no ID patterns",
+        "target_group": 2
+      },
+      "expected": "Returns (req_refs=[], ts_refs=[]) from text inference; no exception raised",
+      "assertion_pseudocode": "req_refs, ts_refs = _infer_refs_from_subtask_text(spec, target_group=2)\nassert req_refs == []\nassert ts_refs == []"
+    },
+    {
+      "id": "TS-02-E6",
+      "requirement_id": "02-REQ-2.E3",
+      "kind": "unit",
+      "description": "When subtask details is an empty list, text inference scans only the title field and treats the absence of details as contributing zero matches.",
+      "preconditions": [
+        "A Spec is constructed with known requirement ID '02-REQ-1'",
+        "Group 2 subtask: title='Handle 02-REQ-1', details=[]",
+        "No traceability entries for group 2",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with known ID '02-REQ-1'; subtask title='Handle 02-REQ-1', details=[]",
+        "target_group": 2
+      },
+      "expected": "Returns req_refs=['02-REQ-1'] from title scan; ts_refs=[]; no exception raised from empty details list",
+      "assertion_pseudocode": "req_refs, ts_refs = _infer_refs_from_subtask_text(spec, target_group=2)\nassert '02-REQ-1' in req_refs\nassert ts_refs == []  # no TS IDs in title"
+    },
+    {
+      "id": "TS-02-E7",
+      "requirement_id": "02-REQ-3.E1",
+      "kind": "integration",
+      "description": "When target_group does not match any TaskGroup id in the spec, render_individual_scoped proceeds through inference and falls back gracefully without raising an exception.",
+      "preconditions": [
+        "A Spec is constructed with only TaskGroup id=1",
+        "No traceability entries; subtask text has no ID patterns",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with only group 1; target_group=99 (non-existent)",
+        "target_group": 99
+      },
+      "expected": "Returns a dict/map without raising an exception or panicking; inference yields empty collections; fallback produces full unscoped requirements/test spec with empty tasks section for group 99",
+      "assertion_pseudocode": "# No exception raised\ntry:\n    result = render_individual_scoped(spec, target_group=99)\n    assert result is not None\nexcept Exception as e:\n    fail('Should not raise: ' + str(e))\n# Go: no panic\nresult := spec.RenderIndividualScoped(99)\nassert result != nil"
+    },
+    {
+      "id": "TS-02-E8",
+      "requirement_id": "02-REQ-3.E2",
+      "kind": "integration",
+      "description": "When the spec has no Tasks / traceability data at all, traceability inference returns empty collections and text inference proceeds against subtask text if subtasks exist.",
+      "preconditions": [
+        "A Spec is constructed with Tasks.traceability=[] and Tasks.task_groups=[] (or nil Tasks)",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with nil/empty Tasks struct",
+        "target_group": 1
+      },
+      "expected": "Returns a dict/map without raising an exception or panicking; falls back to full unscoped render with scoped tasks (empty tasks section)",
+      "assertion_pseudocode": "try:\n    result = render_individual_scoped(spec, target_group=1)\n    assert result is not None\nexcept Exception as e:\n    fail('Should not raise: ' + str(e))\n# Go\nresult := spec.RenderIndividualScoped(1)\nassert result != nil"
+    },
+    {
+      "id": "TS-02-E9",
+      "requirement_id": "02-REQ-4.E1",
+      "kind": "unit",
+      "description": "When a subtask has requirement_refs set to None (Python) or nil (Go), it is treated as empty and a validation warning is emitted.",
+      "preconditions": [
+        "Python: A Spec is constructed with a STANDARD group subtask where requirement_refs is explicitly None (bypassing Pydantic default)",
+        "Go: A Spec is constructed with a STANDARD group subtask where RequirementRefs is nil",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with subtask id='1.1', requirement_refs=None/nil, test_spec_refs=['TS-02-1']"
+      },
+      "expected": "Exactly one warning emitted for subtask '1.1' with message 'Subtask 1.1 has empty requirement_refs — scoped rendering will fall back to full spec dump'; no exception raised",
+      "assertion_pseudocode": "warnings = _check_missing_subtask_refs(spec)\nassert len(warnings) == 1\nassert warnings[0].entity_id == '1.1'\nassert 'requirement_refs' in warnings[0].message\nassert 'test_spec_refs' not in warnings[0].message"
+    },
+    {
+      "id": "TS-02-E10",
+      "requirement_id": "02-REQ-4.E2",
+      "kind": "unit",
+      "description": "When a subtask has non-empty refs containing placeholder strings like 'TBD', no validation warning is emitted for that subtask.",
+      "preconditions": [
+        "A Spec is constructed with a STANDARD group subtask where requirement_refs=['TBD'] and test_spec_refs=['TBD']",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with subtask id='1.1', requirement_refs=['TBD'], test_spec_refs=['TBD']"
+      },
+      "expected": "No warning emitted for subtask '1.1'; the refs are non-empty so the emptiness check does not trigger",
+      "assertion_pseudocode": "warnings = _check_missing_subtask_refs(spec)\nwarning_ids = [w.entity_id for w in warnings]\nassert '1.1' not in warning_ids"
+    },
+    {
+      "id": "TS-02-E11",
+      "requirement_id": "02-REQ-4.E3",
+      "kind": "unit",
+      "description": "When the spec contains no TaskGroups or all TaskGroups are WIRING_VERIFICATION, validate returns a ValidationResult with no warnings from checkMissingSubtaskRefs.",
+      "preconditions": [
+        "A Spec is constructed with either no task groups or only WIRING_VERIFICATION task groups",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with task_groups=[{kind: WIRING_VERIFICATION, subtasks: [{id: 'W.1', requirement_refs: [], test_spec_refs: []}]}]"
+      },
+      "expected": "ValidationResult.warnings is empty (no warnings from checkMissingSubtaskRefs); no exception raised",
+      "assertion_pseudocode": "result = validate(spec)\nmissing_ref_warnings = [w for w in result.warnings if 'scoped rendering' in w.message]\nassert len(missing_ref_warnings) == 0"
+    },
+    {
+      "id": "TS-02-E12",
+      "requirement_id": "02-REQ-4.E4",
+      "kind": "unit",
+      "description": "A WIRING_VERIFICATION TaskGroup with subtasks having empty refs produces no warnings — the entire group is skipped at the group level.",
+      "preconditions": [
+        "A Spec is constructed with a WIRING_VERIFICATION group containing multiple subtasks all with empty refs",
+        "Python: afspec package installed; Go: afspec package compiled"
+      ],
+      "input": {
+        "spec": "Spec with group kind=WIRING_VERIFICATION; subtasks: [{id: 'W.1', refs=[]}, {id: 'W.2', refs=[]}, {id: 'W.3', refs=[]}]"
+      },
+      "expected": "Zero warnings emitted; no subtask in the WIRING_VERIFICATION group is inspected",
+      "assertion_pseudocode": "warnings = _check_missing_subtask_refs(spec)\nassert len(warnings) == 0\n# Verify no warning for any of W.1, W.2, W.3\nwarning_ids = [w.entity_id for w in warnings]\nassert 'W.1' not in warning_ids\nassert 'W.2' not in warning_ids\nassert 'W.3' not in warning_ids"
+    },
+    {
+      "id": "TS-02-E13",
+      "requirement_id": "02-REQ-5.E1",
+      "kind": "integration",
+      "description": "If generation_user_tasks.md does not contain the expected anchor text at line 52, the insertion must not silently insert at the wrong location.",
+      "preconditions": [
+        "A copy of generation_user_tasks.md where line 52 has been changed to different text (simulating file restructuring)"
+      ],
+      "input": {
+        "file_path": "packages/agentspec/agentspec/_templates/prompts/generation_user_tasks.md (restructured version without anchor)"
+      },
+      "expected": "The '### Subtask refs (MANDATORY)' section is NOT present at an incorrect location; any automated insertion tool must detect the missing anchor and halt or report an error rather than inserting blindly",
+      "assertion_pseudocode": "lines = read_file('generation_user_tasks.md (restructured)').splitlines()\nanchor_present = any('requirement_refs` and `test_spec_refs` fields' in line for line in lines)\nif not anchor_present:\n    # Verify section was not silently inserted\n    section_present = any('### Subtask refs (MANDATORY)' in line for line in lines)\n    assert not section_present, 'Section must not be inserted without anchor'"
+    },
+    {
+      "id": "TS-02-E14",
+      "requirement_id": "02-REQ-6.E1",
+      "kind": "integration",
+      "description": "The pre-existing Go bug where RenderIndividualScoped called return s.RenderIndividual() in the fallback is fixed — the fallback now scopes tasks instead of returning a fully unscoped render.",
+      "preconditions": [
+        "Go afspec package compiled with the fix applied (golang/render.go modified)",
+        "A Spec is constructed with two task groups (id=1 and id=2); group 1 subtasks have empty refs; no traceability; no ID patterns in subtask text"
+      ],
+      "input": {
+        "spec": "Go Spec with groups 1 and 2; inference fails for group 1",
+        "targetGroup": 1
+      },
+      "expected": "Returned map[string]string tasks section contains ONLY group 1 tasks (not group 2 tasks); this differs from the old behavior where RenderIndividual() would return all tasks",
+      "assertion_pseudocode": "result := spec.RenderIndividualScoped(1)\n// Tasks scoped — group 2 tasks absent\nassert !strings.Contains(result[\"tasks\"], group2TaskMarker)\n// Group 1 tasks present\nassert strings.Contains(result[\"tasks\"], group1TaskMarker)\n// Full requirements still present (fallback)\nassert len(result[\"requirements\"]) > 0"
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "TS-02-SMOKE-1",
+      "execution_path_id": "02-PATH-1",
+      "description": "End-to-end smoke test: traceability-based inference activates scoped rendering when subtask refs are empty but traceability entries exist for the target group.",
+      "trigger": "Call render_individual_scoped(spec, target_group=3) / spec.RenderIndividualScoped(3) on a spec with empty subtask refs and matching traceability entries",
+      "real_components": [
+        "render_individual_scoped / RenderIndividualScoped (afspec.render / afspec package)",
+        "_infer_refs_from_traceability / inferRefsFromTraceability",
+        "Spec, Tasks, TraceabilityEntry, TaskGroup, Subtask models/structs"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a non-empty dict/map with requirements section containing only '02-REQ-1' (the inferred ref)",
+        "Requirements section does NOT contain '02-REQ-2' or other unrelated requirements",
+        "Python: INFO log message emitted via logging.getLogger('afspec.render') containing inference activation signal",
+        "Go: No log output produced",
+        "No exception or panic raised"
+      ]
+    },
+    {
+      "id": "TS-02-SMOKE-2",
+      "execution_path_id": "02-PATH-2",
+      "description": "End-to-end smoke test: text-based inference activates scoped rendering when traceability is absent but subtask text contains known spec IDs.",
+      "trigger": "Call render_individual_scoped(spec, target_group=2) / spec.RenderIndividualScoped(2) on a spec with empty refs, no matching traceability, and subtask title containing a known requirement ID",
+      "real_components": [
+        "render_individual_scoped / RenderIndividualScoped (afspec.render / afspec package)",
+        "_infer_refs_from_traceability / inferRefsFromTraceability",
+        "_infer_refs_from_subtask_text / inferRefsFromSubtaskText",
+        "_REQ_ID_RE / reqIDRe and _TS_ID_RE / tsIDRe compiled regex patterns",
+        "Spec, Tasks, TaskGroup, Subtask models/structs"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a non-empty dict/map with requirements section scoped to the text-inferred ref only",
+        "Unrelated requirement IDs are absent from the requirements section",
+        "Python: INFO log message emitted via logging.getLogger('afspec.render')",
+        "No exception or panic raised"
+      ]
+    },
+    {
+      "id": "TS-02-SMOKE-3",
+      "execution_path_id": "02-PATH-3",
+      "description": "End-to-end smoke test: when both inference strategies fail, render_individual_scoped falls back to full unscoped rendering but scopes the tasks section to the target group.",
+      "trigger": "Call render_individual_scoped(spec, target_group=1) / spec.RenderIndividualScoped(1) on a spec with empty refs, no traceability, and subtask text with no recognizable ID patterns",
+      "real_components": [
+        "render_individual_scoped / RenderIndividualScoped (afspec.render / afspec package)",
+        "_infer_refs_from_traceability / inferRefsFromTraceability",
+        "_infer_refs_from_subtask_text / inferRefsFromSubtaskText",
+        "renderScopedTasks / s.renderScopedTasks (afspec.render / afspec package)",
+        "Spec, Tasks, TaskGroup, Subtask models/structs"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a non-empty dict/map with full requirements section (all requirement IDs present)",
+        "Full test spec section present (all test case IDs present)",
+        "Tasks section contains ONLY tasks from group 1; tasks from other groups are absent",
+        "No exception or panic raised"
+      ]
+    },
+    {
+      "id": "TS-02-SMOKE-4",
+      "execution_path_id": "02-PATH-4",
+      "description": "End-to-end smoke test: validate / Validate emits warnings for subtasks with empty refs and wires them into the ValidationResult.",
+      "trigger": "Call validate(spec) / spec.Validate() on a spec containing a STANDARD group with subtasks having empty requirement_refs and test_spec_refs",
+      "real_components": [
+        "validate / Validate (afspec.validation / afspec package)",
+        "_check_missing_subtask_refs / checkMissingSubtaskRefs",
+        "ValidationResult, ValidationWarning / ValidationEntry models/structs",
+        "Spec, Tasks, TaskGroup, Subtask models/structs"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "ValidationResult.warnings contains exactly one entry per subtask with empty refs",
+        "Each warning message matches the template 'Subtask {id} has empty {field_names} — scoped rendering will fall back to full spec dump'",
+        "ValidationResult.valid is not affected by warnings (warnings do not make the spec invalid)",
+        "No exception or panic raised"
+      ]
+    },
+    {
+      "id": "TS-02-SMOKE-5",
+      "execution_path_id": "02-PATH-5",
+      "description": "End-to-end smoke test: partial inference (only requirement refs inferred from traceability) activates scoped rendering with OR logic — requirements scoped, test spec fully rendered.",
+      "trigger": "Call render_individual_scoped(spec, target_group=4) / spec.RenderIndividualScoped(4) on a spec where traceability entries for group 4 have non-empty requirement_id but empty test_spec_id",
+      "real_components": [
+        "render_individual_scoped / RenderIndividualScoped (afspec.render / afspec package)",
+        "_infer_refs_from_traceability / inferRefsFromTraceability",
+        "Spec, Tasks, TraceabilityEntry, TaskGroup, Subtask models/structs"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a non-empty dict/map",
+        "Requirements section is scoped to the inferred requirement ref only (other requirements absent)",
+        "Test spec section is fully rendered (all test spec entries present, not scoped)",
+        "Does NOT fall through to full unscoped fallback for the requirements section",
+        "No exception or panic raised"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [
+      "02-REQ-1.1",
+      "02-REQ-1.2",
+      "02-REQ-1.3",
+      "02-REQ-2.1",
+      "02-REQ-2.2",
+      "02-REQ-2.3",
+      "02-REQ-2.4",
+      "02-REQ-3.1",
+      "02-REQ-3.2",
+      "02-REQ-3.3",
+      "02-REQ-4.1",
+      "02-REQ-4.2",
+      "02-REQ-4.3",
+      "02-REQ-4.4",
+      "02-REQ-5.1",
+      "02-REQ-5.2",
+      "02-REQ-6.1",
+      "02-REQ-6.2",
+      "02-REQ-6.3"
+    ],
+    "properties_covered": [
+      "02-PROP-1",
+      "02-PROP-2",
+      "02-PROP-3",
+      "02-PROP-4",
+      "02-PROP-5",
+      "02-PROP-6",
+      "02-PROP-7"
+    ],
+    "paths_covered": [
+      "02-PATH-1",
+      "02-PATH-2",
+      "02-PATH-3",
+      "02-PATH-4",
+      "02-PATH-5"
+    ],
+    "gaps": []
+  }
+}

@@ -1,0 +1,796 @@
+{
+  "$schema": null,
+  "spec_id": "02",
+  "spec_name": "scoped_rendering_ref_inference",
+  "schema_version": 1,
+  "introduction": "This spec defines the scoped rendering ref inference system for the `afspec` library (Python and Go implementations), which infers missing `requirement_refs` and `test_spec_refs` on subtasks to activate scoped rendering, emits validation warnings when refs are absent, updates generation templates to mandate ref population, and fixes a pre-existing Go fallback bug.",
+  "glossary": {
+    "RenderIndividual": "Go method on `*Spec` that renders the full spec without scoping, used as the unscoped fallback",
+    "RenderIndividualScoped": "Go method on `*Spec` that mirrors `render_individual_scoped`, filtering rendered output to refs referenced by the target task group",
+    "Requirements": "Model/struct within `Spec` holding the list of `Requirement` objects with acceptance criteria and edge cases",
+    "Spec": "Top-level model/struct representing a complete agent-fox specification package, containing requirements, test spec, tasks, and architecture",
+    "Subtask": "An individual unit of work within a `TaskGroup`, carrying `requirement_refs` and `test_spec_refs` lists",
+    "TaskGroup": "A group of related subtasks within a spec, identified by an integer `id` and a `kind`",
+    "TaskGroupKind": "Enum/type string classifying a `TaskGroup`; values include `TESTS`, `STANDARD`, `CHECKPOINT`, and `WIRING_VERIFICATION`",
+    "Tasks": "Model/struct within `Spec` holding `task_groups` and `traceability` lists",
+    "TestSpec": "Model/struct within `Spec` holding test cases, property tests, edge case tests, and smoke tests",
+    "TraceabilityEntry": "Model/struct linking a `task_id` to a `requirement_id` and `test_spec_id`, stored in `spec.tasks.traceability`",
+    "Validate": "Go method on `*Spec` that mirrors `validate`",
+    "ValidationEntry": "Go struct used for both errors and warnings in `ValidationResult`, carrying `Category`, `Check`, `Message`, `EntityID`, and `Artifact` fields",
+    "ValidationResult": "Return type of `validate()` / `Validate()` containing `.valid`, `.errors`, and `.warnings` collections",
+    "ValidationWarning": "A structured warning produced by `validate()` / `Validate()` describing a non-fatal spec quality issue",
+    "WIRING_VERIFICATION": "A `TaskGroupKind` value indicating a task group that verifies integration wiring; excluded from missing-refs validation warnings",
+    "_REQ_ID_RE": "Python module-level compiled regex constant matching requirement and acceptance-criterion ID patterns",
+    "_TS_ID_RE": "Python module-level compiled regex constant matching test spec ID patterns",
+    "_check_missing_subtask_refs": "Python helper function added to `afspec.validation` that detects subtasks with empty `requirement_refs` or `test_spec_refs` and emits warnings",
+    "_infer_refs_from_subtask_text": "Python helper function that infers refs by regex-scanning subtask `title` and `details` for known ID patterns",
+    "_infer_refs_from_traceability": "Python helper function that infers refs by scanning `spec.tasks.traceability` for entries matching the target group prefix",
+    "checkMissingSubtaskRefs": "Go helper function added to `golang/validate.go` that mirrors `_check_missing_subtask_refs`",
+    "generation_user_tasks.md": "Agentspec prompt template file that instructs the agent how to generate task subtasks; modified to mandate ref population",
+    "inferRefsFromSubtaskText": "Go function mirroring `_infer_refs_from_subtask_text`",
+    "inferRefsFromTraceability": "Go function mirroring `_infer_refs_from_traceability`",
+    "partial inference": "Condition where inference yields refs for only one ref type (requirement or test spec); scoped rendering still activates for the inferred type while the missing type falls back to full rendering",
+    "renderScopedTasks": "Go method on `*Spec` that scopes the tasks section to a specific target group",
+    "render_individual": "Python function in `afspec.render` that renders the full requirements and test spec without any scoping filter",
+    "render_individual_scoped": "Python function in `afspec.render` that renders only the requirements and test spec sections referenced by a target task group's subtasks",
+    "reqIDRe": "Go package-level compiled regex variable matching requirement ID patterns, defined via `regexp.MustCompile`",
+    "requirement_refs": "List of requirement/acceptance-criterion IDs on a `Subtask` that controls which requirements are included in scoped rendering",
+    "scoped rendering": "Rendering mode that filters requirements and test spec output to only those IDs referenced by the target task group's subtasks, reducing token usage",
+    "target_group": "The integer ID of the `TaskGroup` passed to `render_individual_scoped` / `RenderIndividualScoped` to scope rendering",
+    "test_spec_refs": "List of test spec IDs on a `Subtask` that controls which test cases are included in scoped rendering",
+    "text-based inference": "Inference strategy that regex-scans subtask `title` and `details` fields for ID patterns matching known requirement and test spec IDs in the spec",
+    "traceability-based inference": "Inference strategy that reads `spec.tasks.traceability` entries whose `task_id` starts with the target group prefix to collect `requirement_id` and `test_spec_id` values",
+    "tsIDRe": "Go package-level compiled regex variable matching test spec ID patterns, defined via `regexp.MustCompile`",
+    "unscoped fallback": "Rendering mode that dumps the entire requirements and test spec when no refs can be found or inferred, consuming ~15,000\u201320,000 extra tokens",
+    "validate": "Python function in `afspec.validation` that validates a `Spec` and returns a `ValidationResult`",
+    "spec.tasks.traceability": "The traceability array on the Tasks model linking requirement IDs to test spec IDs and task IDs",
+    "requirement_id": "Field on TraceabilityEntry identifying the linked requirement",
+    "test_spec_id": "Field on TraceabilityEntry identifying the linked test spec entry",
+    "task_id": "Field on TraceabilityEntry identifying the linked task (format: group_id.subtask_number)",
+    "title": "The title field on a Subtask model",
+    "details": "The details field (list of strings) on a Subtask model",
+    "logging.getLogger(__name__)": "Python standard library call to obtain a module-level logger",
+    "var": "Go keyword for declaring package-level variables",
+    "regexp.MustCompile": "Go standard library function that compiles a regex pattern at package init time, panicking on invalid patterns",
+    "re.compile(...)": "Python standard library function that compiles a regex pattern into a reusable pattern object",
+    "kind == WIRING_VERIFICATION": "Condition checking whether a TaskGroup's kind field equals the wiring_verification enum value",
+    "' and '.join(missing)": "Python idiom joining a list of field names with the string ' and '",
+    "{field_names}": "Placeholder in the warning message template for the joined missing field names",
+    "nil": "Go zero value for slices and pointers, equivalent to Python None for these types",
+    "None": "Python singleton representing absence of a value",
+    "len(subtask.RequirementRefs) == 0": "Go idiom checking whether a slice is empty (catches both nil and zero-length)",
+    "not subtask.requirement_refs": "Python idiom checking whether a list is falsy (empty or None)",
+    "### Smoke test authoring": "Existing section heading in generation_user_tasks.md that follows the insertion point",
+    "### Subtask refs (MANDATORY)": "New section heading to be added to generation_user_tasks.md",
+    "return s.RenderIndividual()": "Current Go fallback that returns fully unscoped rendering (the bug being fixed)",
+    "s.renderScopedTasks(targetGroup)": "Go method that renders tasks with only the target group expanded in full detail",
+    "RenderIndividual()": "Go method on Spec that renders all artifacts without any scoping or filtering",
+    "traceability": "The traceability array in tasks.json linking requirements to test specs and tasks",
+    "len(subtask.TestSpecRefs) == 0": "Go idiom checking whether the test spec refs slice is empty",
+    "not subtask.test_spec_refs": "Python idiom checking whether the test spec refs list is falsy",
+    "group.kind == TaskGroupKind.WIRING_VERIFICATION": "Python condition checking whether a group is a wiring verification group",
+    "group.Kind == TaskGroupKindWiringVerification": "Go condition checking whether a group is a wiring verification group"
+  },
+  "requirements": [
+    {
+      "id": "02-REQ-1",
+      "title": "Traceability-based ref inference in scoped rendering",
+      "user_story": {
+        "role": "developer using the afspec library",
+        "goal": "have scoped rendering automatically infer requirement and test spec refs from traceability data when subtask refs are empty",
+        "benefit": "avoid the ~15,000-token unscoped fallback even for older specs that lack explicit refs"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "02-REQ-1.1",
+          "ears_pattern": "event_driven",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "invoke `_infer_refs_from_traceability` / `inferRefsFromTraceability` to filter `spec.tasks.traceability` entries whose `task_id` starts with `\"{target_group}.\"` and collect their `requirement_id` and `test_spec_id` values as inferred refs",
+          "return_contract": "returns a scoped `dict[str, str]` / `map[string]string` filtered to the inferred refs when at least one ref is found",
+          "trigger": "called with a `target_group` whose subtasks all have empty `requirement_refs` and `test_spec_refs`"
+        },
+        {
+          "id": "02-REQ-1.2",
+          "ears_pattern": "event_driven",
+          "system": "`_infer_refs_from_traceability` / `inferRefsFromTraceability`",
+          "action": "return only `requirement_id` and `test_spec_id` values from `TraceabilityEntry` records whose `task_id` starts with the string `\"{target_group}.\"`, collecting them into separate sets/slices for requirement refs and test spec refs",
+          "return_contract": "returns two collections (inferred requirement refs, inferred test spec refs); both may be empty if no matching traceability entries exist",
+          "trigger": "called for a `target_group`"
+        },
+        {
+          "id": "02-REQ-1.3",
+          "ears_pattern": "state_driven",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "activate scoped rendering using the inferred refs without proceeding to text-based inference or the `unscoped fallback`; in Python, emit a log message at INFO level via `logging.getLogger(__name__)`",
+          "return_contract": "returns a scoped `dict[str, str]` / `map[string]string`; Python additionally emits an INFO log message",
+          "state": "traceability-based inference yields at least one requirement ref or test spec ref"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "02-REQ-1.E1",
+          "ears_pattern": "unwanted",
+          "system": "`_infer_refs_from_traceability` / `inferRefsFromTraceability`",
+          "action": "return empty collections for both ref types, allowing the inference chain to proceed to text-based inference",
+          "return_contract": "returns two empty collections (empty list/slice for requirement refs, empty list/slice for test spec refs)",
+          "error_condition": "`spec.tasks.traceability` is empty or contains no entries whose `task_id` starts with `\"{target_group}.\"`"
+        },
+        {
+          "id": "02-REQ-1.E2",
+          "ears_pattern": "unwanted",
+          "system": "`_infer_refs_from_traceability` / `inferRefsFromTraceability`",
+          "action": "skip the empty field value and only collect non-empty IDs into the respective ref collection",
+          "return_contract": "returns collections containing only non-empty ID strings",
+          "error_condition": "a `TraceabilityEntry` matching the target group prefix has an empty `requirement_id` or empty `test_spec_id` field"
+        },
+        {
+          "id": "02-REQ-1.E3",
+          "ears_pattern": "unwanted",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "skip inference entirely and proceed with the existing scoped rendering logic using the explicit refs",
+          "return_contract": "returns a scoped `dict[str, str]` / `map[string]string` using the explicit refs, identical to pre-inference behavior",
+          "error_condition": "subtasks already have non-empty `requirement_refs` or `test_spec_refs` (explicit refs present)"
+        }
+      ]
+    },
+    {
+      "id": "02-REQ-2",
+      "title": "Text-based ref inference in scoped rendering",
+      "user_story": {
+        "role": "developer using the afspec library",
+        "goal": "have scoped rendering infer refs by scanning subtask text when traceability data is also absent",
+        "benefit": "maximize the chance of activating scoped rendering for specs that lack both explicit refs and traceability entries"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "02-REQ-2.1",
+          "ears_pattern": "event_driven",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "invoke `_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText` to regex-scan the `title` and `details` fields of all subtasks in the target group using `_REQ_ID_RE` / `reqIDRe` and `_TS_ID_RE` / `tsIDRe`, then validate each match against the set of IDs actually present in the spec",
+          "return_contract": "returns a scoped `dict[str, str]` / `map[string]string` filtered to validated matches when at least one validated match is found",
+          "trigger": "traceability-based inference returns empty collections for both ref types"
+        },
+        {
+          "id": "02-REQ-2.2",
+          "ears_pattern": "ubiquitous",
+          "system": "`_REQ_ID_RE` / `reqIDRe` and `_TS_ID_RE` / `tsIDRe`",
+          "action": "be defined as module-level compiled constants (Python: `re.compile(...)` assigned to `_REQ_ID_RE` and `_TS_ID_RE`; Go: package-level `var` block using `regexp.MustCompile` for `reqIDRe` and `tsIDRe`) so that regex compilation occurs once at import/init time and not per call",
+          "return_contract": null
+        },
+        {
+          "id": "02-REQ-2.3",
+          "ears_pattern": "event_driven",
+          "system": "`_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText`",
+          "action": "scan each subtask's `title` and all strings in `details` with `_REQ_ID_RE` / `reqIDRe` and `_TS_ID_RE` / `tsIDRe`, collect all regex matches, then filter to only those IDs that exist in the actual spec's known requirement IDs and test spec IDs respectively",
+          "return_contract": "returns two collections of validated ID strings (inferred requirement refs, inferred test spec refs); both may be empty",
+          "trigger": "called for a target group"
+        },
+        {
+          "id": "02-REQ-2.4",
+          "ears_pattern": "state_driven",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "activate scoped rendering using the text-inferred refs; in Python, emit a log message at INFO level via `logging.getLogger(__name__)`",
+          "return_contract": "returns a scoped `dict[str, str]` / `map[string]string`; Python additionally emits an INFO log message",
+          "state": "text-based inference yields at least one validated requirement ref or test spec ref"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "02-REQ-2.E1",
+          "ears_pattern": "unwanted",
+          "system": "`_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText`",
+          "action": "discard all unvalidated matches and return empty collections, allowing the inference chain to fall through to the `unscoped fallback`",
+          "return_contract": "returns two empty collections",
+          "error_condition": "regex matches are found in subtask text but none of the matched IDs exist in the spec's known requirement or test spec ID sets"
+        },
+        {
+          "id": "02-REQ-2.E2",
+          "ears_pattern": "unwanted",
+          "system": "`_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText`",
+          "action": "return empty collections for both ref types",
+          "return_contract": "returns two empty collections",
+          "error_condition": "subtask `title` and all `details` strings contain no text matching `_REQ_ID_RE` / `reqIDRe` or `_TS_ID_RE` / `tsIDRe`"
+        },
+        {
+          "id": "02-REQ-2.E3",
+          "ears_pattern": "unwanted",
+          "system": "`_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText`",
+          "action": "scan only the `title` field; treat the absence of `details` as contributing zero matches",
+          "return_contract": "returns collections based solely on `title` matches, validated against known spec IDs",
+          "error_condition": "subtask `details` is an empty list"
+        }
+      ]
+    },
+    {
+      "id": "02-REQ-3",
+      "title": "Partial inference OR logic and unscoped fallback",
+      "user_story": {
+        "role": "developer using the afspec library",
+        "goal": "have scoped rendering activate even when only one ref type can be inferred, and fall back gracefully with scoped tasks when neither can be inferred",
+        "benefit": "maximize token savings without discarding partially inferrable context, and ensure the Go fallback matches Python behavior"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "02-REQ-3.1",
+          "ears_pattern": "state_driven",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "activate scoped rendering using the inferred refs for the available type; render the missing ref type as a full section (equivalent to unscoped for that section only); do NOT fall through to the full `unscoped fallback`",
+          "return_contract": "returns a `dict[str, str]` / `map[string]string` with the available ref type scoped and the missing ref type fully rendered",
+          "state": "inference yields refs for only one ref type (requirement refs but not test spec refs, or vice versa)"
+        },
+        {
+          "id": "02-REQ-3.2",
+          "ears_pattern": "state_driven",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "fall back to full unscoped rendering but still scope the tasks section via `renderScopedTasks` / `s.renderScopedTasks(targetGroup)` so that task output is always scoped to the target group",
+          "return_contract": "returns a `dict[str, str]` / `map[string]string` with full unscoped requirements and test spec but tasks scoped to the target group",
+          "state": "both traceability-based and text-based inference return empty collections for both ref types"
+        },
+        {
+          "id": "02-REQ-3.3",
+          "ears_pattern": "event_driven",
+          "system": "Go `RenderIndividualScoped`",
+          "action": "replace the previous `return s.RenderIndividual()` call with logic that calls `s.renderScopedTasks(targetGroup)` to scope tasks, matching Python's existing fallback behavior",
+          "return_contract": "returns a `map[string]string` with full unscoped requirements and test spec but tasks scoped to the target group, not a fully unscoped render",
+          "trigger": "the else-branch (no refs found and inference fails) is reached"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "02-REQ-3.E1",
+          "ears_pattern": "unwanted",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "proceed through the inference chain normally; if inference also yields no refs, fall back to the full unscoped render with scoped tasks (which will produce an empty tasks section for the missing group)",
+          "return_contract": "returns a `dict[str, str]` / `map[string]string` without panicking or raising an exception",
+          "error_condition": "the `target_group` integer does not match any `TaskGroup` id in the spec"
+        },
+        {
+          "id": "02-REQ-3.E2",
+          "ears_pattern": "unwanted",
+          "system": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "traceability inference returns empty collections; text inference proceeds against subtask text if subtasks exist; if no subtasks exist either, fall back to full unscoped render with scoped tasks",
+          "return_contract": "returns a `dict[str, str]` / `map[string]string` without panicking or raising an exception",
+          "error_condition": "the spec has no `Tasks` / `traceability` data at all (nil/empty Tasks struct)"
+        }
+      ]
+    },
+    {
+      "id": "02-REQ-4",
+      "title": "Missing subtask refs validation warning",
+      "user_story": {
+        "role": "developer running spec validation",
+        "goal": "receive a warning when subtasks have empty `requirement_refs` or `test_spec_refs`",
+        "benefit": "surface the gap at generation time so specs can be fixed before they cause token waste during coding sessions"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "02-REQ-4.1",
+          "ears_pattern": "event_driven",
+          "system": "`validate` / `Validate`",
+          "action": "invoke `_check_missing_subtask_refs` / `checkMissingSubtaskRefs` and append its results to the `ValidationResult` warnings collection",
+          "return_contract": "returns a `ValidationResult` whose `.warnings` list includes one `ValidationWarning` / `ValidationEntry` per affected subtask",
+          "trigger": "called on a `Spec` containing subtasks with empty `requirement_refs` or `test_spec_refs`"
+        },
+        {
+          "id": "02-REQ-4.2",
+          "ears_pattern": "event_driven",
+          "system": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs`",
+          "action": "emit exactly one warning per subtask with message format: `\"Subtask {id} has empty {field_names} \u2014 scoped rendering will fall back to full spec dump\"` where `{field_names}` is `\"requirement_refs\"`, `\"test_spec_refs\"`, or `\"requirement_refs and test_spec_refs\"` depending on which fields are empty",
+          "return_contract": "returns a list / slice of `ValidationWarning` / `ValidationEntry` objects, one per affected subtask",
+          "trigger": "a subtask has empty `requirement_refs` (Python: `not subtask.requirement_refs`; Go: `len(subtask.RequirementRefs) == 0`) or empty `test_spec_refs` (Python: `not subtask.test_spec_refs`; Go: `len(subtask.TestSpecRefs) == 0`)"
+        },
+        {
+          "id": "02-REQ-4.3",
+          "ears_pattern": "event_driven",
+          "system": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs`",
+          "action": "skip the entire `TaskGroup` without inspecting any of its subtasks",
+          "return_contract": "returns no warnings for any subtask belonging to a `WIRING_VERIFICATION` group",
+          "trigger": "a `TaskGroup` has `kind == WIRING_VERIFICATION` (Python: `group.kind == TaskGroupKind.WIRING_VERIFICATION`; Go: `group.Kind == TaskGroupKindWiringVerification`)"
+        },
+        {
+          "id": "02-REQ-4.4",
+          "ears_pattern": "ubiquitous",
+          "system": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs`",
+          "action": "use `' and '.join(missing)` (Python) or equivalent string join (Go) to produce the `{field_names}` portion of the warning message, ensuring consistent serialisation across both implementations",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "02-REQ-4.E1",
+          "ears_pattern": "unwanted",
+          "system": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs`",
+          "action": "treat `None` / `nil` as empty using the defined emptiness check (`not subtask.requirement_refs` / `len(subtask.RequirementRefs) == 0`) and emit the matching warning",
+          "return_contract": "returns a warning for the subtask as if the field were an empty list",
+          "error_condition": "a subtask has `requirement_refs` set to `None` (Python) or `nil` (Go) rather than an explicit empty list"
+        },
+        {
+          "id": "02-REQ-4.E2",
+          "ears_pattern": "unwanted",
+          "system": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs`",
+          "action": "do NOT emit a warning for that subtask; placeholder-string cleanup is out of scope for this feature",
+          "return_contract": "returns no warning for subtasks whose ref lists are non-empty, regardless of the content of the strings",
+          "error_condition": "a subtask has non-empty `requirement_refs` containing placeholder strings such as `\"TBD\"` but not truly empty"
+        },
+        {
+          "id": "02-REQ-4.E3",
+          "ears_pattern": "unwanted",
+          "system": "`validate` / `Validate`",
+          "action": "return a `ValidationResult` with an empty warnings list from `_check_missing_subtask_refs` / `checkMissingSubtaskRefs`; no error is raised",
+          "return_contract": "returns a `ValidationResult` with `.warnings` empty or containing only warnings from other checks",
+          "error_condition": "the spec contains no `TaskGroup`s or all `TaskGroup`s are of kind `WIRING_VERIFICATION`"
+        },
+        {
+          "id": "02-REQ-4.E4",
+          "ears_pattern": "unwanted",
+          "system": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs`",
+          "action": "skip the entire group without emitting any warnings, even though the subtasks would otherwise qualify",
+          "return_contract": "returns no warnings for any subtask in a `WIRING_VERIFICATION` group",
+          "error_condition": "a `TaskGroup` of kind `WIRING_VERIFICATION` contains subtasks with empty refs"
+        }
+      ]
+    },
+    {
+      "id": "02-REQ-5",
+      "title": "Generation template mandatory refs section",
+      "user_story": {
+        "role": "agent generating task subtasks from a prompt template",
+        "goal": "be explicitly instructed that every subtask must have non-empty `requirement_refs` and `test_spec_refs`",
+        "benefit": "prevent the token-waste problem at the source by ensuring newly generated specs always have populated refs"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "02-REQ-5.1",
+          "ears_pattern": "ubiquitous",
+          "system": "`generation_user_tasks.md`",
+          "action": "contain a `### Subtask refs (MANDATORY)` section inserted after line 52 (the line reading \"Reference both requirement IDs and test IDs from the previously generated artifacts in subtask `requirement_refs` and `test_spec_refs` fields.\") and before the `### Smoke test authoring` section, with a blank line before and after the new section",
+          "return_contract": null
+        },
+        {
+          "id": "02-REQ-5.2",
+          "ears_pattern": "ubiquitous",
+          "system": "`generation_user_tasks.md`",
+          "action": "include the exact body text: \"Every subtask MUST have non-empty `requirement_refs` and `test_spec_refs`. These fields control scoped rendering \u2014 when they are empty, the entire requirements and test spec are dumped into the coding session (~15,000+ extra tokens). Populate both fields for every subtask by cross-referencing the requirement IDs and test spec IDs from the previously generated artifacts.\"",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "02-REQ-5.E1",
+          "ears_pattern": "unwanted",
+          "system": "`generation_user_tasks.md`",
+          "action": "the insertion must be performed manually or the template update blocked until the anchor is confirmed; automated insertion must not silently insert at the wrong location",
+          "return_contract": "The generation template file remains unchanged; no insertion is performed when the anchor text is absent",
+          "error_condition": "the file does not contain line 52 with the expected anchor text (e.g., the file has been restructured)"
+        }
+      ]
+    },
+    {
+      "id": "02-REQ-6",
+      "title": "Cross-implementation parity between Python and Go",
+      "user_story": {
+        "role": "maintainer of the afspec library",
+        "goal": "have the Python and Go implementations produce equivalent scoped rendering output and validation warnings for the same spec input",
+        "benefit": "prevent divergence between implementations that would cause inconsistent behavior depending on which runtime is used"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "02-REQ-6.1",
+          "ears_pattern": "ubiquitous",
+          "system": "Python `render_individual_scoped` and Go `RenderIndividualScoped`",
+          "action": "follow the same inference chain order: (1) check explicit refs, (2) traceability-based inference, (3) text-based inference, (4) `unscoped fallback` with scoped tasks; both implementations must scope tasks in the fallback path",
+          "return_contract": null
+        },
+        {
+          "id": "02-REQ-6.2",
+          "ears_pattern": "ubiquitous",
+          "system": "Python `_check_missing_subtask_refs` and Go `checkMissingSubtaskRefs`",
+          "action": "produce warning messages with identical format strings and field-name serialisation (`' and '.join(missing)` convention) so that test assertions can be written identically across both language test suites",
+          "return_contract": null
+        },
+        {
+          "id": "02-REQ-6.3",
+          "ears_pattern": "ubiquitous",
+          "system": "Go `RenderIndividualScoped`",
+          "action": "omit the inference INFO log that Python emits (Go has no logging infrastructure); all other inference behavior must be identical to Python",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "02-REQ-6.E1",
+          "ears_pattern": "unwanted",
+          "system": "Go `RenderIndividualScoped`",
+          "action": "this is the pre-existing bug being fixed; the fix replaces `return s.RenderIndividual()` with logic that calls `s.renderScopedTasks(targetGroup)` in the fallback branch",
+          "return_contract": "Go fallback returns `map[string]string` with scoped tasks, not a fully unscoped render",
+          "error_condition": "the Go implementation diverges from Python by calling `RenderIndividual()` in the fallback branch instead of scoping tasks"
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [
+    {
+      "id": "02-PROP-1",
+      "title": "Inference never produces refs absent from the spec",
+      "for_any": "spec and target group",
+      "invariant": "every ID in the inferred requirement refs and test spec refs returned by `_infer_refs_from_traceability` / `inferRefsFromTraceability` or `_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText` exists in the spec's known requirement ID set or test spec ID set respectively",
+      "validates": [
+        "02-REQ-1.2",
+        "02-REQ-2.3"
+      ]
+    },
+    {
+      "id": "02-PROP-2",
+      "title": "Scoped rendering output is a subset of unscoped output",
+      "for_any": "spec and target group where inference or explicit refs yield non-empty collections",
+      "invariant": "the keys and content returned by `render_individual_scoped` / `RenderIndividualScoped` when scoped rendering activates are a subset of what `render_individual` / `RenderIndividual` would return for the same spec",
+      "validates": [
+        "02-REQ-1.3",
+        "02-REQ-2.4",
+        "02-REQ-3.1"
+      ]
+    },
+    {
+      "id": "02-PROP-3",
+      "title": "Fallback always scopes tasks",
+      "for_any": "spec and target group where both inference strategies return empty collections",
+      "invariant": "the tasks section in the fallback output is always scoped to the target group via `renderScopedTasks` / `s.renderScopedTasks(targetGroup)` and never contains tasks from other groups",
+      "validates": [
+        "02-REQ-3.2",
+        "02-REQ-3.3"
+      ]
+    },
+    {
+      "id": "02-PROP-4",
+      "title": "Exactly one warning per affected subtask",
+      "for_any": "spec passed to `validate` / `Validate`",
+      "invariant": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs` emits exactly one `ValidationWarning` / `ValidationEntry` per subtask with empty refs, never zero and never more than one per subtask, and emits zero warnings for subtasks in `WIRING_VERIFICATION` groups",
+      "validates": [
+        "02-REQ-4.1",
+        "02-REQ-4.2",
+        "02-REQ-4.3"
+      ]
+    },
+    {
+      "id": "02-PROP-5",
+      "title": "Warning message format is deterministic",
+      "for_any": "subtask with any combination of empty `requirement_refs` and `test_spec_refs`",
+      "invariant": "the warning message produced by `_check_missing_subtask_refs` / `checkMissingSubtaskRefs` always matches the template `\"Subtask {id} has empty {field_names} \u2014 scoped rendering will fall back to full spec dump\"` where `{field_names}` is one of `\"requirement_refs\"`, `\"test_spec_refs\"`, or `\"requirement_refs and test_spec_refs\"`",
+      "validates": [
+        "02-REQ-4.2",
+        "02-REQ-4.4"
+      ]
+    },
+    {
+      "id": "02-PROP-6",
+      "title": "Inference chain order is always traceability-first",
+      "for_any": "spec and target group with empty explicit refs",
+      "invariant": "text-based inference is never attempted when traceability-based inference returns non-empty collections for at least one ref type; the chain always evaluates traceability before text",
+      "validates": [
+        "02-REQ-1.3",
+        "02-REQ-2.1"
+      ]
+    },
+    {
+      "id": "02-PROP-7",
+      "title": "Regex patterns are compiled once at module/package init",
+      "for_any": "any number of calls to `render_individual_scoped` / `RenderIndividualScoped` in a single process",
+      "invariant": "`_REQ_ID_RE` and `_TS_ID_RE` (Python) and `reqIDRe` and `tsIDRe` (Go) are compiled exactly once at module import / package initialization time, not per function call",
+      "validates": [
+        "02-REQ-2.2"
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "02-PATH-1",
+      "title": "Traceability-based inference activates scoped rendering",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls `render_individual_scoped(spec, target_group=3)` / `spec.RenderIndividualScoped(3)` on a spec whose subtasks have empty `requirement_refs` and `test_spec_refs`"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "detects empty explicit refs on all subtasks in group 3 and invokes `_infer_refs_from_traceability` / `inferRefsFromTraceability` with target group prefix `\"3.\"`"
+        },
+        {
+          "actor": "`_infer_refs_from_traceability` / `inferRefsFromTraceability`",
+          "action": "scans `spec.tasks.traceability` and returns non-empty requirement ref and test spec ref collections from matching `TraceabilityEntry` records"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "activates scoped rendering using the inferred refs; Python emits an INFO log via `logging.getLogger(__name__)`"
+        },
+        {
+          "actor": "Caller",
+          "action": "receives a scoped `dict[str, str]` / `map[string]string` filtered to the inferred refs, consuming far fewer tokens than the `unscoped fallback`"
+        }
+      ]
+    },
+    {
+      "id": "02-PATH-2",
+      "title": "Text-based inference activates scoped rendering when traceability is absent",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls `render_individual_scoped(spec, target_group=2)` / `spec.RenderIndividualScoped(2)` on a spec with empty refs and no matching traceability entries"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "invokes `_infer_refs_from_traceability` / `inferRefsFromTraceability`; receives empty collections; proceeds to text-based inference"
+        },
+        {
+          "actor": "`_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText`",
+          "action": "scans subtask `title` and `details` fields using `_REQ_ID_RE` / `reqIDRe` and `_TS_ID_RE` / `tsIDRe`, validates matches against known spec IDs, and returns non-empty validated ref collections"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "activates scoped rendering using the text-inferred refs; Python emits an INFO log"
+        },
+        {
+          "actor": "Caller",
+          "action": "receives a scoped `dict[str, str]` / `map[string]string` filtered to validated text-inferred refs"
+        }
+      ]
+    },
+    {
+      "id": "02-PATH-3",
+      "title": "Both inference strategies fail \u2014 scoped-tasks fallback",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls `render_individual_scoped(spec, target_group=1)` / `spec.RenderIndividualScoped(1)` on a spec with empty refs, no traceability entries, and no ID patterns in subtask text"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "invokes `_infer_refs_from_traceability` / `inferRefsFromTraceability`; receives empty collections"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "invokes `_infer_refs_from_subtask_text` / `inferRefsFromSubtaskText`; receives empty collections after validation filtering"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "falls back to full unscoped requirements and test spec rendering but calls `renderScopedTasks` / `s.renderScopedTasks(targetGroup)` to scope the tasks section to group 1"
+        },
+        {
+          "actor": "Caller",
+          "action": "receives a `dict[str, str]` / `map[string]string` with full requirements and test spec but tasks scoped to group 1"
+        }
+      ]
+    },
+    {
+      "id": "02-PATH-4",
+      "title": "Validation warns on subtasks with empty refs",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls `validate(spec)` / `spec.Validate()` on a spec containing subtasks with empty `requirement_refs` and/or `test_spec_refs`"
+        },
+        {
+          "actor": "`validate` / `Validate`",
+          "action": "invokes `_check_missing_subtask_refs` / `checkMissingSubtaskRefs` as part of the validation pipeline"
+        },
+        {
+          "actor": "`_check_missing_subtask_refs` / `checkMissingSubtaskRefs`",
+          "action": "iterates over all `TaskGroup`s, skips any with `kind == WIRING_VERIFICATION`, and for each remaining subtask with empty refs emits one `ValidationWarning` / `ValidationEntry` with the formatted message"
+        },
+        {
+          "actor": "`validate` / `Validate`",
+          "action": "appends the warnings to the `ValidationResult` and returns it to the caller"
+        },
+        {
+          "actor": "Caller",
+          "action": "receives a `ValidationResult` whose `.warnings` list contains one entry per affected subtask, each with the message `\"Subtask {id} has empty {field_names} \u2014 scoped rendering will fall back to full spec dump\"`"
+        }
+      ]
+    },
+    {
+      "id": "02-PATH-5",
+      "title": "Partial inference \u2014 only requirement refs inferred",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls `render_individual_scoped(spec, target_group=4)` / `spec.RenderIndividualScoped(4)` on a spec where traceability entries exist for group 4 but only carry `requirement_id` values (no `test_spec_id`)"
+        },
+        {
+          "actor": "`_infer_refs_from_traceability` / `inferRefsFromTraceability`",
+          "action": "returns non-empty requirement refs and empty test spec refs"
+        },
+        {
+          "actor": "`render_individual_scoped` / `RenderIndividualScoped`",
+          "action": "evaluates the OR condition (`inferred_req or inferred_ts`): requirement refs are non-empty, so scoped rendering activates; the requirements section is scoped to inferred refs; the test spec section is rendered in full"
+        },
+        {
+          "actor": "Caller",
+          "action": "receives a `dict[str, str]` / `map[string]string` with requirements scoped to inferred refs and test spec fully rendered"
+        }
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "id": "02-ERR-1",
+      "condition": "Both `_infer_refs_from_traceability` and `_infer_refs_from_subtask_text` return empty collections for both ref types",
+      "behavior": "Fall back to full unscoped rendering for requirements and test spec, but scope the tasks section via `renderScopedTasks` / `s.renderScopedTasks(targetGroup)`; do not raise an exception or panic",
+      "requirement_id": "02-REQ-3.2"
+    },
+    {
+      "id": "02-ERR-2",
+      "condition": "A `TraceabilityEntry` has an empty `requirement_id` or `test_spec_id` string",
+      "behavior": "Skip the empty field value; only collect non-empty ID strings into the inferred ref collections",
+      "requirement_id": "02-REQ-1.E2"
+    },
+    {
+      "id": "02-ERR-3",
+      "condition": "Text-based inference finds regex matches that do not correspond to any known ID in the spec",
+      "behavior": "Discard unvalidated matches; only retain IDs that exist in the spec's known requirement and test spec ID sets; if zero validated matches remain, fall through to the `unscoped fallback`",
+      "requirement_id": "02-REQ-2.E1"
+    },
+    {
+      "id": "02-ERR-4",
+      "condition": "A subtask has `requirement_refs` or `test_spec_refs` set to `None` (Python) or `nil` (Go)",
+      "behavior": "Treat as empty using the defined emptiness check; emit a validation warning as if the field were an empty list",
+      "requirement_id": "02-REQ-4.E1"
+    },
+    {
+      "id": "02-ERR-5",
+      "condition": "A subtask has non-empty refs containing only placeholder strings such as `\"TBD\"`",
+      "behavior": "Do not emit a validation warning and do not trigger inference; placeholder-string cleanup is out of scope",
+      "requirement_id": "02-REQ-4.E2"
+    },
+    {
+      "id": "02-ERR-6",
+      "condition": "The `target_group` passed to `render_individual_scoped` / `RenderIndividualScoped` does not match any `TaskGroup` id in the spec",
+      "behavior": "Proceed through the inference chain normally; if inference yields no refs, fall back to full unscoped render with scoped tasks (producing an empty tasks section); do not raise an exception or panic",
+      "requirement_id": "02-REQ-3.E1"
+    },
+    {
+      "id": "02-ERR-7",
+      "condition": "Go `RenderIndividualScoped` reaches the else-branch (no refs found, inference failed) and previously called `return s.RenderIndividual()`",
+      "behavior": "Replace with logic that calls `s.renderScopedTasks(targetGroup)` to scope tasks, returning a map with full unscoped requirements/test spec but scoped tasks \u2014 not a fully unscoped render",
+      "requirement_id": "02-REQ-3.3"
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "afspec (Python, local)",
+      "version": "local",
+      "symbols": [
+        {
+          "name": "Spec",
+          "import_path": "afspec.models",
+          "signature": "Pydantic BaseModel with .prd, .requirements, .test_spec, .tasks, .architecture",
+          "notes": "Top-level spec container"
+        },
+        {
+          "name": "TaskGroup",
+          "import_path": "afspec.models",
+          "signature": ".id: int, .kind: TaskGroupKind, .subtasks: list[Subtask]",
+          "notes": ""
+        },
+        {
+          "name": "TaskGroupKind",
+          "import_path": "afspec.models",
+          "signature": "Enum: TESTS, STANDARD, CHECKPOINT, WIRING_VERIFICATION",
+          "notes": ""
+        },
+        {
+          "name": "Subtask",
+          "import_path": "afspec.models",
+          "signature": ".id: str, .title: str, .details: list[str], .requirement_refs: list[str], .test_spec_refs: list[str]",
+          "notes": "Defaults via Field(default_factory=list); empty check: if not subtask.requirement_refs"
+        },
+        {
+          "name": "TraceabilityEntry",
+          "import_path": "afspec.models",
+          "signature": ".requirement_id: str, .test_spec_id: str, .task_id: str, .test_path: Optional[str]",
+          "notes": ""
+        },
+        {
+          "name": "Tasks",
+          "import_path": "afspec.models",
+          "signature": ".traceability: list[TraceabilityEntry], .task_groups: list[TaskGroup]",
+          "notes": ""
+        },
+        {
+          "name": "Requirements",
+          "import_path": "afspec.models",
+          "signature": ".requirements: list[Requirement] with .acceptance_criteria, .edge_cases",
+          "notes": ""
+        },
+        {
+          "name": "TestSpec",
+          "import_path": "afspec.models",
+          "signature": ".test_cases, .property_tests, .edge_case_tests, .smoke_tests",
+          "notes": ""
+        },
+        {
+          "name": "ValidationWarning",
+          "import_path": "afspec.validation",
+          "signature": "(message: str, entity_id: str)",
+          "notes": "Pydantic BaseModel"
+        },
+        {
+          "name": "validate",
+          "import_path": "afspec.validation",
+          "signature": "(spec: Spec) -> ValidationResult",
+          "notes": ".valid, .errors, .warnings"
+        },
+        {
+          "name": "render_individual_scoped",
+          "import_path": "afspec.render",
+          "signature": "(spec: Spec, target_group: int) -> dict[str, str]",
+          "notes": ""
+        },
+        {
+          "name": "render_individual",
+          "import_path": "afspec.render",
+          "signature": "(spec: Spec) -> dict[str, str]",
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "package": "afspec (Go, local)",
+      "version": "local",
+      "symbols": [
+        {
+          "name": "Spec",
+          "import_path": "afspec",
+          "signature": "struct with .Requirements, .TestSpec, .Tasks, .Architecture",
+          "notes": ""
+        },
+        {
+          "name": "TaskGroup",
+          "import_path": "afspec",
+          "signature": "struct: .Id int, .Kind TaskGroupKind, .Subtasks []Subtask",
+          "notes": ""
+        },
+        {
+          "name": "TaskGroupKind",
+          "import_path": "afspec",
+          "signature": "type string; consts TaskGroupKindWiringVerification, etc.",
+          "notes": ""
+        },
+        {
+          "name": "Subtask",
+          "import_path": "afspec",
+          "signature": "struct: .Id string, .Title string, .Details []string, .RequirementRefs []string, .TestSpecRefs []string",
+          "notes": "Zero value is nil; empty check: len(subtask.RequirementRefs) == 0"
+        },
+        {
+          "name": "TraceabilityEntry",
+          "import_path": "afspec",
+          "signature": "struct: .TaskId string, .RequirementId string, .TestSpecId string",
+          "notes": "Generated from JSON schema"
+        },
+        {
+          "name": "ValidationResult",
+          "import_path": "afspec",
+          "signature": "struct: .Valid bool, .Errors []ValidationEntry, .Warnings []ValidationEntry",
+          "notes": ""
+        },
+        {
+          "name": "ValidationEntry",
+          "import_path": "afspec",
+          "signature": "struct: .Category, .Check, .Message, .EntityID, .Artifact",
+          "notes": "Used for both errors and warnings"
+        },
+        {
+          "name": "RenderIndividualScoped",
+          "import_path": "afspec",
+          "signature": "(targetGroup int) map[string]string",
+          "notes": "Method on *Spec"
+        },
+        {
+          "name": "Validate",
+          "import_path": "afspec",
+          "signature": "() ValidationResult",
+          "notes": "Method on *Spec"
+        }
+      ]
+    }
+  ]
+}
