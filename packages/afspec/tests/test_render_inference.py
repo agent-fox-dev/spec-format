@@ -23,6 +23,7 @@ import logging
 
 import pytest
 
+import afspec.render as render_mod
 from afspec.models import (
     Criterion,
     EARSPattern,
@@ -637,3 +638,479 @@ class TestTraceabilityInferenceEdgeCases:
         # Explicit refs (REQ-A, TS-A) should be used, not traceability
         assert _REQ_ID_A in result["requirements"]
         assert _TS_ID_A in result["test_spec"]
+
+
+# ---------------------------------------------------------------------------
+# Helper for text-based inference tests
+# ---------------------------------------------------------------------------
+
+
+def _build_spec_for_text_inference(
+    target_group: int,
+    subtask_title: str = "Implement feature",
+    subtask_details: list[str] | None = None,
+    *,
+    traceability: list[TraceabilityEntry] | None = None,
+) -> Spec:
+    """Build a Spec for text-based inference tests.
+
+    Like ``_build_spec_with_traceability`` but with configurable subtask
+    ``title`` and ``details``, enabling tests where ID patterns are
+    embedded in the subtask text for text-based inference to discover.
+
+    Subtask ``requirement_refs`` and ``test_spec_refs`` are always empty.
+    Traceability defaults to an empty list (no entries).
+    """
+    subtask = Subtask(
+        id=f"{target_group}.1",
+        title=subtask_title,
+        details=subtask_details if subtask_details is not None else [],
+        requirement_refs=[],
+        test_spec_refs=[],
+    )
+
+    main_group = TaskGroup(
+        id=target_group,
+        kind=TaskGroupKind.STANDARD,
+        title="Main group",
+        subtasks=[subtask],
+        verification=VerificationSubtask(id=f"{target_group}.V", checks=["pass"]),
+    )
+
+    tests_group = TaskGroup(
+        id=1,
+        kind=TaskGroupKind.TESTS,
+        title="Tests group",
+        subtasks=[
+            Subtask(
+                id="1.1",
+                title="Write tests",
+                requirement_refs=[_REQ_ID_A],
+                test_spec_refs=[_TS_ID_A],
+            ),
+        ],
+        verification=VerificationSubtask(id="1.V", checks=["pass"]),
+    )
+
+    groups: list[TaskGroup] = []
+    if target_group == 1:
+        main_group = TaskGroup(
+            id=1,
+            kind=TaskGroupKind.TESTS,
+            title="Tests group",
+            subtasks=[subtask],
+            verification=VerificationSubtask(id="1.V", checks=["pass"]),
+        )
+        groups.append(main_group)
+    else:
+        groups.append(tests_group)
+        groups.append(main_group)
+
+    wv_id = max(g.id for g in groups) + 1
+    groups.append(
+        TaskGroup(
+            id=wv_id,
+            kind=TaskGroupKind.WIRING_VERIFICATION,
+            title="Wiring verification",
+            subtasks=[
+                Subtask(
+                    id=f"{wv_id}.1",
+                    title="Trace execution paths and stub/dead-code audit",
+                    test_spec_refs=["TS-02-SMOKE-1"],
+                    requirement_refs=[_REQ_ID_A],
+                ),
+            ],
+            verification=VerificationSubtask(id=f"{wv_id}.V", checks=["done"]),
+        ),
+    )
+
+    return Spec(
+        prd=PRDDocument(
+            frontmatter=PRDFrontmatter(
+                spec_id="02",
+                spec_name="scoped_rendering_ref_inference",
+                title="Scoped Rendering Ref Inference",
+                created_at="2024-01-01",
+                updated_at="2024-01-01",
+                owner="test",
+                source="internal",
+            ),
+            body="Test spec for text-based inference.",
+        ),
+        requirements=Requirements(
+            spec_id="02",
+            spec_name="scoped_rendering_ref_inference",
+            introduction="Test spec for text-based inference.",
+            requirements=[
+                _make_requirement(_REQ_ID_A, _CRITERION_A1),
+                _make_requirement(_REQ_ID_B, _CRITERION_B1),
+            ],
+            execution_paths=[
+                ExecutionPath(
+                    id="02-PATH-1",
+                    title="Main path",
+                    steps=[
+                        PathStep(actor="Caller", action="Invoke"),
+                        PathStep(actor="System", action="Respond"),
+                    ],
+                ),
+            ],
+        ),
+        test_spec=TestSpec(
+            spec_id="02",
+            spec_name="scoped_rendering_ref_inference",
+            test_cases=[
+                TestCase(
+                    id=_TS_ID_A,
+                    requirement_id=_CRITERION_A1,
+                    kind="integration",
+                    description="Test case A",
+                ),
+                TestCase(
+                    id=_TS_ID_B,
+                    requirement_id=_CRITERION_B1,
+                    kind="unit",
+                    description="Test case B",
+                ),
+            ],
+            smoke_tests=[
+                SmokeTest(
+                    id="TS-02-SMOKE-1",
+                    execution_path_id="02-PATH-1",
+                    description="Wiring smoke test",
+                ),
+            ],
+        ),
+        tasks=Tasks(
+            spec_id="02",
+            spec_name="scoped_rendering_ref_inference",
+            task_groups=groups,
+            traceability=traceability or [],
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TS-02-4: Text-based inference activates scoped rendering
+# (02-REQ-2.1)
+# ---------------------------------------------------------------------------
+
+
+class TestTextInferenceActivatesScopedRendering:
+    """When traceability inference returns empty, render_individual_scoped
+    invokes text-based inference and returns a scoped result from
+    validated regex matches found in subtask title and details.
+    """
+
+    def test_req_id_in_title_activates_scoped_rendering(self) -> None:
+        """Subtask title containing a known req ID triggers text inference."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Implement {_REQ_ID_A} logic",
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        assert _REQ_ID_A in result["requirements"]
+        assert _REQ_ID_B not in result["requirements"]
+
+    def test_req_id_in_details_activates_scoped_rendering(self) -> None:
+        """Subtask details containing a known req ID triggers text inference."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Implement feature",
+            subtask_details=[f"Must satisfy {_REQ_ID_A}"],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        assert _REQ_ID_A in result["requirements"]
+        assert _REQ_ID_B not in result["requirements"]
+
+    def test_ts_id_in_title_activates_scoped_rendering(self) -> None:
+        """Subtask title containing a known test spec ID triggers text inference."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Cover {_TS_ID_A} tests",
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        assert _TS_ID_A in result["test_spec"]
+        assert _TS_ID_B not in result["test_spec"]
+
+    def test_ts_id_in_details_activates_scoped_rendering(self) -> None:
+        """Subtask details containing a known test spec ID triggers text inference."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Implement feature",
+            subtask_details=[f"See {_TS_ID_A} for coverage"],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        assert _TS_ID_A in result["test_spec"]
+        assert _TS_ID_B not in result["test_spec"]
+
+    def test_scoped_result_differs_from_unscoped(self) -> None:
+        """Text-inferred scoped result differs from the full unscoped dump."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Implement {_REQ_ID_A} logic",
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        unscoped = render_individual(spec)
+        assert result["requirements"] != unscoped["requirements"]
+
+
+# ---------------------------------------------------------------------------
+# TS-02-5: Regex patterns are module-level compiled constants
+# (02-REQ-2.2)
+# ---------------------------------------------------------------------------
+
+
+class TestRegexPatternsAreModuleLevelConstants:
+    """_REQ_ID_RE and _TS_ID_RE (Python) are instances of re.Pattern
+    defined at module level in afspec.render, not compiled per call.
+    """
+
+    def test_req_id_re_is_compiled_pattern(self) -> None:
+        """_REQ_ID_RE is a re.Pattern at module level."""
+        import re
+
+        assert hasattr(render_mod, "_REQ_ID_RE"), (
+            "_REQ_ID_RE not defined at module level in afspec.render"
+        )
+        assert isinstance(render_mod._REQ_ID_RE, re.Pattern)
+
+    def test_ts_id_re_is_compiled_pattern(self) -> None:
+        """_TS_ID_RE is a re.Pattern at module level."""
+        import re
+
+        assert hasattr(render_mod, "_TS_ID_RE"), (
+            "_TS_ID_RE not defined at module level in afspec.render"
+        )
+        assert isinstance(render_mod._TS_ID_RE, re.Pattern)
+
+    def test_req_id_re_matches_requirement_id_pattern(self) -> None:
+        """_REQ_ID_RE matches requirement ID strings like '02-REQ-1'."""
+        assert hasattr(render_mod, "_REQ_ID_RE"), (
+            "_REQ_ID_RE not defined at module level"
+        )
+        match = render_mod._REQ_ID_RE.search("Implement 02-REQ-1 logic")
+        assert match is not None
+
+    def test_ts_id_re_matches_test_spec_id_pattern(self) -> None:
+        """_TS_ID_RE matches test spec ID strings like 'TS-02-1'."""
+        assert hasattr(render_mod, "_TS_ID_RE"), (
+            "_TS_ID_RE not defined at module level"
+        )
+        match = render_mod._TS_ID_RE.search("See TS-02-1 for tests")
+        assert match is not None
+
+
+# ---------------------------------------------------------------------------
+# TS-02-6: _infer_refs_from_subtask_text filters to known IDs
+# (02-REQ-2.3, 02-REQ-2.E1, 02-REQ-2.E2, 02-REQ-2.E3)
+# ---------------------------------------------------------------------------
+
+
+class TestTextInferenceFiltersToKnownIDs:
+    """_infer_refs_from_subtask_text scans title and all details strings,
+    collects regex matches, and filters to only IDs present in the spec.
+    Invalid matches and unmentioned IDs are excluded.
+    """
+
+    def test_valid_req_and_ts_ids_are_returned(self) -> None:
+        """Valid IDs from subtask text appear in inferred refs."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Work on {_REQ_ID_A}",
+            subtask_details=[
+                f"See {_TS_ID_A} for tests",
+                "Also 99-REQ-999 is mentioned",
+            ],
+        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
+            "_infer_refs_from_subtask_text not defined in afspec.render"
+        )
+        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
+            spec, target_group=2
+        )
+        assert _REQ_ID_A in req_refs
+        assert _TS_ID_A in ts_refs
+
+    def test_unknown_req_id_is_discarded(self) -> None:
+        """Requirement IDs not present in the spec are filtered out."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Work on 99-REQ-999",
+            subtask_details=["Also mentions 99-REQ-888"],
+        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
+            "_infer_refs_from_subtask_text not defined"
+        )
+        req_refs, _ts_refs = render_mod._infer_refs_from_subtask_text(
+            spec, target_group=2
+        )
+        assert "99-REQ-999" not in req_refs
+        assert "99-REQ-888" not in req_refs
+
+    def test_unknown_ts_id_is_discarded(self) -> None:
+        """Test spec IDs not present in the spec are filtered out."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="See TS-99-1 for tests",
+        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
+            "_infer_refs_from_subtask_text not defined"
+        )
+        _req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
+            spec, target_group=2
+        )
+        assert "TS-99-1" not in ts_refs
+
+    def test_unmentioned_spec_ids_are_not_inferred(self) -> None:
+        """IDs that exist in the spec but aren't in subtask text are excluded."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Work on {_REQ_ID_A}",
+            subtask_details=[f"See {_TS_ID_A} for tests"],
+        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
+            "_infer_refs_from_subtask_text not defined"
+        )
+        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
+            spec, target_group=2
+        )
+        # REQ-B and TS-B exist in spec but weren't mentioned in text
+        assert _REQ_ID_B not in req_refs
+        assert _TS_ID_B not in ts_refs
+
+    def test_all_invalid_matches_fall_through_to_unscoped(self) -> None:
+        """When all regex matches are invalid, falls back to unscoped (02-REQ-2.E1)."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Work on 99-REQ-999",
+            subtask_details=["Also TS-99-1 is mentioned"],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+        unscoped = render_individual(spec)
+        assert result["requirements"] == unscoped["requirements"]
+        assert result["test_spec"] == unscoped["test_spec"]
+
+    def test_no_regex_matches_returns_empty_collections(self) -> None:
+        """When text has no ID patterns at all, empty collections returned (02-REQ-2.E2)."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title="Plain title with no IDs",
+            subtask_details=["Plain detail with no IDs"],
+        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
+            "_infer_refs_from_subtask_text not defined"
+        )
+        req_refs, ts_refs = render_mod._infer_refs_from_subtask_text(
+            spec, target_group=2
+        )
+        assert len(req_refs) == 0
+        assert len(ts_refs) == 0
+
+    def test_empty_details_scans_title_only(self) -> None:
+        """When details is empty, only title is scanned (02-REQ-2.E3)."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Implement {_REQ_ID_A} logic",
+            subtask_details=[],
+        )
+        assert hasattr(render_mod, "_infer_refs_from_subtask_text"), (
+            "_infer_refs_from_subtask_text not defined"
+        )
+        req_refs, _ts_refs = render_mod._infer_refs_from_subtask_text(
+            spec, target_group=2
+        )
+        assert _REQ_ID_A in req_refs
+
+
+# ---------------------------------------------------------------------------
+# TS-02-7: Text inference activates with INFO log; traceability-first order
+# (02-REQ-2.4, 02-PROP-6)
+# ---------------------------------------------------------------------------
+
+
+class TestTextInferenceInfoLogAndTraceabilityPriority:
+    """When text-based inference yields at least one validated ref, scoped
+    rendering activates and Python emits an INFO log.  Also validates that
+    text inference is skipped when traceability inference succeeds
+    (traceability-first order per 02-PROP-6).
+    """
+
+    def test_info_log_emitted_on_text_inference(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """An INFO log is emitted when text inference activates scoped rendering."""
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Handle {_REQ_ID_A}",
+        )
+        with caplog.at_level(logging.INFO, logger="afspec.render"):
+            result = render_individual_scoped(spec, target_group=2)
+
+        # Result should be scoped to REQ-A (not full dump)
+        assert _REQ_ID_A in result["requirements"]
+        assert _REQ_ID_B not in result["requirements"]
+
+        # Verify INFO log mentioning inference was emitted
+        infer_logs = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.INFO
+            and r.name == "afspec.render"
+            and "infer" in r.message.lower()
+        ]
+        assert len(infer_logs) >= 1, (
+            "Expected an INFO log from afspec.render mentioning inference"
+        )
+
+    def test_traceability_takes_priority_over_text_inference(self) -> None:
+        """When traceability yields refs, text inference is not applied.
+
+        Traceability points to REQ-A/TS-A, while subtask text mentions
+        REQ-B. The result should use traceability-inferred refs only.
+        """
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Handle {_REQ_ID_B}",
+            traceability=[
+                TraceabilityEntry(
+                    task_id="2.1",
+                    requirement_id=_REQ_ID_A,
+                    test_spec_id=_TS_ID_A,
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+
+        # Traceability refs (REQ-A) should be used
+        assert _REQ_ID_A in result["requirements"]
+        # Text-inferred refs (REQ-B from title) should NOT be applied
+        assert _REQ_ID_B not in result["requirements"]
+
+    def test_partial_traceability_short_circuits_text_inference(self) -> None:
+        """Even partial traceability refs (only req, no ts) short-circuit
+        text inference.  Requirements are scoped to traceability-inferred
+        refs; test spec falls back to full rendering.
+        """
+        spec = _build_spec_for_text_inference(
+            target_group=2,
+            subtask_title=f"Cover {_TS_ID_B} tests",
+            traceability=[
+                TraceabilityEntry(
+                    task_id="2.1",
+                    requirement_id=_REQ_ID_A,
+                    test_spec_id="",  # empty — no test spec from traceability
+                ),
+            ],
+        )
+        result = render_individual_scoped(spec, target_group=2)
+
+        # Traceability found REQ-A → requirements should be scoped
+        assert _REQ_ID_A in result["requirements"]
+        assert _REQ_ID_B not in result["requirements"]
+
+        # test_spec from traceability is empty, and text inference should
+        # NOT be applied — test_spec should be full (no scoping)
+        unscoped = render_individual(spec)
+        assert result["test_spec"] == unscoped["test_spec"]
