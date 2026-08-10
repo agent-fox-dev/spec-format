@@ -1,0 +1,852 @@
+{
+  "$schema": null,
+  "spec_id": "03",
+  "spec_name": "spec_rendering_budget_cap",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-03-1",
+      "requirement_id": "03-REQ-1.1",
+      "kind": "unit",
+      "description": "Verify that estimate_tokens returns len(text) // 4 for any arbitrary string input, confirming the chars/4 heuristic.",
+      "preconditions": [
+        "afspec library is installed and importable"
+      ],
+      "input": "A string of length 17 (e.g., 'abcdefghijklmnopq')",
+      "expected": "estimate_tokens returns 4 (17 // 4 == 4)",
+      "assertion_pseudocode": "result = estimate_tokens('abcdefghijklmnopq')\nassert result == 4\nassert result == len('abcdefghijklmnopq') // 4"
+    },
+    {
+      "id": "TS-03-2",
+      "requirement_id": "03-REQ-1.2",
+      "kind": "unit",
+      "description": "Verify that estimate_tokens('abcd') returns exactly 1, confirming the canonical 4-char-per-token example.",
+      "preconditions": [
+        "afspec library is installed and importable"
+      ],
+      "input": "The string 'abcd'",
+      "expected": "estimate_tokens returns integer 1",
+      "assertion_pseudocode": "result = estimate_tokens('abcd')\nassert result == 1\nassert type(result) is int"
+    },
+    {
+      "id": "TS-03-3",
+      "requirement_id": "03-REQ-1.3",
+      "kind": "unit",
+      "description": "Verify that estimate_tokens('') returns exactly 0 for an empty string.",
+      "preconditions": [
+        "afspec library is installed and importable"
+      ],
+      "input": "An empty string ''",
+      "expected": "estimate_tokens returns integer 0",
+      "assertion_pseudocode": "result = estimate_tokens('')\nassert result == 0"
+    },
+    {
+      "id": "TS-03-4",
+      "requirement_id": "03-REQ-1.4",
+      "kind": "unit",
+      "description": "Verify that estimate_tokens is exported from afspec.__init__ and listed in __all__.",
+      "preconditions": [
+        "afspec package is installed"
+      ],
+      "input": "Import afspec and inspect __all__",
+      "expected": "'estimate_tokens' is in afspec.__all__ and callable via afspec.estimate_tokens",
+      "assertion_pseudocode": "import afspec\nassert 'estimate_tokens' in afspec.__all__\nassert callable(afspec.estimate_tokens)"
+    },
+    {
+      "id": "TS-03-5",
+      "requirement_id": "03-REQ-1.5",
+      "kind": "unit",
+      "description": "Verify that EstimateTokens is an exported function in the Go afspec package with the correct signature.",
+      "preconditions": [
+        "Go afspec package is compiled and importable"
+      ],
+      "input": "Call EstimateTokens('abcdefgh') in Go",
+      "expected": "EstimateTokens returns 2 (8 // 4)",
+      "assertion_pseudocode": "result := afspec.EstimateTokens(\"abcdefgh\")\nassert result == 2"
+    },
+    {
+      "id": "TS-03-6",
+      "requirement_id": "03-REQ-2.1",
+      "kind": "unit",
+      "description": "Verify that render_individual with max_tokens=None returns output byte-identical to the pre-budget-cap implementation.",
+      "preconditions": [
+        "A valid Spec object is constructed with all artifacts populated"
+      ],
+      "input": "A Spec object with architecture, test_spec, and PRD; max_tokens=None",
+      "expected": "The returned dict is byte-identical to calling render_individual without the max_tokens parameter",
+      "assertion_pseudocode": "spec = build_test_spec_with_all_artifacts()\nresult_with_none = render_individual(spec, max_tokens=None)\nresult_legacy = render_individual(spec)\nassert result_with_none == result_legacy\nfor key in result_legacy:\n    assert result_with_none[key] == result_legacy[key]"
+    },
+    {
+      "id": "TS-03-7",
+      "requirement_id": "03-REQ-2.2",
+      "kind": "unit",
+      "description": "Verify that render_individual applies progressive truncation when Level 0 exceeds the budget, returning the first level that fits or Level 2.",
+      "preconditions": [
+        "A valid Spec object is constructed such that Level 0 render exceeds 300 estimated tokens"
+      ],
+      "input": "A Spec with architecture and test_spec whose Level 0 render totals 500 tokens; max_tokens=300",
+      "expected": "Returned dict has estimated token sum ≤ 300 (Level 1 or Level 2 applied), or is the Level 2 render if neither fits",
+      "assertion_pseudocode": "spec = build_spec_with_large_content(level0_tokens=500)\nresult = render_individual(spec, max_tokens=300)\ntotal = sum(estimate_tokens(v) for v in result.values())\nassert total <= 300 or result == render_individual_at_level2(spec)\nassert 'architecture' not in result  # Level 1 at minimum was applied"
+    },
+    {
+      "id": "TS-03-8",
+      "requirement_id": "03-REQ-2.3",
+      "kind": "unit",
+      "description": "Verify that render_individual returns the Level 0 render without truncation when the budget is sufficient.",
+      "preconditions": [
+        "A valid Spec object is constructed such that Level 0 render is ≤ 200 estimated tokens"
+      ],
+      "input": "A Spec whose Level 0 render totals 100 tokens; max_tokens=200",
+      "expected": "Returned dict is identical to the Level 0 render; architecture key is present",
+      "assertion_pseudocode": "spec = build_spec_with_small_content(level0_tokens=100)\nresult = render_individual(spec, max_tokens=200)\nresult_full = render_individual(spec, max_tokens=None)\nassert result == result_full\nassert 'architecture' in result"
+    },
+    {
+      "id": "TS-03-9",
+      "requirement_id": "03-REQ-2.4",
+      "kind": "unit",
+      "description": "Verify that budget evaluation sums estimate_tokens(v) for all values in the result dict, with empty strings contributing 0.",
+      "preconditions": [
+        "A valid Spec object is constructed with at least one artifact producing an empty string value"
+      ],
+      "input": "A Spec where one artifact value is an empty string and others have content",
+      "expected": "Budget evaluation counts the empty-string artifact as 0 tokens; total equals sum of non-empty values only",
+      "assertion_pseudocode": "spec = build_spec_with_empty_artifact()\nresult = render_individual(spec, max_tokens=None)\ntotal = sum(estimate_tokens(v) for v in result.values())\nassert estimate_tokens('') == 0\nassert total == sum(estimate_tokens(v) for v in result.values() if v != '')"
+    },
+    {
+      "id": "TS-03-10",
+      "requirement_id": "03-REQ-3.1",
+      "kind": "unit",
+      "description": "Verify that render_individual_scoped with max_tokens=None returns output byte-identical to the pre-budget-cap implementation.",
+      "preconditions": [
+        "A valid Spec object with multiple task groups is constructed"
+      ],
+      "input": "A Spec object and target_group=1; max_tokens=None",
+      "expected": "The returned dict is byte-identical to calling render_individual_scoped without max_tokens",
+      "assertion_pseudocode": "spec = build_test_spec_with_task_groups()\nresult_with_none = render_individual_scoped(spec, target_group=1, max_tokens=None)\nresult_legacy = render_individual_scoped(spec, target_group=1)\nassert result_with_none == result_legacy"
+    },
+    {
+      "id": "TS-03-11",
+      "requirement_id": "03-REQ-3.2",
+      "kind": "unit",
+      "description": "Verify that render_individual_scoped applies progressive truncation when Level 0 scoped render exceeds the budget.",
+      "preconditions": [
+        "A valid Spec object is constructed such that the scoped Level 0 render exceeds M tokens"
+      ],
+      "input": "A Spec with architecture, target_group=1, max_tokens=M where Level 0 scoped render exceeds M",
+      "expected": "Returned dict has estimated token sum ≤ M or is the Level 2 scoped render",
+      "assertion_pseudocode": "spec = build_spec_with_large_scoped_content()\nM = 200\nresult = render_individual_scoped(spec, target_group=1, max_tokens=M)\ntotal = sum(estimate_tokens(v) for v in result.values())\nassert total <= M or is_level2_render(result)"
+    },
+    {
+      "id": "TS-03-12",
+      "requirement_id": "03-REQ-3.3",
+      "kind": "unit",
+      "description": "Verify that render_individual_scoped uses the same budget evaluation logic as render_individual: sum of estimate_tokens(v) for all values.",
+      "preconditions": [
+        "A valid Spec object with scoped artifacts is constructed"
+      ],
+      "input": "A Spec with scoped render producing a dict with mixed empty and non-empty values",
+      "expected": "Budget is evaluated as sum of estimate_tokens(v) for all values; empty strings contribute 0",
+      "assertion_pseudocode": "spec = build_spec_with_scoped_artifacts()\nresult = render_individual_scoped(spec, target_group=1, max_tokens=None)\ntotal = sum(estimate_tokens(v) for v in result.values())\nassert total >= 0\nassert estimate_tokens('') == 0"
+    },
+    {
+      "id": "TS-03-13",
+      "requirement_id": "03-REQ-4.1",
+      "kind": "unit",
+      "description": "Verify that render_combined with max_tokens=None returns output byte-identical to the pre-budget-cap implementation.",
+      "preconditions": [
+        "A valid Spec object with all artifacts is constructed"
+      ],
+      "input": "A Spec object; max_tokens=None",
+      "expected": "The returned string is byte-identical to calling render_combined without max_tokens",
+      "assertion_pseudocode": "spec = build_test_spec_with_all_artifacts()\nresult_with_none = render_combined(spec, max_tokens=None)\nresult_legacy = render_combined(spec)\nassert result_with_none == result_legacy"
+    },
+    {
+      "id": "TS-03-14",
+      "requirement_id": "03-REQ-4.2",
+      "kind": "unit",
+      "description": "Verify that render_combined applies progressive truncation against the single returned string when Level 0 exceeds the budget.",
+      "preconditions": [
+        "A valid Spec object is constructed such that the combined Level 0 render exceeds M tokens"
+      ],
+      "input": "A Spec whose Level 0 combined render exceeds M tokens; max_tokens=M",
+      "expected": "Returned string has estimate_tokens(result) ≤ M or is the Level 2 combined render",
+      "assertion_pseudocode": "spec = build_spec_with_large_combined_content()\nM = 300\nresult = render_combined(spec, max_tokens=M)\nassert estimate_tokens(result) <= M or result == render_combined_at_level2(spec)"
+    },
+    {
+      "id": "TS-03-15",
+      "requirement_id": "03-REQ-4.3",
+      "kind": "unit",
+      "description": "Verify that render_combined evaluates the budget against estimate_tokens of the single returned string, not a sum of dict values.",
+      "preconditions": [
+        "A valid Spec object is constructed"
+      ],
+      "input": "A Spec with combined render; max_tokens=M",
+      "expected": "Budget is evaluated as estimate_tokens(combined_string), not as a sum of separate artifact values",
+      "assertion_pseudocode": "spec = build_test_spec_with_all_artifacts()\nresult = render_combined(spec, max_tokens=None)\nassert type(result) is str\nassert estimate_tokens(result) == len(result) // 4"
+    },
+    {
+      "id": "TS-03-16",
+      "requirement_id": "03-REQ-5.1",
+      "kind": "unit",
+      "description": "Verify that Level 1 truncation removes the architecture key from the result dict when the spec has an architecture section.",
+      "preconditions": [
+        "A valid Spec with a non-empty architecture section is constructed"
+      ],
+      "input": "A Spec with an architecture section; max_tokens set so Level 0 exceeds but Level 1 fits",
+      "expected": "Returned dict does not contain the 'architecture' key",
+      "assertion_pseudocode": "spec = build_spec_with_architecture(arch_tokens=100, other_tokens=150)\nM = 200  # Level 0 = 250, Level 1 = 150\nresult = render_individual(spec, max_tokens=M)\nassert 'architecture' not in result"
+    },
+    {
+      "id": "TS-03-17",
+      "requirement_id": "03-REQ-5.2",
+      "kind": "unit",
+      "description": "Verify that Level 1 truncation omits the architecture section from the combined output string.",
+      "preconditions": [
+        "A valid Spec with a non-empty architecture section is constructed"
+      ],
+      "input": "A Spec with an architecture section; max_tokens set so Level 0 exceeds but Level 1 fits for render_combined",
+      "expected": "Returned string does not contain the architecture section content",
+      "assertion_pseudocode": "spec = build_spec_with_architecture()\nfull_render = render_combined(spec, max_tokens=None)\nassert 'architecture' content is in full_render\nM = compute_budget_for_level1(spec)\nresult = render_combined(spec, max_tokens=M)\nassert architecture_content not in result"
+    },
+    {
+      "id": "TS-03-18",
+      "requirement_id": "03-REQ-5.3",
+      "kind": "unit",
+      "description": "Verify that Level 1 is a no-op when the spec has no architecture section, and the loop proceeds directly to Level 2.",
+      "preconditions": [
+        "A valid Spec without an architecture section is constructed"
+      ],
+      "input": "A Spec without an architecture section; max_tokens set so Level 0 exceeds the budget",
+      "expected": "Level 2 truncation is applied directly; test spec is slimmed",
+      "assertion_pseudocode": "spec = build_spec_without_architecture()\nM = compute_budget_below_level0(spec)\nresult = render_individual(spec, max_tokens=M)\nassert 'architecture' not in result\nassert test_spec_is_slimmed(result)"
+    },
+    {
+      "id": "TS-03-19",
+      "requirement_id": "03-REQ-5.4",
+      "kind": "unit",
+      "description": "Verify that the PRD body content is never dropped at any truncation level.",
+      "preconditions": [
+        "A valid Spec with a non-empty PRD body is constructed"
+      ],
+      "input": "A Spec with PRD body; max_tokens=1 (extremely low budget forcing Level 2)",
+      "expected": "PRD body content is present in the output at every truncation level",
+      "assertion_pseudocode": "spec = build_spec_with_prd_body('This is the PRD content')\nresult = render_individual(spec, max_tokens=1)\nassert 'prd' in result or any('This is the PRD content' in v for v in result.values())\nresult_combined = render_combined(spec, max_tokens=1)\nassert 'This is the PRD content' in result_combined"
+    },
+    {
+      "id": "TS-03-20",
+      "requirement_id": "03-REQ-6.1",
+      "kind": "unit",
+      "description": "Verify that _render_test_spec_slim omits assertion_pseudocode, input, expected from test/edge cases, for_any_strategy and invariant_check from property tests, and expected_effects from smoke tests.",
+      "preconditions": [
+        "A valid TestSpec with all test entry types populated with verbose fields is constructed"
+      ],
+      "input": "A TestSpec with test cases containing assertion_pseudocode/input/expected, property tests with for_any_strategy/invariant_check, and smoke tests with expected_effects",
+      "expected": "Slim render output contains only id, description, type, and requirement linkage for each entry; verbose fields are absent",
+      "assertion_pseudocode": "ts = build_test_spec_with_verbose_entries()\nresult = _render_test_spec_slim(ts)\nassert 'assertion_pseudocode' not in result\nassert 'input' field content not in result\nassert 'expected' field content not in result\nassert 'for_any_strategy' not in result\nassert 'invariant_check' not in result\nassert 'expected_effects' not in result\nassert all test entry IDs are present in result\nassert all test entry descriptions are present in result"
+    },
+    {
+      "id": "TS-03-21",
+      "requirement_id": "03-REQ-6.2",
+      "kind": "unit",
+      "description": "Verify that _render_test_spec_scoped_slim renders the scoped TestSpec with the same field omissions, filtered to relevant test spec IDs.",
+      "preconditions": [
+        "A valid TestSpec with multiple test entries is constructed; a set of in-scope test IDs is defined"
+      ],
+      "input": "A TestSpec with multiple test entries; a set of test_spec_ids filtering to a subset",
+      "expected": "Slim scoped render contains only in-scope entries with id, description, type, and requirement linkage; verbose fields are absent",
+      "assertion_pseudocode": "ts = build_test_spec_with_multiple_entries()\nids = {'TS-03-1', 'TS-03-3'}\nresult = _render_test_spec_scoped_slim(ts, ids)\nassert 'TS-03-1' in result\nassert 'TS-03-3' in result\nassert 'TS-03-2' not in result  # out of scope\nassert 'assertion_pseudocode' not in result\nassert 'expected' field content not in result"
+    },
+    {
+      "id": "TS-03-22",
+      "requirement_id": "03-REQ-6.3",
+      "kind": "unit",
+      "description": "Verify that Level 2 slim rendering preserves test entry id, description, type, and requirement linkage fields.",
+      "preconditions": [
+        "A valid TestSpec with fully populated test entries is constructed"
+      ],
+      "input": "A TestSpec with test cases that have id, description, kind, and requirement_id fields",
+      "expected": "Slim render output contains all id, description, type/kind, and requirement_id values for each entry",
+      "assertion_pseudocode": "ts = build_test_spec_with_entries()\nresult = _render_test_spec_slim(ts)\nfor entry in ts.test_cases:\n    assert entry.id in result\n    assert entry.description in result\n    assert entry.requirement_id in result"
+    },
+    {
+      "id": "TS-03-23",
+      "requirement_id": "03-REQ-7.1",
+      "kind": "unit",
+      "description": "Verify that the Go afspec package exports RenderOption, WithMaxTokens, and EstimateTokens with correct types, and keeps renderConfig unexported.",
+      "preconditions": [
+        "Go afspec package is compiled"
+      ],
+      "input": "Go compilation and reflection of the afspec package",
+      "expected": "RenderOption is an exported type, WithMaxTokens is an exported function returning RenderOption, EstimateTokens is an exported function, renderConfig is unexported",
+      "assertion_pseudocode": "// Go test\nvar opt afspec.RenderOption = afspec.WithMaxTokens(100)\nassert opt is not nil\nresult := afspec.EstimateTokens(\"test\")\nassert result == 1\n// renderConfig should not be accessible from outside the package"
+    },
+    {
+      "id": "TS-03-24",
+      "requirement_id": "03-REQ-7.2",
+      "kind": "unit",
+      "description": "Verify that Go rendering methods with no options return output identical to the pre-budget-cap implementation.",
+      "preconditions": [
+        "A valid Go Spec value is constructed with all artifacts"
+      ],
+      "input": "A Go Spec value; call RenderIndividual() with no options",
+      "expected": "Returned map is identical to the pre-budget-cap RenderIndividual() output",
+      "assertion_pseudocode": "spec := buildTestSpec()\nresult := spec.RenderIndividual()\nresultWithOpts := spec.RenderIndividual()  // no opts\nassert reflect.DeepEqual(result, resultWithOpts)"
+    },
+    {
+      "id": "TS-03-25",
+      "requirement_id": "03-REQ-7.3",
+      "kind": "unit",
+      "description": "Verify that Go RenderIndividual with WithMaxTokens applies the two-level progressive truncation strategy.",
+      "preconditions": [
+        "A valid Go Spec value is constructed such that Level 0 render exceeds N tokens"
+      ],
+      "input": "A Go Spec with architecture and test_spec; WithMaxTokens(N) where Level 0 exceeds N",
+      "expected": "Returned map has estimated token sum ≤ N or is the Level 2 map",
+      "assertion_pseudocode": "spec := buildSpecWithLargeContent()\nN := 300\nresult := spec.RenderIndividual(afspec.WithMaxTokens(N))\ntotal := 0\nfor _, v := range result { total += afspec.EstimateTokens(v) }\nassert total <= N || isLevel2Render(result)"
+    },
+    {
+      "id": "TS-03-26",
+      "requirement_id": "03-REQ-7.4",
+      "kind": "unit",
+      "description": "Verify that Go RenderIndividualScoped with WithMaxTokens applies progressive truncation for scoped rendering.",
+      "preconditions": [
+        "A valid Go Spec value with task groups is constructed"
+      ],
+      "input": "A Go Spec with architecture; targetGroup=1, WithMaxTokens(N) where Level 0 scoped render exceeds N",
+      "expected": "Returned map has estimated token sum ≤ N or is the Level 2 scoped map",
+      "assertion_pseudocode": "spec := buildSpecWithTaskGroups()\nN := 200\nresult := spec.RenderIndividualScoped(1, afspec.WithMaxTokens(N))\ntotal := 0\nfor _, v := range result { total += afspec.EstimateTokens(v) }\nassert total <= N || isLevel2ScopedRender(result)"
+    },
+    {
+      "id": "TS-03-27",
+      "requirement_id": "03-REQ-7.5",
+      "kind": "unit",
+      "description": "Verify that Go RenderCombined with WithMaxTokens applies progressive truncation against the single returned string.",
+      "preconditions": [
+        "A valid Go Spec value is constructed such that combined Level 0 render exceeds N tokens"
+      ],
+      "input": "A Go Spec; WithMaxTokens(N) where Level 0 combined render exceeds N",
+      "expected": "Returned string has EstimateTokens(result) ≤ N or is the Level 2 combined string",
+      "assertion_pseudocode": "spec := buildSpecWithLargeCombinedContent()\nN := 300\nresult := spec.RenderCombined(afspec.WithMaxTokens(N))\nassert afspec.EstimateTokens(result) <= N || result == renderCombinedLevel2(spec)"
+    },
+    {
+      "id": "TS-03-28",
+      "requirement_id": "03-REQ-8.1",
+      "kind": "integration",
+      "description": "Verify that Python and Go produce structurally equivalent output (same keys present/absent, same truncation level) for the same spec and max_tokens.",
+      "preconditions": [
+        "The same Spec is loadable in both Python and Go implementations",
+        "Both implementations are at the same version"
+      ],
+      "input": "The same Spec serialized for both Python and Go; max_tokens=N where truncation is triggered",
+      "expected": "Both outputs have the same set of keys present and the same truncation level applied",
+      "assertion_pseudocode": "spec_py = load_spec_python(spec_path)\nspec_go = load_spec_go(spec_path)\nN = 300\nresult_py = render_individual(spec_py, max_tokens=N)\nresult_go = RenderIndividual(spec_go, WithMaxTokens(N))\nassert set(result_py.keys()) == set(result_go.keys())\nassert truncation_level(result_py) == truncation_level(result_go)"
+    },
+    {
+      "id": "TS-03-29",
+      "requirement_id": "03-REQ-8.2",
+      "kind": "unit",
+      "description": "Verify that Python estimate_tokens and Go EstimateTokens return the same integer for any string input.",
+      "preconditions": [
+        "Both Python and Go implementations are available"
+      ],
+      "input": "A set of test strings of varying lengths",
+      "expected": "Both functions return the same integer for each string",
+      "assertion_pseudocode": "for text in ['', 'a', 'abcd', 'abcdefghijklmnop', 'x' * 1000]:\n    py_result = estimate_tokens(text)\n    go_result = EstimateTokens(text)\n    assert py_result == go_result == len(text) // 4"
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-03-P1",
+      "property_id": "03-PROP-1",
+      "validates": [
+        "03-REQ-1.1",
+        "03-REQ-1.2",
+        "03-REQ-1.3"
+      ],
+      "description": "For any string of any length, estimate_tokens must return exactly len(text) // 4.",
+      "for_any_strategy": "Generate random strings of length 0 to 10000 using hypothesis.strategies.text(min_size=0, max_size=10000) for Python; use random byte sequences converted to string for Go",
+      "invariant_check": "assert estimate_tokens(text) == len(text) // 4 for Python; assert EstimateTokens(text) == len(text) / 4 (integer division) for Go"
+    },
+    {
+      "id": "TS-03-P2",
+      "property_id": "03-PROP-2",
+      "validates": [
+        "03-REQ-2.1",
+        "03-REQ-7.2"
+      ],
+      "description": "For any Spec value, rendering with max_tokens=None must produce byte-identical output to the legacy (no-argument) render.",
+      "for_any_strategy": "Generate Spec objects with varying combinations of artifacts (architecture present/absent, test_spec present/absent, varying PRD body lengths) using hypothesis composite strategies or Go fuzzing",
+      "invariant_check": "assert render_individual(spec, max_tokens=None) == render_individual(spec) for Python; assert reflect.DeepEqual(spec.RenderIndividual(), spec.RenderIndividual()) for Go (no options vs no options)"
+    },
+    {
+      "id": "TS-03-P3",
+      "property_id": "03-PROP-3",
+      "validates": [
+        "03-REQ-2.2",
+        "03-REQ-2.3"
+      ],
+      "description": "For any Spec and any positive integer M, the budget-capped render either fits within M tokens or is the Level 2 render (no further truncation possible).",
+      "for_any_strategy": "Generate Spec objects with varying content sizes and positive integers M from 1 to 10000 using hypothesis.strategies.integers(min_value=1, max_value=10000) combined with Spec generation strategies",
+      "invariant_check": "result = render_individual(spec, max_tokens=M); total = sum(estimate_tokens(v) for v in result.values()); assert total <= M or result == render_individual_level2(spec)"
+    },
+    {
+      "id": "TS-03-P4",
+      "property_id": "03-PROP-4",
+      "validates": [
+        "03-REQ-5.1"
+      ],
+      "description": "For any Spec with an architecture section, Level 1 truncation always removes the architecture key from the result dict.",
+      "for_any_strategy": "Generate Spec objects that have a non-empty architecture section with varying content sizes using hypothesis composite strategies",
+      "invariant_check": "result = render_individual(spec, max_tokens=M_triggering_level1); assert 'architecture' not in result"
+    },
+    {
+      "id": "TS-03-P5",
+      "property_id": "03-PROP-5",
+      "validates": [
+        "03-REQ-6.1",
+        "03-REQ-6.3"
+      ],
+      "description": "For any TestSpec with at least one test case, the slim render omits assertion_pseudocode, input, and expected content from all entries.",
+      "for_any_strategy": "Generate TestSpec objects with 1 to 20 test cases containing random assertion_pseudocode, input, and expected values using hypothesis composite strategies",
+      "invariant_check": "result = _render_test_spec_slim(ts); for each test case tc in ts: assert tc.assertion_pseudocode not in result (when non-empty); assert tc.input not in result (when non-empty and sufficiently unique); assert tc.expected not in result (when non-empty and sufficiently unique)"
+    },
+    {
+      "id": "TS-03-P6",
+      "property_id": "03-PROP-6",
+      "validates": [
+        "03-REQ-8.1",
+        "03-REQ-8.2"
+      ],
+      "description": "For any Spec and any positive integer N, Python and Go produce dicts with the same set of keys and the same truncation level.",
+      "for_any_strategy": "Generate Spec objects loadable in both Python and Go with varying content sizes, and positive integers N from 1 to 5000; serialize the spec to a shared format and load in both implementations",
+      "invariant_check": "result_py = render_individual(spec_py, max_tokens=N); result_go = RenderIndividual(spec_go, WithMaxTokens(N)); assert set(result_py.keys()) == set(result_go.keys()); assert truncation_level_of(result_py) == truncation_level_of(result_go)"
+    },
+    {
+      "id": "TS-03-P7",
+      "property_id": "03-PROP-7",
+      "validates": [
+        "03-REQ-5.4"
+      ],
+      "description": "For any Spec and any max_tokens value, the PRD body content is always present in the rendered output at every truncation level.",
+      "for_any_strategy": "Generate Spec objects with non-empty PRD bodies and max_tokens values from None/0 to very small positive integers using hypothesis strategies",
+      "invariant_check": "for max_tokens in [None, 0, 1, 100, 10000]: result = render_individual(spec, max_tokens=max_tokens); assert spec.prd_body in concatenated_values(result); result_combined = render_combined(spec, max_tokens=max_tokens); assert spec.prd_body in result_combined"
+    },
+    {
+      "id": "TS-03-P8",
+      "property_id": "03-PROP-8",
+      "validates": [
+        "03-REQ-2.E1",
+        "03-REQ-3.E2",
+        "03-REQ-4.E2"
+      ],
+      "description": "For any Spec, max_tokens=0 and max_tokens=None produce identical output across all three render functions.",
+      "for_any_strategy": "Generate Spec objects with varying combinations of artifacts using hypothesis composite strategies",
+      "invariant_check": "assert render_individual(spec, max_tokens=0) == render_individual(spec, max_tokens=None); assert render_individual_scoped(spec, 1, max_tokens=0) == render_individual_scoped(spec, 1, max_tokens=None); assert render_combined(spec, max_tokens=0) == render_combined(spec, max_tokens=None)"
+    },
+    {
+      "id": "TS-03-P9",
+      "property_id": "03-PROP-3",
+      "validates": [
+        "03-REQ-2.2",
+        "03-REQ-2.3"
+      ],
+      "description": "For any Spec and any positive max_tokens, the progressive truncation evaluation loop terminates in at most 3 iterations (Level 0, Level 1, Level 2) — no unbounded looping.",
+      "for_any_strategy": "Generate Spec objects with varying content sizes and positive max_tokens values from 1 to 100000 using hypothesis strategies",
+      "invariant_check": "Instrument the evaluation loop to count iterations; result = render_individual(spec, max_tokens=M); assert loop_iteration_count <= 3"
+    }
+  ],
+  "edge_case_tests": [
+    {
+      "id": "TS-03-E1",
+      "requirement_id": "03-REQ-1.E1",
+      "kind": "unit",
+      "description": "Verify that estimate_tokens returns 0 for strings of length 1, 2, or 3 due to floor division truncation.",
+      "preconditions": [
+        "afspec library is installed and importable"
+      ],
+      "input": "Strings 'a' (len 1), 'ab' (len 2), 'abc' (len 3)",
+      "expected": "estimate_tokens returns 0 for all three inputs",
+      "assertion_pseudocode": "assert estimate_tokens('a') == 0\nassert estimate_tokens('ab') == 0\nassert estimate_tokens('abc') == 0"
+    },
+    {
+      "id": "TS-03-E2",
+      "requirement_id": "03-REQ-1.E2",
+      "kind": "unit",
+      "description": "Verify that estimate_tokens returns 1 for a string of exactly 4 characters.",
+      "preconditions": [
+        "afspec library is installed and importable"
+      ],
+      "input": "The string 'abcd' (length 4)",
+      "expected": "estimate_tokens returns 1",
+      "assertion_pseudocode": "assert estimate_tokens('abcd') == 1\nassert estimate_tokens('1234') == 1"
+    },
+    {
+      "id": "TS-03-E3",
+      "requirement_id": "03-REQ-1.E3",
+      "kind": "unit",
+      "description": "Verify that estimate_tokens handles a very large string (1 million characters) without overflow or error.",
+      "preconditions": [
+        "afspec library is installed and importable"
+      ],
+      "input": "A string of 1,000,000 characters (e.g., 'x' * 1000000)",
+      "expected": "estimate_tokens returns 250000",
+      "assertion_pseudocode": "large_text = 'x' * 1000000\nresult = estimate_tokens(large_text)\nassert result == 250000"
+    },
+    {
+      "id": "TS-03-E4",
+      "requirement_id": "03-REQ-2.E1",
+      "kind": "unit",
+      "description": "Verify that render_individual with max_tokens=0 is treated as equivalent to None and returns the full Level 0 render.",
+      "preconditions": [
+        "A valid Spec object with all artifacts is constructed"
+      ],
+      "input": "A Spec object; max_tokens=0",
+      "expected": "Returned dict is identical to render_individual(spec, max_tokens=None)",
+      "assertion_pseudocode": "spec = build_test_spec_with_all_artifacts()\nresult_zero = render_individual(spec, max_tokens=0)\nresult_none = render_individual(spec, max_tokens=None)\nassert result_zero == result_none"
+    },
+    {
+      "id": "TS-03-E5",
+      "requirement_id": "03-REQ-2.E2",
+      "kind": "unit",
+      "description": "Verify that render_individual skips Level 1 and proceeds directly to Level 2 when the spec has no architecture section.",
+      "preconditions": [
+        "A valid Spec without an architecture section is constructed such that Level 0 exceeds M"
+      ],
+      "input": "A Spec without architecture; max_tokens=M where Level 0 exceeds M",
+      "expected": "Level 2 truncation is applied directly; test spec is slimmed; no Level 1 re-evaluation occurs",
+      "assertion_pseudocode": "spec = build_spec_without_architecture(level0_tokens=500)\nM = 200\nresult = render_individual(spec, max_tokens=M)\nassert 'architecture' not in result\nassert test_spec_is_slimmed(result)"
+    },
+    {
+      "id": "TS-03-E6",
+      "requirement_id": "03-REQ-2.E3",
+      "kind": "unit",
+      "description": "Verify that render_individual returns the Level 2 render as-is when it still exceeds the budget.",
+      "preconditions": [
+        "A valid Spec with large content is constructed"
+      ],
+      "input": "A Spec with very large content; max_tokens=1 (extremely low budget)",
+      "expected": "Level 2 render is returned regardless of token count; no error is raised",
+      "assertion_pseudocode": "spec = build_spec_with_very_large_content()\nresult = render_individual(spec, max_tokens=1)\ntotal = sum(estimate_tokens(v) for v in result.values())\nassert total > 1  # Level 2 still exceeds budget\nassert result is not None  # returned as-is, no error"
+    },
+    {
+      "id": "TS-03-E7",
+      "requirement_id": "03-REQ-2.E4",
+      "kind": "unit",
+      "description": "Verify that render_individual with a negative max_tokens value is treated as equivalent to None.",
+      "preconditions": [
+        "A valid Spec object is constructed"
+      ],
+      "input": "A Spec object; max_tokens=-10",
+      "expected": "Returned dict is identical to render_individual(spec, max_tokens=None)",
+      "assertion_pseudocode": "spec = build_test_spec_with_all_artifacts()\nresult_neg = render_individual(spec, max_tokens=-10)\nresult_none = render_individual(spec, max_tokens=None)\nassert result_neg == result_none"
+    },
+    {
+      "id": "TS-03-E8",
+      "requirement_id": "03-REQ-3.E1",
+      "kind": "unit",
+      "description": "Verify that render_individual_scoped skips Level 1 and proceeds directly to Level 2 when the spec has no architecture section.",
+      "preconditions": [
+        "A valid Spec without architecture is constructed with task groups"
+      ],
+      "input": "A Spec without architecture; target_group=1; max_tokens=M where Level 0 exceeds M",
+      "expected": "Level 2 truncation is applied directly for the scoped render",
+      "assertion_pseudocode": "spec = build_spec_without_architecture_with_groups()\nM = 100\nresult = render_individual_scoped(spec, target_group=1, max_tokens=M)\nassert 'architecture' not in result\nassert test_spec_is_slimmed(result)"
+    },
+    {
+      "id": "TS-03-E9",
+      "requirement_id": "03-REQ-3.E2",
+      "kind": "unit",
+      "description": "Verify that render_individual_scoped with max_tokens=0 or negative returns the full Level 0 scoped render.",
+      "preconditions": [
+        "A valid Spec with task groups is constructed"
+      ],
+      "input": "A Spec with target_group=1; max_tokens=0 and max_tokens=-5",
+      "expected": "Both return dicts identical to render_individual_scoped(spec, 1, max_tokens=None)",
+      "assertion_pseudocode": "spec = build_spec_with_task_groups()\nresult_zero = render_individual_scoped(spec, 1, max_tokens=0)\nresult_neg = render_individual_scoped(spec, 1, max_tokens=-5)\nresult_none = render_individual_scoped(spec, 1, max_tokens=None)\nassert result_zero == result_none\nassert result_neg == result_none"
+    },
+    {
+      "id": "TS-03-E10",
+      "requirement_id": "03-REQ-3.E3",
+      "kind": "unit",
+      "description": "Verify that render_individual_scoped returns the Level 2 render as-is when it still exceeds the budget.",
+      "preconditions": [
+        "A valid Spec with large scoped content is constructed"
+      ],
+      "input": "A Spec with large scoped content; target_group=1; max_tokens=1",
+      "expected": "Level 2 scoped render is returned regardless of token count",
+      "assertion_pseudocode": "spec = build_spec_with_large_scoped_content()\nresult = render_individual_scoped(spec, 1, max_tokens=1)\ntotal = sum(estimate_tokens(v) for v in result.values())\nassert total > 1  # still exceeds\nassert result is not None"
+    },
+    {
+      "id": "TS-03-E11",
+      "requirement_id": "03-REQ-4.E1",
+      "kind": "unit",
+      "description": "Verify that render_combined skips Level 1 and proceeds directly to Level 2 when the spec has no architecture section.",
+      "preconditions": [
+        "A valid Spec without architecture is constructed"
+      ],
+      "input": "A Spec without architecture; max_tokens=M where Level 0 exceeds M",
+      "expected": "Level 2 combined render is returned; architecture section is not present",
+      "assertion_pseudocode": "spec = build_spec_without_architecture()\nM = 100\nresult = render_combined(spec, max_tokens=M)\nassert architecture_content not in result\nassert test_spec_is_slimmed_in_combined(result)"
+    },
+    {
+      "id": "TS-03-E12",
+      "requirement_id": "03-REQ-4.E2",
+      "kind": "unit",
+      "description": "Verify that render_combined with max_tokens=0 or negative returns the full Level 0 combined render.",
+      "preconditions": [
+        "A valid Spec is constructed"
+      ],
+      "input": "A Spec; max_tokens=0 and max_tokens=-1",
+      "expected": "Both return strings identical to render_combined(spec, max_tokens=None)",
+      "assertion_pseudocode": "spec = build_test_spec_with_all_artifacts()\nresult_zero = render_combined(spec, max_tokens=0)\nresult_neg = render_combined(spec, max_tokens=-1)\nresult_none = render_combined(spec, max_tokens=None)\nassert result_zero == result_none\nassert result_neg == result_none"
+    },
+    {
+      "id": "TS-03-E13",
+      "requirement_id": "03-REQ-4.E3",
+      "kind": "unit",
+      "description": "Verify that render_combined returns the Level 2 render as-is when it still exceeds the budget.",
+      "preconditions": [
+        "A valid Spec with large content is constructed"
+      ],
+      "input": "A Spec with large content; max_tokens=1",
+      "expected": "Level 2 combined render is returned regardless of token count",
+      "assertion_pseudocode": "spec = build_spec_with_very_large_content()\nresult = render_combined(spec, max_tokens=1)\nassert estimate_tokens(result) > 1\nassert result is not None"
+    },
+    {
+      "id": "TS-03-E14",
+      "requirement_id": "03-REQ-5.E1",
+      "kind": "unit",
+      "description": "Verify that Level 1 removes the architecture key even when its value is an empty string, and proceeds to Level 2 since token contribution was 0.",
+      "preconditions": [
+        "A valid Spec with an empty architecture value is constructed"
+      ],
+      "input": "A Spec with architecture key present but value is empty string; max_tokens=M where Level 0 exceeds M",
+      "expected": "Architecture key is removed; since token contribution was 0, Level 1 is effectively a no-op and Level 2 is applied",
+      "assertion_pseudocode": "spec = build_spec_with_empty_architecture()\nM = compute_budget_below_level0(spec)\nresult = render_individual(spec, max_tokens=M)\nassert 'architecture' not in result\nassert test_spec_is_slimmed(result)  # Level 2 was applied because removing empty arch didn't help"
+    },
+    {
+      "id": "TS-03-E15",
+      "requirement_id": "03-REQ-6.E1",
+      "kind": "unit",
+      "description": "Verify that Level 2 slim rendering handles a Spec with no TestSpec gracefully — no error, test spec section absent or empty.",
+      "preconditions": [
+        "A valid Spec without a TestSpec is constructed"
+      ],
+      "input": "A Spec with no TestSpec; max_tokens=M triggering Level 2",
+      "expected": "No error is raised; test spec value is empty string or key is absent in the result",
+      "assertion_pseudocode": "spec = build_spec_without_test_spec()\nM = 10\nresult = render_individual(spec, max_tokens=M)\nassert no exception raised\nassert result.get('test_spec', '') == '' or 'test_spec' not in result"
+    },
+    {
+      "id": "TS-03-E16",
+      "requirement_id": "03-REQ-6.E2",
+      "kind": "unit",
+      "description": "Verify that Level 2 slim rendering handles test case entries that already lack assertion_pseudocode, input, and expected fields.",
+      "preconditions": [
+        "A valid TestSpec with minimal test entries (only id, description, kind, requirement_id) is constructed"
+      ],
+      "input": "A TestSpec with test cases that have no assertion_pseudocode, input, or expected fields",
+      "expected": "Slim render produces output without error; entries rendered with only the fields that are present",
+      "assertion_pseudocode": "ts = build_test_spec_with_minimal_entries()\nresult = _render_test_spec_slim(ts)\nassert no exception raised\nassert all entry IDs are present in result"
+    },
+    {
+      "id": "TS-03-E17",
+      "requirement_id": "03-REQ-7.E1",
+      "kind": "unit",
+      "description": "Verify that Go rendering methods with WithMaxTokens(0) or a negative value return the full Level 0 render.",
+      "preconditions": [
+        "A valid Go Spec value is constructed"
+      ],
+      "input": "A Go Spec; WithMaxTokens(0) and WithMaxTokens(-5)",
+      "expected": "Both return output identical to calling the method with no options",
+      "assertion_pseudocode": "spec := buildTestSpec()\nresultZero := spec.RenderIndividual(afspec.WithMaxTokens(0))\nresultNeg := spec.RenderIndividual(afspec.WithMaxTokens(-5))\nresultNone := spec.RenderIndividual()\nassert reflect.DeepEqual(resultZero, resultNone)\nassert reflect.DeepEqual(resultNeg, resultNone)"
+    },
+    {
+      "id": "TS-03-E18",
+      "requirement_id": "03-REQ-7.E2",
+      "kind": "unit",
+      "description": "Verify that Go rendering methods skip Level 1 and proceed directly to Level 2 when the spec has no architecture section.",
+      "preconditions": [
+        "A valid Go Spec without architecture is constructed"
+      ],
+      "input": "A Go Spec without architecture; WithMaxTokens(N) where Level 0 exceeds N",
+      "expected": "Level 2 truncation is applied directly; test spec is slimmed",
+      "assertion_pseudocode": "spec := buildSpecWithoutArchitecture()\nN := 100\nresult := spec.RenderIndividual(afspec.WithMaxTokens(N))\n_, hasArch := result[\"architecture\"]\nassert !hasArch\nassert isLevel2Render(result)"
+    },
+    {
+      "id": "TS-03-E19",
+      "requirement_id": "03-REQ-7.E3",
+      "kind": "unit",
+      "description": "Verify that Go afspec library code never calls os.Exit or terminates the process; all errors are signaled via return values.",
+      "preconditions": [
+        "Go afspec package is compiled"
+      ],
+      "input": "Various edge case inputs to Go rendering methods (nil spec, zero budget, etc.)",
+      "expected": "No os.Exit call; methods return values without panicking or terminating",
+      "assertion_pseudocode": "// Verify via code review or static analysis that os.Exit is not called\n// Run Go tests with various edge cases and confirm process does not terminate\nspec := buildTestSpec()\nresult := spec.RenderIndividual(afspec.WithMaxTokens(0))\nassert result is not nil\nresult2 := spec.RenderCombined(afspec.WithMaxTokens(-1))\nassert result2 is not empty"
+    },
+    {
+      "id": "TS-03-E20",
+      "requirement_id": "03-REQ-8.E1",
+      "kind": "integration",
+      "description": "Verify that both Python and Go return a result without the architecture key/section and with test spec intact when Level 1 truncation is sufficient.",
+      "preconditions": [
+        "The same Spec is loadable in both Python and Go",
+        "The spec has an architecture section",
+        "Level 1 truncation is sufficient to fit within N"
+      ],
+      "input": "The same Spec with architecture in both Python and Go; max_tokens=N where Level 1 is sufficient",
+      "expected": "Both outputs lack architecture and have test spec present; same truncation level applied",
+      "assertion_pseudocode": "spec_py = load_spec_python(spec_path)\nspec_go = load_spec_go(spec_path)\nN = compute_level1_sufficient_budget(spec_py)\nresult_py = render_individual(spec_py, max_tokens=N)\nresult_go = RenderIndividual(spec_go, WithMaxTokens(N))\nassert 'architecture' not in result_py\nassert 'architecture' not in result_go\nassert 'test_spec' in result_py\nassert 'test_spec' in result_go"
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "TS-03-SMOKE-1",
+      "execution_path_id": "03-PATH-1",
+      "description": "End-to-end test of Python render_individual with a budget that triggers Level 1 truncation (architecture dropped, test spec intact).",
+      "trigger": "Call render_individual(spec, max_tokens=M) where spec has architecture and Level 0 exceeds M but Level 1 fits",
+      "real_components": [
+        "render_individual",
+        "estimate_tokens",
+        "_render_test_spec_slim"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "render_individual returns a dict[str, str] without the 'architecture' key",
+        "The sum of estimate_tokens(v) for all values in the returned dict is ≤ M",
+        "The 'test_spec' key is present and contains full (non-slimmed) test spec content",
+        "The PRD body content is present in the returned dict"
+      ]
+    },
+    {
+      "id": "TS-03-SMOKE-2",
+      "execution_path_id": "03-PATH-2",
+      "description": "End-to-end test of Python render_individual with a budget that triggers Level 2 truncation (architecture dropped and test spec slimmed).",
+      "trigger": "Call render_individual(spec, max_tokens=M) where spec has architecture but even Level 1 exceeds M",
+      "real_components": [
+        "render_individual",
+        "estimate_tokens",
+        "_render_test_spec_slim"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "render_individual returns a dict[str, str] without the 'architecture' key",
+        "The 'test_spec' value does not contain assertion_pseudocode, input, or expected field content from test entries",
+        "The 'test_spec' value contains test entry IDs and descriptions",
+        "The PRD body content is present in the returned dict",
+        "The returned dict is the Level 2 render regardless of whether it fits within M"
+      ]
+    },
+    {
+      "id": "TS-03-SMOKE-3",
+      "execution_path_id": "03-PATH-3",
+      "description": "End-to-end test of Go RenderIndividual with WithMaxTokens triggering the progressive truncation evaluation loop.",
+      "trigger": "Call spec.RenderIndividual(afspec.WithMaxTokens(N)) on a Go Spec where Level 0 exceeds N",
+      "real_components": [
+        "RenderIndividual",
+        "EstimateTokens",
+        "WithMaxTokens",
+        "renderTestSpecSlim"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "RenderIndividual returns a map[string]string at the appropriate truncation level",
+        "The sum of EstimateTokens(v) for all values is ≤ N or the result is the Level 2 map",
+        "The returned map has the same structural properties as the equivalent Python call",
+        "No os.Exit or process termination occurs"
+      ]
+    },
+    {
+      "id": "TS-03-SMOKE-4",
+      "execution_path_id": "03-PATH-4",
+      "description": "End-to-end simulation of assemble_context calling budget-capped spec rendering to fit spec content within a system prompt token budget.",
+      "trigger": "Simulate assemble_context determining a token budget M and calling render_individual(spec, max_tokens=M) for a spec with large content",
+      "real_components": [
+        "render_individual",
+        "estimate_tokens",
+        "_render_test_spec_slim",
+        "render_combined"
+      ],
+      "mockable": [
+        "assemble_context (simulated caller — not part of afspec)"
+      ],
+      "expected_effects": [
+        "render_individual returns a dict whose concatenated values fit within the budget M when achievable",
+        "Progressive truncation is applied: Level 0 → Level 1 → Level 2 as needed",
+        "The PRD body is always present in the output regardless of truncation level",
+        "The caller can concatenate the returned artifact strings into a prompt that respects the token budget"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [
+      "03-REQ-1.1",
+      "03-REQ-1.2",
+      "03-REQ-1.3",
+      "03-REQ-1.4",
+      "03-REQ-1.5",
+      "03-REQ-1.E1",
+      "03-REQ-1.E2",
+      "03-REQ-1.E3",
+      "03-REQ-2.1",
+      "03-REQ-2.2",
+      "03-REQ-2.3",
+      "03-REQ-2.4",
+      "03-REQ-2.E1",
+      "03-REQ-2.E2",
+      "03-REQ-2.E3",
+      "03-REQ-2.E4",
+      "03-REQ-3.1",
+      "03-REQ-3.2",
+      "03-REQ-3.3",
+      "03-REQ-3.E1",
+      "03-REQ-3.E2",
+      "03-REQ-3.E3",
+      "03-REQ-4.1",
+      "03-REQ-4.2",
+      "03-REQ-4.3",
+      "03-REQ-4.E1",
+      "03-REQ-4.E2",
+      "03-REQ-4.E3",
+      "03-REQ-5.1",
+      "03-REQ-5.2",
+      "03-REQ-5.3",
+      "03-REQ-5.4",
+      "03-REQ-5.E1",
+      "03-REQ-6.1",
+      "03-REQ-6.2",
+      "03-REQ-6.3",
+      "03-REQ-6.E1",
+      "03-REQ-6.E2",
+      "03-REQ-7.1",
+      "03-REQ-7.2",
+      "03-REQ-7.3",
+      "03-REQ-7.4",
+      "03-REQ-7.5",
+      "03-REQ-7.E1",
+      "03-REQ-7.E2",
+      "03-REQ-7.E3",
+      "03-REQ-8.1",
+      "03-REQ-8.2",
+      "03-REQ-8.E1"
+    ],
+    "properties_covered": [
+      "03-PROP-1",
+      "03-PROP-2",
+      "03-PROP-3",
+      "03-PROP-4",
+      "03-PROP-5",
+      "03-PROP-6",
+      "03-PROP-7",
+      "03-PROP-8"
+    ],
+    "paths_covered": [
+      "03-PATH-1",
+      "03-PATH-2",
+      "03-PATH-3",
+      "03-PATH-4"
+    ],
+    "gaps": []
+  }
+}
+

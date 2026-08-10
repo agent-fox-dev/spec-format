@@ -1,0 +1,1064 @@
+{
+  "$schema": null,
+  "spec_id": "03",
+  "spec_name": "spec_rendering_budget_cap",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "pytest tests/spec_03/ -q && go test ./golang/... -count=1 -v",
+    "all_tests": "pytest -q && go test ./... -count=1",
+    "linter": "ruff check && go vet ./..."
+  },
+  "dependencies": [
+    {
+      "depends_on_spec": "01",
+      "from_group": 4,
+      "to_group": 0,
+      "relationship": "Go rendering methods (RenderCombined, RenderIndividual, RenderIndividualScoped) established by afspec_go spec 01 are extended with variadic RenderOption parameters.",
+      "sentinel": false
+    },
+    {
+      "depends_on_spec": "02",
+      "from_group": 2,
+      "to_group": 0,
+      "relationship": "render_individual_scoped modified by scoped_rendering_ref_inference spec 02 is further extended with max_tokens parameter.",
+      "sentinel": false
+    }
+  ],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Python token estimation and render_individual budget cap tests",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write tests for estimate_tokens utility",
+          "details": [
+            "Create test file tests/spec_03/test_estimate_tokens.py",
+            "Test estimate_tokens('abcd') == 1",
+            "Test estimate_tokens('') == 0",
+            "Test estimate_tokens for arbitrary strings: len(text) // 4",
+            "Test estimate_tokens with single character returns 0",
+            "Test estimate_tokens with 8 characters returns 2"
+          ],
+          "test_spec_refs": [
+            "TS-03-1",
+            "TS-03-2",
+            "TS-03-3",
+            "TS-03-4",
+            "TS-03-5"
+          ],
+          "requirement_refs": [
+            "03-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write tests for render_individual with max_tokens=None (no truncation)",
+          "details": [
+            "Create test file tests/spec_03/test_render_individual_budget.py",
+            "Test that render_individual(spec) without max_tokens returns byte-identical output to current behavior",
+            "Test that render_individual(spec, max_tokens=None) returns byte-identical output",
+            "Test that render_individual(spec, max_tokens=0) returns byte-identical output (0 treated as no cap)"
+          ],
+          "test_spec_refs": [
+            "TS-03-6",
+            "TS-03-7"
+          ],
+          "requirement_refs": [
+            "03-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write tests for render_individual Level 1 and Level 2 truncation",
+          "details": [
+            "Test that render_individual with max_tokens triggers Level 1 (architecture dropped) when full render exceeds budget",
+            "Test that render_individual with max_tokens triggers Level 2 (slim test spec) when Level 1 still exceeds budget",
+            "Test that Level 2 output is returned as-is even if it still exceeds budget",
+            "Build test fixtures with known architecture and test spec content for deterministic token counts"
+          ],
+          "test_spec_refs": [
+            "TS-03-8",
+            "TS-03-9"
+          ],
+          "requirement_refs": [
+            "03-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.4",
+          "title": "Write tests for Level 1 truncation behavior (architecture removal)",
+          "details": [
+            "Create test file tests/spec_03/test_truncation_levels.py",
+            "Test that Level 1 removes 'architecture' key from render_individual dict result",
+            "Test that Level 1 omits architecture section from render_combined string",
+            "Test that Level 1 is a no-op when spec has no architecture section",
+            "Test that when architecture is absent, evaluation loop skips directly to Level 2"
+          ],
+          "test_spec_refs": [
+            "TS-03-16",
+            "TS-03-17",
+            "TS-03-18",
+            "TS-03-19"
+          ],
+          "requirement_refs": [
+            "03-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All new test files exist under tests/spec_03/",
+          "Tests reference correct test spec IDs (TS-03-1 through TS-03-9, TS-03-16 through TS-03-19)",
+          "Tests are syntactically valid: ruff check tests/spec_03/",
+          "Tests fail as expected (functions not yet implemented): pytest tests/spec_03/ -q || true"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Python render_individual_scoped, render_combined, and Level 2 tests",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write tests for render_individual_scoped budget cap",
+          "details": [
+            "Create test file tests/spec_03/test_render_individual_scoped_budget.py",
+            "Test render_individual_scoped(spec, target_group, max_tokens=None) returns byte-identical output",
+            "Test Level 1 truncation drops architecture from scoped result dict",
+            "Test Level 2 truncation produces slim test spec in scoped context"
+          ],
+          "test_spec_refs": [
+            "TS-03-10",
+            "TS-03-11",
+            "TS-03-12"
+          ],
+          "requirement_refs": [
+            "03-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for render_combined budget cap",
+          "details": [
+            "Create test file tests/spec_03/test_render_combined_budget.py",
+            "Test render_combined(spec, max_tokens=None) returns byte-identical output",
+            "Test Level 1 truncation omits architecture section from combined string",
+            "Test Level 2 truncation produces slim test spec entries in combined string"
+          ],
+          "test_spec_refs": [
+            "TS-03-13",
+            "TS-03-14",
+            "TS-03-15"
+          ],
+          "requirement_refs": [
+            "03-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for Level 2 slim test spec rendering",
+          "details": [
+            "Test that Level 2 test case entries contain only id, description, type, and requirement linkage fields",
+            "Test that assertion_pseudocode, input, and expected are absent from Level 2 test cases",
+            "Test that property tests drop for_any_strategy and invariant_check in Level 2",
+            "Test that smoke tests drop expected_effects in Level 2"
+          ],
+          "test_spec_refs": [
+            "TS-03-20",
+            "TS-03-21",
+            "TS-03-22"
+          ],
+          "requirement_refs": [
+            "03-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All new test files exist under tests/spec_03/",
+          "Tests reference correct test spec IDs (TS-03-10 through TS-03-15, TS-03-20 through TS-03-22)",
+          "Tests are syntactically valid: ruff check tests/spec_03/",
+          "Tests fail as expected (functions not yet implemented): pytest tests/spec_03/ -q || true"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Go budget cap and cross-implementation parity tests",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write Go tests for EstimateTokens",
+          "details": [
+            "Create test file golang/estimate_tokens_test.go",
+            "Test EstimateTokens('abcd') == 1",
+            "Test EstimateTokens('') == 0",
+            "Test EstimateTokens for arbitrary strings matches len(text) / 4 (integer division)"
+          ],
+          "test_spec_refs": [
+            "TS-03-23"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write Go tests for RenderOption and WithMaxTokens",
+          "details": [
+            "Create test file golang/render_budget_test.go",
+            "Test that RenderCombined() without options returns identical output to current behavior",
+            "Test that RenderIndividual(WithMaxTokens(0)) returns identical output (no cap)",
+            "Test that WithMaxTokens(N) triggers progressive truncation on RenderIndividual",
+            "Test that WithMaxTokens(N) triggers progressive truncation on RenderCombined"
+          ],
+          "test_spec_refs": [
+            "TS-03-24",
+            "TS-03-25",
+            "TS-03-26"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Write Go tests for RenderIndividualScoped with budget cap",
+          "details": [
+            "Test RenderIndividualScoped(targetGroup) without options returns identical output",
+            "Test RenderIndividualScoped(targetGroup, WithMaxTokens(N)) applies Level 1 and Level 2 truncation"
+          ],
+          "test_spec_refs": [
+            "TS-03-27"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.4",
+          "title": "Write cross-implementation parity tests",
+          "details": [
+            "Create test file tests/spec_03/test_cross_parity.py",
+            "Build a shared fixture spec with known content in both Python and Go",
+            "Test that Python render_individual(spec, max_tokens=N) and Go RenderIndividual(WithMaxTokens(N)) produce same keys present/absent",
+            "Test that both implementations apply the same truncation level for the same budget value"
+          ],
+          "test_spec_refs": [
+            "TS-03-28",
+            "TS-03-29"
+          ],
+          "requirement_refs": [
+            "03-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "Go test files compile: go vet ./golang/...",
+          "Python parity test file is syntactically valid: ruff check tests/spec_03/test_cross_parity.py",
+          "Go tests fail as expected (functions not yet implemented): go test ./golang/... -count=1 || true",
+          "Tests reference correct test spec IDs (TS-03-23 through TS-03-29)"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "standard",
+      "title": "Implement Python estimate_tokens and export",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Implement estimate_tokens function",
+          "details": [
+            "Add estimate_tokens(text: str) -> int to afspec/render.py",
+            "Implementation: return len(text) // 4",
+            "Handle empty string input returning 0"
+          ],
+          "test_spec_refs": [
+            "TS-03-1",
+            "TS-03-2",
+            "TS-03-3",
+            "TS-03-4",
+            "TS-03-5"
+          ],
+          "requirement_refs": [
+            "03-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Export estimate_tokens in __init__.py",
+          "details": [
+            "Add estimate_tokens to afspec/__init__.py imports",
+            "Add estimate_tokens to __all__ list",
+            "Verify import works: from afspec import estimate_tokens"
+          ],
+          "test_spec_refs": [
+            "TS-03-5"
+          ],
+          "requirement_refs": [
+            "03-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "Token estimation tests pass: pytest tests/spec_03/test_estimate_tokens.py -q",
+          "No linter warnings: ruff check afspec/render.py afspec/__init__.py",
+          "03-REQ-1 acceptance criteria met: estimate_tokens('abcd') == 1, estimate_tokens('') == 0"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement Python slim test spec helpers",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Implement _render_test_spec_slim",
+          "details": [
+            "Add _render_test_spec_slim(ts: TestSpec) -> str to afspec/render.py",
+            "Mirror structure of existing render_test_spec but omit assertion_pseudocode, input, and expected from test cases",
+            "Omit for_any_strategy and invariant_check from property tests",
+            "Omit expected_effects from smoke tests",
+            "Preserve id, description, type, and requirement linkage fields on all entries"
+          ],
+          "test_spec_refs": [
+            "TS-03-20",
+            "TS-03-21",
+            "TS-03-22"
+          ],
+          "requirement_refs": [
+            "03-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Implement _render_test_spec_scoped_slim",
+          "details": [
+            "Add _render_test_spec_scoped_slim(ts: TestSpec, test_spec_ids: set[str]) -> str to afspec/render.py",
+            "Mirror structure of existing render_test_spec_scoped but omit verbose fields same as _render_test_spec_slim",
+            "Filter test entries to only those whose IDs are in test_spec_ids set"
+          ],
+          "test_spec_refs": [
+            "TS-03-20",
+            "TS-03-22"
+          ],
+          "requirement_refs": [
+            "03-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "Level 2 truncation tests pass: pytest tests/spec_03/test_truncation_levels.py -q -k 'level2 or slim'",
+          "No linter warnings: ruff check afspec/render.py",
+          "03-REQ-6 acceptance criteria met: slim output contains only id, description, type, requirement linkage"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement Python budget cap on render_individual and render_individual_scoped",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Add max_tokens parameter to render_individual",
+          "details": [
+            "Add max_tokens: int | None = None parameter to render_individual signature",
+            "Implement budget evaluation loop: Level 0 \u2192 check budget \u2192 Level 1 (drop architecture key) \u2192 check budget \u2192 Level 2 (slim test spec via _render_test_spec_slim) \u2192 return",
+            "Sum token estimates across all dict values for budget comparison",
+            "When max_tokens is None or 0, skip budget evaluation entirely and return Level 0 output"
+          ],
+          "test_spec_refs": [
+            "TS-03-6",
+            "TS-03-7",
+            "TS-03-8",
+            "TS-03-9"
+          ],
+          "requirement_refs": [
+            "03-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Add max_tokens parameter to render_individual_scoped",
+          "details": [
+            "Add max_tokens: int | None = None parameter to render_individual_scoped signature",
+            "Implement same budget evaluation loop as render_individual",
+            "Use _render_test_spec_scoped_slim for Level 2 in scoped context",
+            "When architecture key is absent from result, skip Level 1 and proceed to Level 2"
+          ],
+          "test_spec_refs": [
+            "TS-03-10",
+            "TS-03-11",
+            "TS-03-12"
+          ],
+          "requirement_refs": [
+            "03-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.3",
+          "title": "Implement Level 1 no-op detection for missing architecture",
+          "details": [
+            "In budget evaluation loop, check if architecture key exists in result dict before applying Level 1",
+            "If architecture key is absent or its value is empty string, skip Level 1 budget re-evaluation",
+            "Proceed directly to Level 2 when Level 1 is a no-op"
+          ],
+          "test_spec_refs": [
+            "TS-03-18",
+            "TS-03-19"
+          ],
+          "requirement_refs": [
+            "03-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "render_individual budget tests pass: pytest tests/spec_03/test_render_individual_budget.py -q",
+          "render_individual_scoped budget tests pass: pytest tests/spec_03/test_render_individual_scoped_budget.py -q",
+          "Level 1 truncation tests pass: pytest tests/spec_03/test_truncation_levels.py -q -k level1",
+          "No linter warnings: ruff check afspec/render.py",
+          "03-REQ-2, 03-REQ-3, 03-REQ-5 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement Python budget cap on render_combined",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Add max_tokens parameter to render_combined",
+          "details": [
+            "Add max_tokens: int | None = None parameter to render_combined signature",
+            "Implement budget evaluation against the single returned string",
+            "Level 1: omit architecture section from combined markdown string",
+            "Level 2: re-render test spec section using _render_test_spec_slim",
+            "When max_tokens is None or 0, return Level 0 output unchanged"
+          ],
+          "test_spec_refs": [
+            "TS-03-13",
+            "TS-03-14",
+            "TS-03-15"
+          ],
+          "requirement_refs": [
+            "03-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Verify Level 1 architecture omission in combined output",
+          "details": [
+            "Ensure architecture section heading and content are fully omitted from combined string at Level 1",
+            "Verify PRD body is never truncated in combined output regardless of budget",
+            "Verify that when architecture is absent, Level 1 is a no-op and loop proceeds to Level 2"
+          ],
+          "test_spec_refs": [
+            "TS-03-17",
+            "TS-03-19"
+          ],
+          "requirement_refs": [
+            "03-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "render_combined budget tests pass: pytest tests/spec_03/test_render_combined_budget.py -q",
+          "No linter warnings: ruff check afspec/render.py",
+          "03-REQ-4 acceptance criteria met: max_tokens=None returns byte-identical output"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "checkpoint",
+      "title": "Python implementation checkpoint",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Verify all Python tests pass",
+          "details": [
+            "Run full Python test suite to confirm no regressions",
+            "Confirm all spec_03 tests pass",
+            "Verify existing render tests still pass (backward compatibility)"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "03-REQ-1",
+            "03-REQ-2",
+            "03-REQ-3",
+            "03-REQ-4",
+            "03-REQ-5",
+            "03-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "All Python spec_03 tests pass: pytest tests/spec_03/ -q",
+          "All existing Python tests pass: pytest -q",
+          "No linter warnings: ruff check afspec/",
+          "03-REQ-1 through 03-REQ-6 acceptance criteria verified"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "standard",
+      "title": "Implement Go EstimateTokens and RenderOption infrastructure",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Implement EstimateTokens function in Go",
+          "details": [
+            "Add EstimateTokens(text string) int to the afspec Go package",
+            "Implementation: return len(text) / 4 (integer division)",
+            "Handle empty string returning 0"
+          ],
+          "test_spec_refs": [
+            "TS-03-23"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Implement RenderOption type and WithMaxTokens constructor",
+          "details": [
+            "Define unexported renderConfig struct with maxTokens int field",
+            "Define exported RenderOption type as func(*renderConfig)",
+            "Implement exported WithMaxTokens(n int) RenderOption constructor",
+            "WithMaxTokens(0) should be equivalent to no budget cap"
+          ],
+          "test_spec_refs": [
+            "TS-03-24"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Add variadic RenderOption to Go rendering method signatures",
+          "details": [
+            "Update RenderCombined signature to (opts ...RenderOption) string",
+            "Update RenderIndividual signature to (opts ...RenderOption) map[string]string",
+            "Update RenderIndividualScoped signature to (targetGroup int, opts ...RenderOption) map[string]string",
+            "Ensure backward compatibility: existing callers without opts continue to work"
+          ],
+          "test_spec_refs": [
+            "TS-03-25",
+            "TS-03-26",
+            "TS-03-27"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "Go EstimateTokens tests pass: go test ./golang/... -run TestEstimateTokens -count=1",
+          "Go code compiles: go build ./golang/...",
+          "No vet warnings: go vet ./golang/...",
+          "Existing Go tests still pass: go test ./golang/... -count=1"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "standard",
+      "title": "Implement Go slim test spec helpers and budget evaluation loop",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Implement renderTestSpecSlim in Go",
+          "details": [
+            "Add renderTestSpecSlim(ts *TestSpecV1Json) string as unexported function",
+            "Mirror structure of existing test spec renderer but omit assertion_pseudocode, input, expected from test cases",
+            "Omit for_any_strategy and invariant_check from property tests",
+            "Omit expected_effects from smoke tests",
+            "Preserve id, description, type, and requirement linkage fields"
+          ],
+          "test_spec_refs": [
+            "TS-03-25"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Implement renderTestSpecScopedSlim in Go",
+          "details": [
+            "Add renderTestSpecScopedSlim(ts *TestSpecV1Json, ids map[string]bool) string as unexported function",
+            "Mirror scoped test spec renderer but omit verbose fields same as renderTestSpecSlim",
+            "Filter test entries to only those whose IDs are in the ids map"
+          ],
+          "test_spec_refs": [
+            "TS-03-27"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.3",
+          "title": "Implement budget evaluation loop in Go rendering methods",
+          "details": [
+            "Implement progressive truncation loop in RenderCombined, RenderIndividual, RenderIndividualScoped",
+            "Level 0: full render, check budget",
+            "Level 1: drop architecture (remove key from map or omit section from string), check budget",
+            "Level 2: re-render test spec using renderTestSpecSlim/renderTestSpecScopedSlim, return regardless",
+            "Skip Level 1 budget re-evaluation when architecture is absent",
+            "For map-returning methods, sum EstimateTokens across all values"
+          ],
+          "test_spec_refs": [
+            "TS-03-24",
+            "TS-03-25",
+            "TS-03-26",
+            "TS-03-27"
+          ],
+          "requirement_refs": [
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "Go budget cap tests pass: go test ./golang/... -run TestRenderBudget -count=1",
+          "Go scoped budget tests pass: go test ./golang/... -run TestRenderIndividualScoped -count=1",
+          "No vet warnings: go vet ./golang/...",
+          "All existing Go tests still pass: go test ./golang/... -count=1"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "kind": "standard",
+      "title": "Verify cross-implementation parity between Python and Go",
+      "subtasks": [
+        {
+          "id": "11.1",
+          "title": "Validate structural equivalence of Python and Go output",
+          "details": [
+            "Run cross-parity tests that compare Python render_individual(spec, max_tokens=N) with Go RenderIndividual(WithMaxTokens(N))",
+            "Verify same keys present/absent in both implementations at each truncation level",
+            "Verify same truncation level is applied for the same budget value",
+            "Use shared fixture spec with deterministic content"
+          ],
+          "test_spec_refs": [
+            "TS-03-28",
+            "TS-03-29"
+          ],
+          "requirement_refs": [
+            "03-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.2",
+          "title": "Validate EstimateTokens parity",
+          "details": [
+            "Confirm Python estimate_tokens and Go EstimateTokens produce identical results for the same input strings",
+            "Test with empty string, short strings, and long strings",
+            "Verify both use len(text) // 4 (character-based, not byte-based for Go \u2014 note: Go len() counts bytes, so verify behavior with ASCII-only inputs)"
+          ],
+          "test_spec_refs": [
+            "TS-03-28"
+          ],
+          "requirement_refs": [
+            "03-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "11.V",
+        "checks": [
+          "Cross-parity tests pass: pytest tests/spec_03/test_cross_parity.py -q",
+          "Go tests pass: go test ./golang/... -count=1",
+          "03-REQ-8 acceptance criteria met: same keys present/absent, same truncation level for same budget"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "kind": "wiring_verification",
+      "title": "End-to-end wiring verification and stub audit",
+      "subtasks": [
+        {
+          "id": "12.1",
+          "title": "Trace execution paths through budget evaluation loop",
+          "details": [
+            "Verify render_individual \u2192 estimate_tokens \u2192 Level 1 (drop architecture) \u2192 Level 2 (_render_test_spec_slim) call chain has no stubs",
+            "Verify render_individual_scoped \u2192 estimate_tokens \u2192 Level 1 \u2192 Level 2 (_render_test_spec_scoped_slim) call chain has no stubs",
+            "Verify render_combined \u2192 estimate_tokens \u2192 Level 1 \u2192 Level 2 call chain has no stubs",
+            "Verify Go RenderIndividual \u2192 EstimateTokens \u2192 renderTestSpecSlim call chain has no stubs",
+            "Verify Go RenderCombined \u2192 EstimateTokens \u2192 renderTestSpecSlim call chain has no stubs",
+            "Verify Go RenderIndividualScoped \u2192 EstimateTokens \u2192 renderTestSpecScopedSlim call chain has no stubs"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "03-REQ-2",
+            "03-REQ-3",
+            "03-REQ-4",
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.2",
+          "title": "Verify return value propagation",
+          "details": [
+            "Confirm render_individual returns dict[str, str] with truncated content when budget is applied \u2014 callers receive the same type regardless of truncation",
+            "Confirm render_individual_scoped returns dict[str, str] with truncated content \u2014 same type contract",
+            "Confirm render_combined returns str with truncated content \u2014 same type contract",
+            "Confirm Go RenderIndividual returns map[string]string, RenderCombined returns string \u2014 no truncation metadata exposed"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "03-REQ-2",
+            "03-REQ-3",
+            "03-REQ-4",
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.3",
+          "title": "Stub and dead-code audit",
+          "details": [
+            "Search Python codebase for 'raise NotImplementedError', 'pass' in non-abstract methods, 'return None' placeholders in afspec/render.py",
+            "Search Go codebase for 'panic(\"not implemented\")', bare 'return nil', '// TODO' in golang/ rendering files",
+            "Verify estimate_tokens is called from production code (render functions), not just defined and tested",
+            "Verify _render_test_spec_slim and _render_test_spec_scoped_slim are called from budget evaluation loop",
+            "Verify Go renderTestSpecSlim and renderTestSpecScopedSlim are called from budget evaluation loop"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "03-REQ-1",
+            "03-REQ-6",
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.4",
+          "title": "Call-site verification for public API functions",
+          "details": [
+            "Verify estimate_tokens is exported in __all__ and importable from afspec package",
+            "Verify Go EstimateTokens is exported and callable from external packages",
+            "Verify WithMaxTokens is exported and usable with all three Go rendering methods",
+            "Verify render_individual, render_individual_scoped, render_combined accept max_tokens parameter in production signatures"
+          ],
+          "test_spec_refs": [],
+          "requirement_refs": [
+            "03-REQ-1",
+            "03-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.5",
+          "title": "Run all tests and smoke verification",
+          "details": [
+            "Run full Python test suite: pytest -q",
+            "Run full Go test suite: go test ./... -count=1",
+            "Verify no regressions in existing render behavior when max_tokens is not provided",
+            "Confirm all 29 test cases (TS-03-1 through TS-03-29) pass"
+          ],
+          "test_spec_refs": [
+            "TS-03-6",
+            "TS-03-13",
+            "TS-03-SMOKE-2",
+            "TS-03-SMOKE-4",
+            "TS-03-SMOKE-1",
+            "TS-03-SMOKE-3",
+            "TS-03-24"
+          ],
+          "requirement_refs": [
+            "03-REQ-2",
+            "03-REQ-4",
+            "03-REQ-7",
+            "03-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "12.V",
+        "checks": [
+          "All Python tests pass: pytest -q",
+          "All Go tests pass: go test ./... -count=1",
+          "No Python linter warnings: ruff check afspec/",
+          "No Go vet warnings: go vet ./golang/...",
+          "No stubs found: grep -rn 'NotImplementedError\\|pass$\\|return None' afspec/render.py returns no false positives",
+          "No Go stubs found: grep -rn 'panic.*not implemented\\|// TODO' golang/ returns no false positives",
+          "estimate_tokens is in afspec __all__ exports",
+          "All 03-REQ-1 through 03-REQ-8 acceptance criteria verified"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "03-REQ-1.1",
+      "test_spec_id": "TS-03-1",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-1.2",
+      "test_spec_id": "TS-03-2",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-1.3",
+      "test_spec_id": "TS-03-3",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-1.4",
+      "test_spec_id": "TS-03-4",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-1.5",
+      "test_spec_id": "TS-03-5",
+      "task_id": "4.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-2.1",
+      "test_spec_id": "TS-03-6",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-2.2",
+      "test_spec_id": "TS-03-7",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-2.3",
+      "test_spec_id": "TS-03-8",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-2.4",
+      "test_spec_id": "TS-03-9",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-3.1",
+      "test_spec_id": "TS-03-10",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-3.2",
+      "test_spec_id": "TS-03-11",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-3.3",
+      "test_spec_id": "TS-03-12",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-4.1",
+      "test_spec_id": "TS-03-13",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-4.2",
+      "test_spec_id": "TS-03-14",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-4.3",
+      "test_spec_id": "TS-03-15",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-5.1",
+      "test_spec_id": "TS-03-16",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-5.2",
+      "test_spec_id": "TS-03-17",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-5.3",
+      "test_spec_id": "TS-03-18",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-5.4",
+      "test_spec_id": "TS-03-19",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-6.1",
+      "test_spec_id": "TS-03-20",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-6.2",
+      "test_spec_id": "TS-03-21",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-6.3",
+      "test_spec_id": "TS-03-22",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-7.1",
+      "test_spec_id": "TS-03-23",
+      "task_id": "9.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-7.2",
+      "test_spec_id": "TS-03-24",
+      "task_id": "9.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-7.3",
+      "test_spec_id": "TS-03-25",
+      "task_id": "10.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-7.4",
+      "test_spec_id": "TS-03-26",
+      "task_id": "10.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-7.5",
+      "test_spec_id": "TS-03-27",
+      "task_id": "10.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-8.1",
+      "test_spec_id": "TS-03-28",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "03-REQ-8.2",
+      "test_spec_id": "TS-03-29",
+      "task_id": "11.1",
+      "test_path": null
+    }
+  ]
+}

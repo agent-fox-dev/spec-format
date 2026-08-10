@@ -1,0 +1,889 @@
+{
+  "$schema": null,
+  "spec_id": "03",
+  "spec_name": "spec_rendering_budget_cap",
+  "schema_version": 1,
+  "introduction": "The `afspec` budget-cap rendering layer adds a `max_tokens` optional parameter to the Python and Go rendering functions, applying a two-level progressive truncation strategy (drop architecture, then slim test-spec assertions) so that downstream consumers such as `assemble_context()` can cap rendered spec content at a token target without manual truncation.",
+  "glossary": {
+    "EstimateTokens": "Go equivalent of estimate_tokens \u2014 exported function in the afspec package",
+    "Level 0": "Full render \u2014 no truncation, default when max_tokens is None or 0",
+    "Level 1": "First truncation stage \u2014 drops architecture artifact from output",
+    "Level 2": "Second truncation stage \u2014 re-renders test spec in slim mode",
+    "RenderCombined": "Go method on Spec that renders all artifacts as a single markdown document",
+    "RenderIndividual": "Go method on Spec that renders each artifact separately as a map",
+    "RenderIndividualScoped": "Go method on Spec that renders artifacts filtered to a target task group",
+    "RenderOption": "Go function type used as variadic parameter for rendering method options",
+    "Spec": "The central domain object representing a parsed and validated agent-fox specification package, defined in the `afspec` library.",
+    "TestSpec": "The test specification artifact within a `Spec`, containing test cases, edge case tests, property tests, and smoke tests.",
+    "TestSpecV1Json": "Go type representing the JSON-schema-generated test specification structure used in the Go `afspec` package.",
+    "WithMaxTokens": "Go functional option constructor that sets the token budget for rendering methods",
+    "_render_test_spec_scoped_slim": "Python private function for scoped slim test spec rendering",
+    "_render_test_spec_slim": "Python private function that renders test spec without verbose fields",
+    "afspec": "The Python and Go library that loads, validates, mutates, and renders agent-fox specification packages.",
+    "architecture": "Optional spec artifact containing architectural context \u2014 dropped in Level 1 truncation",
+    "assemble_context": "Function in the agent-fox codebase that assembles the system prompt for an agent session, consuming rendered spec content.",
+    "assertion_pseudocode": "Field in test case entries containing executable pseudocode \u2014 omitted in Level 2",
+    "chars/4 heuristic": "Token estimation method that computes `len(text) // 4` as a fast, dependency-free approximation of the number of tokens in a string.",
+    "estimate_tokens": "Public utility function that estimates LLM token count from text length using chars/4 heuristic",
+    "expected_effects": "Field in smoke test entries listing expected side effects \u2014 omitted in Level 2",
+    "for_any_strategy": "Field in property test entries containing generation strategy \u2014 omitted in Level 2",
+    "invariant_check": "Field in property test entries containing invariant assertion \u2014 omitted in Level 2",
+    "max_tokens": "Optional parameter on render functions that sets the token budget cap for progressive truncation",
+    "renderConfig": "Go unexported struct holding resolved render options",
+    "renderTestSpecScopedSlim": "Go unexported function for scoped slim test spec rendering",
+    "renderTestSpecSlim": "Go unexported function that renders test spec without verbose fields",
+    "render_combined": "Python function that renders all spec artifacts as a single markdown document",
+    "render_individual": "Python function that renders each spec artifact to its own markdown string",
+    "render_individual_scoped": "Python function that renders spec artifacts filtered to a target task group",
+    "target_group": "Integer parameter to `render_individual_scoped` / `RenderIndividualScoped` identifying which task group is the focus of the scoped render.",
+    "input": "Field in test case entries containing test input data \u2014 omitted in Level 2",
+    "expected": "Field in test case entries containing expected output data \u2014 omitted in Level 2",
+    "description": "Field in test entries containing a human-readable test description",
+    "__init__.py": "Python package initialization file where public exports are declared",
+    "__all__": "Python list declaring the public API surface of a package",
+    "id": "Unique identifier field present on all spec entries",
+    "kind": "Field on test entries indicating the test type \u2014 preserved in slim rendering",
+    "requirement_id": "Field on test entries linking to the requirement being verified",
+    "len(text) // 4": "Token estimation formula: integer division of character count by 4",
+    "EstimateTokens(text string) int": "Go function signature for the token estimation utility",
+    "max_tokens=None": "Default value for max_tokens parameter \u2014 no budget cap applied",
+    "max_tokens=0": "Equivalent to max_tokens=None \u2014 no budget cap applied",
+    "WithMaxTokens(0)": "Go option setting max_tokens to 0, equivalent to no budget cap",
+    "render_individual(spec: Spec, max_tokens: int | None = None) -> dict[str, str]": "Full Python signature for render_individual with budget cap",
+    "render_combined(spec: Spec, max_tokens: int | None = None) -> str": "Full Python signature for render_combined with budget cap",
+    "type": "Field on test entries indicating the test type \u2014 preserved in slim rendering",
+    "render_test_spec": "Python function that renders a full test spec to markdown",
+    "render_test_spec_scoped": "Python function that renders a test spec filtered to specific test IDs",
+    "_render_test_spec_slim(ts: TestSpec) -> str": "Full Python signature for the slim test spec renderer",
+    "_render_test_spec_scoped_slim(ts: TestSpec, test_spec_ids: set[str]) -> str": "Full Python signature for the scoped slim renderer",
+    "renderTestSpecSlim(ts *TestSpecV1Json) string": "Full Go signature for the slim test spec renderer",
+    "renderTestSpecScopedSlim(ts *TestSpecV1Json, ids map[string]bool) string": "Full Go signature for the scoped slim renderer",
+    "estimate_tokens(text)": "Call expression for Python token estimation function",
+    "render_individual(spec, max_tokens=None)": "Call expression for render_individual with default budget",
+    "render_individual(spec)": "Call expression for render_individual without budget argument",
+    "render_individual(spec, max_tokens=M)": "Call expression for render_individual with budget M",
+    "render_individual(spec, max_tokens=N)": "Call expression for render_individual with budget N",
+    "estimate_tokens(v)": "Call expression for estimating tokens of artifact value v",
+    "RenderIndividual(WithMaxTokens(N))": "Go call expression for rendering with token budget N",
+    "estimate_tokens(s1)": "Call expression for estimating tokens of string s1",
+    "estimate_tokens(s2)": "Call expression for estimating tokens of string s2",
+    "afspec.__init__": "Python module path for the afspec package init file",
+    "max_tokens: int | None = None": "Python type-annotated parameter declaration for the budget cap",
+    "func(*renderConfig)": "Go function type signature for RenderOption",
+    "WithMaxTokens(n int) RenderOption": "Go constructor signature for the max tokens option",
+    "opts ...RenderOption": "Go variadic parameter declaration for render options",
+    "WithMaxTokens(N)": "Go call expression creating a max tokens option with value N",
+    "targetGroup": "Go parameter name for the target task group ID in RenderIndividualScoped",
+    "EstimateTokens(text)": "Go call expression for estimating tokens of text",
+    "text": "String variable representing input text for token estimation",
+    "RenderIndividual()": "Go call expression for rendering without options",
+    "sum(estimate_tokens(v) for v in D.values()) <= M": "Budget constraint: total estimated tokens across all dict values must not exceed M",
+    "_render_test_spec_slim(ts)": "Python call expression for slim test spec rendering",
+    "render_individual(spec, max_tokens=0)": "Python call expression with max_tokens=0, equivalent to no budget"
+  },
+  "requirements": [
+    {
+      "id": "03-REQ-1",
+      "title": "Token estimation utility",
+      "user_story": {
+        "role": "library consumer",
+        "goal": "estimate the token count of any string using the chars/4 heuristic",
+        "benefit": "independently budget content before calling rendering functions"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-1.1",
+          "ears_pattern": "ubiquitous",
+          "system": "`estimate_tokens` / `EstimateTokens`",
+          "action": "returns `len(text) // 4` (integer floor division) for any string input",
+          "return_contract": "returns int equal to len(text) // 4"
+        },
+        {
+          "id": "03-REQ-1.2",
+          "ears_pattern": "event_driven",
+          "system": "`estimate_tokens`",
+          "action": "returns 1",
+          "return_contract": "returns int 1",
+          "trigger": "called with the string 'abcd'"
+        },
+        {
+          "id": "03-REQ-1.3",
+          "ears_pattern": "event_driven",
+          "system": "`estimate_tokens`",
+          "action": "returns 0",
+          "return_contract": "returns int 0",
+          "trigger": "called with an empty string"
+        },
+        {
+          "id": "03-REQ-1.4",
+          "ears_pattern": "ubiquitous",
+          "system": "`estimate_tokens`",
+          "action": "is exported from `afspec.__init__` and listed in `__all__`",
+          "return_contract": null
+        },
+        {
+          "id": "03-REQ-1.5",
+          "ears_pattern": "ubiquitous",
+          "system": "`EstimateTokens`",
+          "action": "is an exported function in the Go `afspec` package with signature `EstimateTokens(text string) int`",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-1.E1",
+          "ears_pattern": "event_driven",
+          "system": "`estimate_tokens` / `EstimateTokens`",
+          "action": "returns 0 (floor division truncates partial tokens)",
+          "return_contract": "returns int 0",
+          "trigger": "called with a string of length 1, 2, or 3"
+        },
+        {
+          "id": "03-REQ-1.E2",
+          "ears_pattern": "event_driven",
+          "system": "`estimate_tokens` / `EstimateTokens`",
+          "action": "returns 1",
+          "return_contract": "returns int 1",
+          "trigger": "called with a string of length exactly 4"
+        },
+        {
+          "id": "03-REQ-1.E3",
+          "ears_pattern": "event_driven",
+          "system": "`estimate_tokens` / `EstimateTokens`",
+          "action": "returns the correct floor-divided integer without overflow or error",
+          "return_contract": "returns int 250000 for a 1,000,000-character input",
+          "trigger": "called with a very large string (e.g., 1 million characters)"
+        }
+      ]
+    },
+    {
+      "id": "03-REQ-2",
+      "title": "Python render_individual budget cap",
+      "user_story": {
+        "role": "library consumer",
+        "goal": "call `render_individual` with a `max_tokens` budget",
+        "benefit": "receive progressively truncated output that fits within the token budget without writing manual truncation logic"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-2.1",
+          "ears_pattern": "optional",
+          "system": "`render_individual`",
+          "action": "accepts an optional `max_tokens: int | None = None` parameter and, when `max_tokens` is None, returns output byte-identical to the current implementation",
+          "return_contract": "returns dict[str, str] identical to the pre-budget-cap implementation",
+          "feature": "`max_tokens` parameter on `render_individual`"
+        },
+        {
+          "id": "03-REQ-2.2",
+          "ears_pattern": "complex_event",
+          "system": "`render_individual`",
+          "action": "applies the progressive truncation evaluation loop (Level 1 then Level 2) and returns the first render whose summed token estimate is \u2264 M, or the Level 2 render if neither Level 1 nor Level 2 fits",
+          "return_contract": "returns dict[str, str] with estimated token sum \u2264 M when achievable by Level 1 or Level 2 truncation; otherwise returns Level 2 dict regardless of token count",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the Level 0 render's summed token estimate exceeds M"
+        },
+        {
+          "id": "03-REQ-2.3",
+          "ears_pattern": "complex_event",
+          "system": "`render_individual`",
+          "action": "returns the Level 0 render without applying any truncation",
+          "return_contract": "returns dict[str, str] identical to the Level 0 render",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the Level 0 render's summed token estimate is \u2264 M"
+        },
+        {
+          "id": "03-REQ-2.4",
+          "ears_pattern": "ubiquitous",
+          "system": "`render_individual` budget evaluation",
+          "action": "computes the token budget against the sum of `estimate_tokens(v)` for all values v in the result dict; empty string values contribute 0 tokens; missing keys are not included",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-2.E1",
+          "ears_pattern": "event_driven",
+          "system": "`render_individual`",
+          "action": "treats 0 as equivalent to None and returns the full Level 0 render without truncation",
+          "return_contract": "returns dict[str, str] identical to the Level 0 render",
+          "trigger": "called with `max_tokens=0`"
+        },
+        {
+          "id": "03-REQ-2.E2",
+          "ears_pattern": "complex_event",
+          "system": "`render_individual`",
+          "action": "skips Level 1 budget re-evaluation and proceeds directly to Level 2 if the Level 0 render exceeds M",
+          "return_contract": "returns dict[str, str] at Level 2 truncation if Level 0 exceeds M",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the `Spec` has no `architecture` section"
+        },
+        {
+          "id": "03-REQ-2.E3",
+          "ears_pattern": "complex_event",
+          "system": "`render_individual`",
+          "action": "returns the Level 2 render as-is without further truncation",
+          "return_contract": "returns dict[str, str] at Level 2 truncation regardless of token count",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the Level 2 render still exceeds M"
+        },
+        {
+          "id": "03-REQ-2.E4",
+          "ears_pattern": "event_driven",
+          "system": "`render_individual`",
+          "action": "treats negative values as equivalent to None and returns the full Level 0 render without truncation",
+          "return_contract": "returns dict[str, str] identical to the Level 0 render",
+          "trigger": "called with a negative `max_tokens` value"
+        }
+      ]
+    },
+    {
+      "id": "03-REQ-3",
+      "title": "Python render_individual_scoped budget cap",
+      "user_story": {
+        "role": "library consumer",
+        "goal": "call `render_individual_scoped` with a `max_tokens` budget",
+        "benefit": "receive a scoped, progressively truncated render that fits within the token budget"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-3.1",
+          "ears_pattern": "optional",
+          "system": "`render_individual_scoped`",
+          "action": "accepts an optional `max_tokens: int | None = None` parameter and, when `max_tokens` is None, returns output byte-identical to the current implementation",
+          "return_contract": "returns dict[str, str] identical to the pre-budget-cap implementation",
+          "feature": "`max_tokens` parameter on `render_individual_scoped`"
+        },
+        {
+          "id": "03-REQ-3.2",
+          "ears_pattern": "complex_event",
+          "system": "`render_individual_scoped`",
+          "action": "applies the progressive truncation evaluation loop and returns the first render whose summed token estimate is \u2264 M, or the Level 2 render if neither fits",
+          "return_contract": "returns dict[str, str] with estimated token sum \u2264 M when achievable; otherwise returns Level 2 dict",
+          "trigger": "called with a `target_group` and a `max_tokens` value M",
+          "condition": "the Level 0 scoped render's summed token estimate exceeds M"
+        },
+        {
+          "id": "03-REQ-3.3",
+          "ears_pattern": "ubiquitous",
+          "system": "`render_individual_scoped` budget evaluation",
+          "action": "applies the same budget evaluation logic as `render_individual`: sums `estimate_tokens(v)` for all values in the result dict, with empty strings contributing 0 tokens",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-3.E1",
+          "ears_pattern": "complex_event",
+          "system": "`render_individual_scoped`",
+          "action": "skips Level 1 and proceeds directly to Level 2 if Level 0 exceeds M",
+          "return_contract": "returns dict[str, str] at Level 2 truncation if Level 0 exceeds M",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the `Spec` has no `architecture` section"
+        },
+        {
+          "id": "03-REQ-3.E2",
+          "ears_pattern": "event_driven",
+          "system": "`render_individual_scoped`",
+          "action": "treats the value as equivalent to None and returns the full Level 0 scoped render",
+          "return_contract": "returns dict[str, str] identical to the Level 0 scoped render",
+          "trigger": "called with `max_tokens=0` or a negative value"
+        },
+        {
+          "id": "03-REQ-3.E3",
+          "ears_pattern": "complex_event",
+          "system": "`render_individual_scoped`",
+          "action": "returns the Level 2 render as-is",
+          "return_contract": "returns dict[str, str] at Level 2 truncation regardless of token count",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the Level 2 render still exceeds M"
+        }
+      ]
+    },
+    {
+      "id": "03-REQ-4",
+      "title": "Python render_combined budget cap",
+      "user_story": {
+        "role": "library consumer",
+        "goal": "call `render_combined` with a `max_tokens` budget",
+        "benefit": "receive a single truncated string that fits within the token budget"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-4.1",
+          "ears_pattern": "optional",
+          "system": "`render_combined`",
+          "action": "accepts an optional `max_tokens: int | None = None` parameter and, when `max_tokens` is None, returns output byte-identical to the current implementation",
+          "return_contract": "returns str identical to the pre-budget-cap implementation",
+          "feature": "`max_tokens` parameter on `render_combined`"
+        },
+        {
+          "id": "03-REQ-4.2",
+          "ears_pattern": "complex_event",
+          "system": "`render_combined`",
+          "action": "applies the progressive truncation evaluation loop against the single returned string and returns the first render whose token estimate is \u2264 M, or the Level 2 render if neither fits",
+          "return_contract": "returns str with estimated token count \u2264 M when achievable; otherwise returns Level 2 string",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the Level 0 render's `estimate_tokens` result exceeds M"
+        },
+        {
+          "id": "03-REQ-4.3",
+          "ears_pattern": "ubiquitous",
+          "system": "`render_combined` budget evaluation",
+          "action": "evaluates the budget against `estimate_tokens` of the single returned string (not a sum of dict values)",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-4.E1",
+          "ears_pattern": "complex_event",
+          "system": "`render_combined`",
+          "action": "skips Level 1 and proceeds directly to Level 2 if Level 0 exceeds M",
+          "return_contract": "returns str at Level 2 truncation if Level 0 exceeds M",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the `Spec` has no `architecture` section"
+        },
+        {
+          "id": "03-REQ-4.E2",
+          "ears_pattern": "event_driven",
+          "system": "`render_combined`",
+          "action": "treats the value as equivalent to None and returns the full Level 0 combined render",
+          "return_contract": "returns str identical to the Level 0 render",
+          "trigger": "called with `max_tokens=0` or a negative value"
+        },
+        {
+          "id": "03-REQ-4.E3",
+          "ears_pattern": "complex_event",
+          "system": "`render_combined`",
+          "action": "returns the Level 2 render as-is",
+          "return_contract": "returns str at Level 2 truncation regardless of token count",
+          "trigger": "called with a `max_tokens` value M",
+          "condition": "the Level 2 render still exceeds M"
+        }
+      ]
+    },
+    {
+      "id": "03-REQ-5",
+      "title": "Level 1 truncation \u2014 drop architecture",
+      "user_story": {
+        "role": "rendering engine",
+        "goal": "remove the architecture artifact as the first truncation step",
+        "benefit": "reduce token count by eliminating the lowest-signal artifact before touching test spec content"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-5.1",
+          "ears_pattern": "complex_event",
+          "system": "progressive truncation engine",
+          "action": "removes the `architecture` key from the result dict",
+          "return_contract": "returns dict[str, str] / map[string]string without the `architecture` key",
+          "trigger": "Level 1 truncation is applied to a dict-returning render",
+          "condition": "the `Spec` has an `architecture` section"
+        },
+        {
+          "id": "03-REQ-5.2",
+          "ears_pattern": "complex_event",
+          "system": "progressive truncation engine",
+          "action": "omits the architecture section from the combined output string",
+          "return_contract": "returns str that does not contain the architecture section",
+          "trigger": "Level 1 truncation is applied to `render_combined`",
+          "condition": "the `Spec` has an `architecture` section"
+        },
+        {
+          "id": "03-REQ-5.3",
+          "ears_pattern": "complex_event",
+          "system": "progressive truncation engine",
+          "action": "treats Level 1 as a no-op and proceeds directly to Level 2 evaluation without re-evaluating the budget at Level 1",
+          "return_contract": null,
+          "trigger": "Level 1 truncation is applied",
+          "condition": "the `Spec` has no `architecture` section"
+        },
+        {
+          "id": "03-REQ-5.4",
+          "ears_pattern": "ubiquitous",
+          "system": "progressive truncation engine",
+          "action": "never drops the PRD body content at any truncation level",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-5.E1",
+          "ears_pattern": "complex_event",
+          "system": "progressive truncation engine",
+          "action": "removes the key from the dict; the token contribution was already 0 so Level 1 is effectively a no-op and the loop proceeds to Level 2",
+          "return_contract": "returns dict[str, str] / map[string]string without the `architecture` key",
+          "trigger": "Level 1 is applied",
+          "condition": "the `architecture` key exists in the result dict but its value is an empty string"
+        }
+      ]
+    },
+    {
+      "id": "03-REQ-6",
+      "title": "Level 2 truncation \u2014 slim test spec",
+      "user_story": {
+        "role": "rendering engine",
+        "goal": "re-render the test specification without verbose assertion fields as the second truncation step",
+        "benefit": "preserve traceability while removing the bulk of test spec verbosity"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-6.1",
+          "ears_pattern": "event_driven",
+          "system": "`_render_test_spec_slim` / `renderTestSpecSlim`",
+          "action": "renders the `TestSpec` omitting `assertion_pseudocode`, `input`, and `expected` from test case and edge case entries, omitting `for_any_strategy` and `invariant_check` from property test entries, and omitting `expected_effects` from smoke test entries",
+          "return_contract": "returns str containing only id, description, type, and requirement linkage fields for each test entry",
+          "trigger": "Level 2 truncation is applied"
+        },
+        {
+          "id": "03-REQ-6.2",
+          "ears_pattern": "event_driven",
+          "system": "`_render_test_spec_scoped_slim` / `renderTestSpecScopedSlim`",
+          "action": "renders the scoped `TestSpec` with the same field omissions as `_render_test_spec_slim`, filtered to the relevant test spec IDs",
+          "return_contract": "returns str containing only id, description, type, and requirement linkage fields for each in-scope test entry",
+          "trigger": "Level 2 truncation is applied to a scoped render"
+        },
+        {
+          "id": "03-REQ-6.3",
+          "ears_pattern": "ubiquitous",
+          "system": "Level 2 slim rendering",
+          "action": "preserves test entry id, description, type, and requirement linkage fields in all slim renders",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-6.E1",
+          "ears_pattern": "complex_event",
+          "system": "Level 2 slim rendering",
+          "action": "returns the render with the test spec section absent or empty; no error is raised",
+          "return_contract": "returns dict[str, str] / map[string]string with test spec value as empty string or key absent",
+          "trigger": "Level 2 is applied",
+          "condition": "the `Spec` has no `TestSpec`"
+        },
+        {
+          "id": "03-REQ-6.E2",
+          "ears_pattern": "complex_event",
+          "system": "Level 2 slim rendering",
+          "action": "renders the entry without error, producing the same output as if the fields were present but empty",
+          "return_contract": "returns str with the entry rendered using only the fields that are present",
+          "trigger": "Level 2 is applied",
+          "condition": "a test case entry has no `assertion_pseudocode`, `input`, or `expected` fields (they are already absent)"
+        }
+      ]
+    },
+    {
+      "id": "03-REQ-7",
+      "title": "Go rendering methods \u2014 budget cap via functional options",
+      "user_story": {
+        "role": "Go library consumer",
+        "goal": "pass `WithMaxTokens(N)` to `RenderIndividual`, `RenderIndividualScoped`, and `RenderCombined`",
+        "benefit": "receive progressively truncated output within the token budget using the same strategy as the Python implementation"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-7.1",
+          "ears_pattern": "ubiquitous",
+          "system": "Go `afspec` package",
+          "action": "exports `RenderOption` (type `func(*renderConfig)`), `WithMaxTokens(n int) RenderOption`, and `EstimateTokens(text string) int`; keeps `renderConfig` unexported",
+          "return_contract": null
+        },
+        {
+          "id": "03-REQ-7.2",
+          "ears_pattern": "optional",
+          "system": "Go `RenderIndividual`, `RenderIndividualScoped`, `RenderCombined`",
+          "action": "adds variadic `opts ...RenderOption` to each method signature; existing callers that pass no options continue to receive output identical to the pre-budget-cap implementation",
+          "return_contract": "returns map[string]string or string identical to the pre-budget-cap implementation when no options are passed",
+          "feature": "variadic `opts ...RenderOption` on Go rendering methods"
+        },
+        {
+          "id": "03-REQ-7.3",
+          "ears_pattern": "complex_event",
+          "system": "Go `RenderIndividual`",
+          "action": "applies the same two-level progressive truncation strategy as the Python `render_individual` and returns the first render within budget or the Level 2 render",
+          "return_contract": "returns map[string]string with estimated token sum \u2264 N when achievable; otherwise returns Level 2 map",
+          "trigger": "called with `WithMaxTokens(N)`",
+          "condition": "the Level 0 render's summed token estimate exceeds N"
+        },
+        {
+          "id": "03-REQ-7.4",
+          "ears_pattern": "complex_event",
+          "system": "Go `RenderIndividualScoped`",
+          "action": "applies the same two-level progressive truncation strategy and returns the first render within budget or the Level 2 render",
+          "return_contract": "returns map[string]string with estimated token sum \u2264 N when achievable; otherwise returns Level 2 map",
+          "trigger": "called with a `targetGroup` and `WithMaxTokens(N)`",
+          "condition": "the Level 0 scoped render's summed token estimate exceeds N"
+        },
+        {
+          "id": "03-REQ-7.5",
+          "ears_pattern": "complex_event",
+          "system": "Go `RenderCombined`",
+          "action": "applies the same two-level progressive truncation strategy against the single returned string",
+          "return_contract": "returns string with estimated token count \u2264 N when achievable; otherwise returns Level 2 string",
+          "trigger": "called with `WithMaxTokens(N)`",
+          "condition": "the Level 0 render's token estimate exceeds N"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-7.E1",
+          "ears_pattern": "event_driven",
+          "system": "Go rendering methods",
+          "action": "treats the value as no budget constraint and returns the full Level 0 render",
+          "return_contract": "returns map[string]string or string identical to the Level 0 render",
+          "trigger": "called with `WithMaxTokens(0)` or a negative value"
+        },
+        {
+          "id": "03-REQ-7.E2",
+          "ears_pattern": "complex_event",
+          "system": "Go rendering methods",
+          "action": "skips Level 1 budget re-evaluation and proceeds directly to Level 2 if Level 0 exceeds N",
+          "return_contract": "returns map[string]string or string at Level 2 truncation if Level 0 exceeds N",
+          "trigger": "called with `WithMaxTokens(N)`",
+          "condition": "the `Spec` has no `architecture` section"
+        },
+        {
+          "id": "03-REQ-7.E3",
+          "ears_pattern": "ubiquitous",
+          "system": "Go `afspec` library code",
+          "action": "never calls os.Exit or terminates the process; all errors are signaled via return values",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "03-REQ-8",
+      "title": "Cross-implementation parity between Python and Go",
+      "user_story": {
+        "role": "platform engineer",
+        "goal": "rely on Python and Go rendering producing structurally equivalent output for the same spec and token budget",
+        "benefit": "ensure consistent behavior across consumers regardless of which language implementation is used"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "03-REQ-8.1",
+          "ears_pattern": "ubiquitous",
+          "system": "Python and Go rendering implementations",
+          "action": "for any `Spec` value and any `max_tokens` value N, `render_individual(spec, max_tokens=N)` and `RenderIndividual(WithMaxTokens(N))` produce structurally equivalent output: the same keys are present or absent, and the same truncation level is applied",
+          "return_contract": null
+        },
+        {
+          "id": "03-REQ-8.2",
+          "ears_pattern": "ubiquitous",
+          "system": "Python and Go token estimation",
+          "action": "for any string input, `estimate_tokens(text)` and `EstimateTokens(text)` return the same integer value",
+          "return_contract": "both return int equal to len(text) // 4"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "03-REQ-8.E1",
+          "ears_pattern": "complex_event",
+          "system": "cross-implementation parity",
+          "action": "both implementations return a result without the `architecture` key/section and with the test spec intact",
+          "return_contract": "both return equivalent structures with `architecture` absent and test spec present",
+          "trigger": "the same `Spec` is rendered with the same `max_tokens` value in both Python and Go",
+          "condition": "the spec has an `architecture` section and Level 1 truncation is sufficient"
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [
+    {
+      "id": "03-PROP-1",
+      "title": "estimate_tokens floor division identity",
+      "for_any": "string `text` of any length",
+      "invariant": "`estimate_tokens(text)` equals `len(text) // 4` and `EstimateTokens(text)` equals `len(text) // 4`",
+      "validates": [
+        "03-REQ-1.1",
+        "03-REQ-1.2",
+        "03-REQ-1.3"
+      ]
+    },
+    {
+      "id": "03-PROP-2",
+      "title": "No-budget render is byte-identical to legacy render",
+      "for_any": "any `Spec` value",
+      "invariant": "`render_individual(spec, max_tokens=None)` returns a dict byte-identical to the pre-budget-cap `render_individual(spec)`, and `RenderIndividual()` (no options) returns a map identical to the pre-budget-cap `RenderIndividual()`",
+      "validates": [
+        "03-REQ-2.1",
+        "03-REQ-7.2"
+      ]
+    },
+    {
+      "id": "03-PROP-3",
+      "title": "Budget-capped render token sum is within budget when achievable",
+      "for_any": "any `Spec` value and any positive integer M",
+      "invariant": "if `render_individual(spec, max_tokens=M)` returns a dict D, then either `sum(estimate_tokens(v) for v in D.values()) <= M` or D is the Level 2 render (no further truncation is possible)",
+      "validates": [
+        "03-REQ-2.2",
+        "03-REQ-2.3"
+      ]
+    },
+    {
+      "id": "03-PROP-4",
+      "title": "Level 1 removes architecture key when present",
+      "for_any": "any `Spec` value that has an `architecture` section",
+      "invariant": "when Level 1 truncation is applied, the result dict does not contain the `architecture` key",
+      "validates": [
+        "03-REQ-5.1"
+      ]
+    },
+    {
+      "id": "03-PROP-5",
+      "title": "Level 2 slim render omits verbose assertion fields",
+      "for_any": "any `TestSpec` value with at least one test case entry",
+      "invariant": "`_render_test_spec_slim(ts)` produces a string that does not contain `assertion_pseudocode`, `input`, or `expected` content from any test case entry",
+      "validates": [
+        "03-REQ-6.1",
+        "03-REQ-6.3"
+      ]
+    },
+    {
+      "id": "03-PROP-6",
+      "title": "Python and Go produce structurally equivalent output for any spec and budget",
+      "for_any": "any `Spec` value and any positive integer N",
+      "invariant": "`render_individual(spec, max_tokens=N)` and `RenderIndividual(WithMaxTokens(N))` produce dicts with the same set of keys present and the same truncation level applied",
+      "validates": [
+        "03-REQ-8.1",
+        "03-REQ-8.2"
+      ]
+    },
+    {
+      "id": "03-PROP-7",
+      "title": "PRD body is never absent from any render",
+      "for_any": "any `Spec` value and any `max_tokens` value",
+      "invariant": "the PRD body content is present in the output of `render_individual`, `render_individual_scoped`, and `render_combined` at every truncation level",
+      "validates": [
+        "03-REQ-5.4"
+      ]
+    },
+    {
+      "id": "03-PROP-8",
+      "title": "Zero or negative max_tokens is equivalent to no budget",
+      "for_any": "any `Spec` value",
+      "invariant": "`render_individual(spec, max_tokens=0)` returns a dict identical to `render_individual(spec, max_tokens=None)`, and similarly for `render_individual_scoped` and `render_combined`",
+      "validates": [
+        "03-REQ-2.E1",
+        "03-REQ-3.E2",
+        "03-REQ-4.E2"
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "03-PATH-1",
+      "title": "Python render_individual with budget cap \u2014 Level 1 truncation applied",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls `render_individual(spec, max_tokens=M)` where the spec has an `architecture` section and the Level 0 render exceeds M tokens"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "renders all artifacts at Level 0 and sums `estimate_tokens(v)` for all values in the result dict"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "detects that the sum exceeds M; applies Level 1 by removing the `architecture` key from the result dict"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "re-sums token estimates; detects that the sum is now \u2264 M"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "returns the Level 1 dict[str, str] to the caller"
+        },
+        {
+          "actor": "Caller",
+          "action": "receives dict[str, str] without the `architecture` key, with estimated token sum \u2264 M"
+        }
+      ]
+    },
+    {
+      "id": "03-PATH-2",
+      "title": "Python render_individual with budget cap \u2014 Level 2 truncation applied",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls `render_individual(spec, max_tokens=M)` where the spec has an `architecture` section but even Level 1 exceeds M tokens"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "renders at Level 0, sums token estimates, detects budget exceeded"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "applies Level 1 (drops `architecture` key), re-sums, detects budget still exceeded"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "applies Level 2: calls `_render_test_spec_slim` to re-render the test spec without verbose assertion fields"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "returns the Level 2 dict[str, str] to the caller regardless of whether it fits within M"
+        },
+        {
+          "actor": "Caller",
+          "action": "receives dict[str, str] without `architecture` key and with slimmed test spec entries"
+        }
+      ]
+    },
+    {
+      "id": "03-PATH-3",
+      "title": "Go RenderIndividual with WithMaxTokens \u2014 end-to-end budget cap flow",
+      "steps": [
+        {
+          "actor": "Go caller",
+          "action": "calls `spec.RenderIndividual(WithMaxTokens(N))` on a `*Spec` value"
+        },
+        {
+          "actor": "`RenderIndividual`",
+          "action": "parses the `RenderOption` via `WithMaxTokens`, sets the token budget on the unexported `renderConfig`"
+        },
+        {
+          "actor": "`RenderIndividual`",
+          "action": "renders all artifacts at Level 0 and sums `EstimateTokens(v)` for all values in the result map"
+        },
+        {
+          "actor": "`RenderIndividual`",
+          "action": "applies the same two-level progressive truncation evaluation loop as the Python implementation"
+        },
+        {
+          "actor": "`RenderIndividual`",
+          "action": "returns `map[string]string` to the caller at the appropriate truncation level"
+        },
+        {
+          "actor": "Go caller",
+          "action": "receives `map[string]string` with the same structural properties as the Python equivalent call"
+        }
+      ]
+    },
+    {
+      "id": "03-PATH-4",
+      "title": "assemble_context end-to-end \u2014 budget-capped spec rendering in agent session",
+      "steps": [
+        {
+          "actor": "agent-fox `assemble_context()`",
+          "action": "determines the token budget M for spec content in the system prompt"
+        },
+        {
+          "actor": "agent-fox `assemble_context()`",
+          "action": "calls `render_individual(spec, max_tokens=M)` (Python) for each spec in scope"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "applies the progressive truncation evaluation loop (Level 0 \u2192 Level 1 \u2192 Level 2) using `estimate_tokens` to evaluate each level"
+        },
+        {
+          "actor": "`_render_test_spec_slim`",
+          "action": "re-renders the `TestSpec` without verbose assertion fields if Level 2 is reached"
+        },
+        {
+          "actor": "`render_individual`",
+          "action": "returns dict[str, str] at the appropriate truncation level to `assemble_context()`"
+        },
+        {
+          "actor": "agent-fox `assemble_context()`",
+          "action": "concatenates the returned artifact strings into the system prompt, which now fits within the token budget"
+        }
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "id": "03-ERR-1",
+      "condition": "`max_tokens` is 0 or negative in any Python rendering function",
+      "behavior": "treated as None; full Level 0 render is returned without truncation",
+      "requirement_id": "03-REQ-2.E4"
+    },
+    {
+      "id": "03-ERR-2",
+      "condition": "Level 2 render still exceeds `max_tokens` after slimming the test spec",
+      "behavior": "Level 2 render is returned as-is; no further truncation is applied and no error is raised",
+      "requirement_id": "03-REQ-2.E3"
+    },
+    {
+      "id": "03-ERR-3",
+      "condition": "the `Spec` has no `architecture` section when Level 1 is evaluated",
+      "behavior": "Level 1 is treated as a no-op; the evaluation loop skips Level 1 budget re-evaluation and proceeds directly to Level 2",
+      "requirement_id": "03-REQ-5.3"
+    },
+    {
+      "id": "03-ERR-4",
+      "condition": "the `Spec` has no `TestSpec` when Level 2 slim rendering is applied",
+      "behavior": "the test spec section is rendered as absent or empty; no error is raised",
+      "requirement_id": "03-REQ-6.E1"
+    },
+    {
+      "id": "03-ERR-5",
+      "condition": "`WithMaxTokens(0)` or a negative value is passed to a Go rendering method",
+      "behavior": "treated as no budget constraint; full Level 0 render is returned",
+      "requirement_id": "03-REQ-7.E1"
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "afspec (Python)",
+      "version": "current (post spec-02 merge)",
+      "symbols": [
+        {
+          "name": "render_individual_scoped",
+          "import_path": "afspec.render",
+          "signature": "(spec: Spec, target_group: int) -> dict[str, str]",
+          "notes": "Adding optional max_tokens: int | None = None parameter"
+        },
+        {
+          "name": "render_individual",
+          "import_path": "afspec.render",
+          "signature": "(spec: Spec) -> dict[str, str]",
+          "notes": "Adding optional max_tokens: int | None = None parameter"
+        },
+        {
+          "name": "render_combined",
+          "import_path": "afspec.render",
+          "signature": "(spec: Spec) -> str",
+          "notes": "Adding optional max_tokens: int | None = None parameter"
+        },
+        {
+          "name": "render_test_spec",
+          "import_path": "afspec.render",
+          "signature": "(ts: TestSpec) -> str",
+          "notes": "Referenced by slim variants; not modified"
+        },
+        {
+          "name": "render_test_spec_scoped",
+          "import_path": "afspec.render",
+          "signature": "(ts: TestSpec, test_spec_ids: set[str]) -> str",
+          "notes": "Referenced by slim variants; not modified"
+        }
+      ]
+    },
+    {
+      "package": "afspec (Go)",
+      "version": "current (post spec-01 merge)",
+      "symbols": [
+        {
+          "name": "(*Spec).RenderCombined",
+          "import_path": "afspec",
+          "signature": "() string",
+          "notes": "Adding variadic opts ...RenderOption"
+        },
+        {
+          "name": "(*Spec).RenderIndividual",
+          "import_path": "afspec",
+          "signature": "() map[string]string",
+          "notes": "Adding variadic opts ...RenderOption"
+        },
+        {
+          "name": "(*Spec).RenderIndividualScoped",
+          "import_path": "afspec",
+          "signature": "(targetGroup int) map[string]string",
+          "notes": "Adding variadic opts ...RenderOption"
+        }
+      ]
+    }
+  ]
+}
