@@ -1045,13 +1045,21 @@ def render_tasks_scoped(t: Tasks, target_group: int) -> str:
     return "\n".join(lines)
 
 
-def render_individual_scoped(spec: Spec, target_group: int) -> dict[str, str]:
+def render_individual_scoped(
+    spec: Spec, target_group: int, *, max_tokens: int | None = None
+) -> dict[str, str]:
     """Render each spec artifact scoped to a target task group.
 
     Collects ``requirement_refs`` and ``test_spec_refs`` from the target
     group's subtasks and filters requirements/test specs accordingly.
     Falls back to unscoped rendering when the target group has no refs
     (backward compatibility with older specs).
+
+    When *max_tokens* is a positive integer the same progressive
+    truncation loop as :func:`render_individual` is applied (Level 0 →
+    Level 1 → Level 2).  Level 2 uses
+    :func:`_render_test_spec_scoped_slim` when test-spec IDs are
+    available, or :func:`_render_test_spec_slim` otherwise.
     """
     group = None
     for tg in spec.tasks.task_groups:
@@ -1060,7 +1068,7 @@ def render_individual_scoped(spec: Spec, target_group: int) -> dict[str, str]:
             break
 
     if group is None:
-        return render_individual(spec)
+        return render_individual(spec, max_tokens=max_tokens)
 
     requirement_ids: set[str] = set()
     test_spec_ids: set[str] = set()
@@ -1095,10 +1103,11 @@ def render_individual_scoped(spec: Spec, target_group: int) -> dict[str, str]:
         else:
             # Both inference strategies returned empty — full unscoped
             # fallback, but still scope tasks to the target group.
-            result = render_individual(spec)
+            result = render_individual(spec, max_tokens=max_tokens)
             result["tasks"] = render_tasks_scoped(spec.tasks, target_group)
             return result
 
+    # Level 0 — full scoped render
     result: dict[str, str] = {}
     result["prd"] = spec.prd.body
     if spec.architecture is not None:
@@ -1116,17 +1125,58 @@ def render_individual_scoped(spec: Spec, target_group: int) -> dict[str, str]:
 
     result["tasks"] = render_tasks_scoped(spec.tasks, target_group)
 
+    if not _budget_active(max_tokens):
+        return result
+
+    # Budget evaluation — Level 0
+    if _sum_tokens(result) <= max_tokens:  # type: ignore[arg-type]
+        return result
+
+    # Level 1 — drop architecture
+    if "architecture" in result:
+        del result["architecture"]
+        if _sum_tokens(result) <= max_tokens:  # type: ignore[arg-type]
+            return result
+
+    # Level 2 — slim test spec (scoped or full depending on available IDs)
+    if test_spec_ids:
+        result["test_spec"] = _render_test_spec_scoped_slim(spec.test_spec, test_spec_ids)
+    else:
+        result["test_spec"] = _render_test_spec_slim(spec.test_spec)
+
     return result
 
 
-def render_individual(spec: Spec) -> dict[str, str]:
+def _budget_active(max_tokens: int | None) -> bool:
+    """Return True when *max_tokens* represents a real budget cap."""
+    return max_tokens is not None and max_tokens > 0
+
+
+def _sum_tokens(d: dict[str, str]) -> int:
+    """Sum estimated tokens across all values in *d*."""
+    return sum(estimate_tokens(v) for v in d.values())
+
+
+def render_individual(spec: Spec, *, max_tokens: int | None = None) -> dict[str, str]:
     """Render each spec artifact to its own markdown string.
 
     Returns a dict mapping artifact name to rendered markdown.
     The PRD body is included as-is; requirements, test_spec, and tasks
     are rendered via their respective renderers. Architecture is included
     when present.
+
+    When *max_tokens* is a positive integer, a progressive truncation
+    loop is applied:
+
+    - **Level 0** — full render (returned if within budget).
+    - **Level 1** — drop the ``architecture`` key (if present).
+    - **Level 2** — re-render ``test_spec`` with
+      :func:`_render_test_spec_slim`.
+
+    If ``max_tokens`` is ``None``, ``0``, or negative the full Level 0
+    render is returned unchanged.
     """
+    # Level 0 — full render
     result: dict[str, str] = {}
     result["prd"] = spec.prd.body
     if spec.architecture is not None:
@@ -1134,50 +1184,86 @@ def render_individual(spec: Spec) -> dict[str, str]:
     result["requirements"] = render_requirements(spec.requirements)
     result["test_spec"] = render_test_spec(spec.test_spec)
     result["tasks"] = render_tasks(spec.tasks)
+
+    if not _budget_active(max_tokens):
+        return result
+
+    # Budget evaluation — Level 0
+    if _sum_tokens(result) <= max_tokens:  # type: ignore[arg-type]
+        return result
+
+    # Level 1 — drop architecture
+    if "architecture" in result:
+        del result["architecture"]
+        if _sum_tokens(result) <= max_tokens:  # type: ignore[arg-type]
+            return result
+
+    # Level 2 — slim test spec
+    result["test_spec"] = _render_test_spec_slim(spec.test_spec)
     return result
 
 
-def render_combined(spec: Spec) -> str:
+def render_combined(spec: Spec, *, max_tokens: int | None = None) -> str:
     """Render all spec artifacts to a single markdown document.
 
     Produces the PRD body (as-is) followed by rendered requirements,
     test spec, and tasks (in that order), separated by horizontal rules.
+
+    When *max_tokens* is a positive integer the progressive truncation
+    loop is applied:
+
+    - **Level 0** — full combined render.
+    - **Level 1** — omit the architecture section.
+    - **Level 2** — re-render test spec in slim mode.
     """
-    parts: list[str] = []
 
-    # PRD body (as-is)
-    parts.append(spec.prd.body.rstrip())
-
-    # Separator
-    parts.append("")
-    parts.append("---")
-    parts.append("")
-
-    # Architecture (optional)
-    if spec.architecture is not None:
-        parts.append(spec.architecture.rstrip())
+    def _build(*, include_arch: bool, slim_ts: bool) -> str:
+        parts: list[str] = []
+        parts.append(spec.prd.body.rstrip())
         parts.append("")
         parts.append("---")
         parts.append("")
 
-    # Rendered requirements
-    parts.append(render_requirements(spec.requirements).rstrip())
+        if include_arch and spec.architecture is not None:
+            parts.append(spec.architecture.rstrip())
+            parts.append("")
+            parts.append("---")
+            parts.append("")
 
-    # Separator
-    parts.append("")
-    parts.append("---")
-    parts.append("")
+        parts.append(render_requirements(spec.requirements).rstrip())
+        parts.append("")
+        parts.append("---")
+        parts.append("")
 
-    # Rendered test spec
-    parts.append(render_test_spec(spec.test_spec).rstrip())
+        if slim_ts:
+            parts.append(_render_test_spec_slim(spec.test_spec).rstrip())
+        else:
+            parts.append(render_test_spec(spec.test_spec).rstrip())
 
-    # Separator
-    parts.append("")
-    parts.append("---")
-    parts.append("")
+        parts.append("")
+        parts.append("---")
+        parts.append("")
 
-    # Rendered tasks
-    parts.append(render_tasks(spec.tasks).rstrip())
-    parts.append("")
+        parts.append(render_tasks(spec.tasks).rstrip())
+        parts.append("")
 
-    return "\n".join(parts)
+        return "\n".join(parts)
+
+    # Level 0 — full render
+    result = _build(include_arch=True, slim_ts=False)
+
+    if not _budget_active(max_tokens):
+        return result
+
+    if estimate_tokens(result) <= max_tokens:  # type: ignore[arg-type]
+        return result
+
+    # Level 1 — drop architecture
+    if spec.architecture is not None:
+        result = _build(include_arch=False, slim_ts=False)
+        if estimate_tokens(result) <= max_tokens:  # type: ignore[arg-type]
+            return result
+
+    # Level 2 — slim test spec
+    result = _build(include_arch=False, slim_ts=True)
+    return result
