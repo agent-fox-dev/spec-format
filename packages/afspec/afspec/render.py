@@ -9,6 +9,8 @@ for cross-implementation compatibility.
 from __future__ import annotations
 
 import json
+import logging
+import re
 from typing import Any
 
 from afspec.ears import render_ears_sentence
@@ -19,6 +21,15 @@ from afspec.models import (
     Tasks,
     TestSpec,
 )
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Module-level compiled regex constants for ref inference (02-REQ-2.2)
+# ---------------------------------------------------------------------------
+
+_REQ_ID_RE = re.compile(r"\b(\w+-REQ-\d+(?:\.\d+|\.E\d+)?)\b")
+_TS_ID_RE = re.compile(r"\b(TS-\w+-(?:\d+|P\d+|E\d+|SMOKE-\d+))\b")
 
 # ---------------------------------------------------------------------------
 # Helper: format JSON value for display in markdown
@@ -453,9 +464,11 @@ def render_requirements_scoped(req: Requirements, requirement_refs: set[str]) ->
     lines.append("")
     lines.append("All requirements in this specification (full detail shown only for the active task group):")
     lines.append("")
-    for r in req.requirements:
-        marker = "(included below)" if r.id in filtered_ids else "(other group)"
-        lines.append(f"- **{r.id}:** {r.title} {marker}")
+    for r in filtered:
+        lines.append(f"- **{r.id}:** {r.title} (included below)")
+    omitted_overview = len(req.requirements) - len(filtered)
+    if omitted_overview > 0:
+        lines.append(f"_(other group) — {omitted_overview} additional requirements not shown_")
     lines.append("")
 
     lines.append("## Introduction")
@@ -686,6 +699,99 @@ def render_test_spec_scoped(ts: TestSpec, test_spec_ids: set[str]) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Inference helpers for scoped rendering (02-REQ-1, 02-REQ-2)
+# ---------------------------------------------------------------------------
+
+
+def _infer_refs_from_traceability(
+    spec: Spec,
+    target_group: int,
+) -> tuple[list[str], list[str]]:
+    """Infer requirement and test spec refs from traceability entries.
+
+    Filters ``spec.tasks.traceability`` to entries whose ``task_id``
+    starts with ``"{target_group}."``.  Collects non-empty
+    ``requirement_id`` and ``test_spec_id`` values into deduplicated
+    lists.
+
+    Returns
+    -------
+    tuple[list[str], list[str]]
+        ``(requirement_refs, test_spec_refs)`` — both may be empty.
+    """
+    prefix = f"{target_group}."
+    req_ids: set[str] = set()
+    ts_ids: set[str] = set()
+    for entry in spec.tasks.traceability:
+        if entry.task_id.startswith(prefix):
+            if entry.requirement_id:
+                req_ids.add(entry.requirement_id)
+            if entry.test_spec_id:
+                ts_ids.add(entry.test_spec_id)
+    return list(req_ids), list(ts_ids)
+
+
+def _infer_refs_from_subtask_text(
+    spec: Spec,
+    target_group: int,
+) -> tuple[list[str], list[str]]:
+    """Infer requirement and test spec refs by regex-scanning subtask text.
+
+    Scans the ``title`` and ``details`` of every subtask in the target
+    group using :data:`_REQ_ID_RE` and :data:`_TS_ID_RE`.  Matches are
+    validated against the set of IDs actually present in the spec;
+    unrecognised matches are discarded.
+
+    Returns
+    -------
+    tuple[list[str], list[str]]
+        ``(requirement_refs, test_spec_refs)`` — both may be empty.
+    """
+    # Build known-ID sets from the spec
+    known_req_ids: set[str] = set()
+    for r in spec.requirements.requirements:
+        known_req_ids.add(r.id)
+        for c in r.acceptance_criteria:
+            known_req_ids.add(c.id)
+        for c in r.edge_cases:
+            known_req_ids.add(c.id)
+
+    known_ts_ids: set[str] = set()
+    for tc in spec.test_spec.test_cases:
+        known_ts_ids.add(tc.id)
+    for pt in spec.test_spec.property_tests:
+        known_ts_ids.add(pt.id)
+    for et in spec.test_spec.edge_case_tests:
+        known_ts_ids.add(et.id)
+    for st in spec.test_spec.smoke_tests:
+        known_ts_ids.add(st.id)
+
+    # Find the target group
+    group = None
+    for tg in spec.tasks.task_groups:
+        if tg.id == target_group:
+            group = tg
+            break
+
+    if group is None:
+        return [], []
+
+    # Scan subtask text
+    raw_req_ids: set[str] = set()
+    raw_ts_ids: set[str] = set()
+    for subtask in group.subtasks:
+        texts = [subtask.title] + list(subtask.details)
+        for text in texts:
+            raw_req_ids.update(_REQ_ID_RE.findall(text))
+            raw_ts_ids.update(_TS_ID_RE.findall(text))
+
+    # Validate against known IDs
+    validated_req = [rid for rid in raw_req_ids if rid in known_req_ids]
+    validated_ts = [tid for tid in raw_ts_ids if tid in known_ts_ids]
+    return validated_req, validated_ts
+
+
 def render_tasks_scoped(t: Tasks, target_group: int) -> str:
     """Render tasks with the target group in full detail and others as summaries.
 
@@ -789,9 +895,37 @@ def render_individual_scoped(spec: Spec, target_group: int) -> dict[str, str]:
         test_spec_ids.update(subtask.test_spec_refs)
 
     if not requirement_ids and not test_spec_ids:
-        result = render_individual(spec)
-        result["tasks"] = render_tasks_scoped(spec.tasks, target_group)
-        return result
+        # Inference chain: try traceability first, then text-based
+        inferred_req, inferred_ts = _infer_refs_from_traceability(spec, target_group)
+
+        if not inferred_req and not inferred_ts:
+            inferred_req, inferred_ts = _infer_refs_from_subtask_text(spec, target_group)
+            if inferred_req or inferred_ts:
+                logger.info(
+                    "Inferred refs from subtask text for group %d: "
+                    "req=%s, ts=%s",
+                    target_group,
+                    inferred_req,
+                    inferred_ts,
+                )
+        else:
+            logger.info(
+                "Inferred refs from traceability for group %d: "
+                "req=%s, ts=%s",
+                target_group,
+                inferred_req,
+                inferred_ts,
+            )
+
+        if inferred_req or inferred_ts:
+            requirement_ids = set(inferred_req)
+            test_spec_ids = set(inferred_ts)
+        else:
+            # Both inference strategies returned empty — full unscoped
+            # fallback, but still scope tasks to the target group.
+            result = render_individual(spec)
+            result["tasks"] = render_tasks_scoped(spec.tasks, target_group)
+            return result
 
     result: dict[str, str] = {}
     result["prd"] = spec.prd.body
