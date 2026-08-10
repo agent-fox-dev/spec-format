@@ -1,0 +1,105 @@
+{
+  "state": "generated",
+  "prd_path": "prd.md",
+  "assessment_history": [
+    {
+      "quality": "needs_refinement",
+      "summary": "The PRD is thorough and well-structured. It clearly states intent, defines measurable goals, draws explicit non-goals, documents the tech stack for both Python and Go, provides a detailed design with internal helpers, and includes a verified external API surface table. The main gaps are: (1) no measurable success criteria or acceptance tests tied to the goals, (2) the \"No truncation metadata\" non-goal may conflict with observability needs that are not yet ruled out for the Go side, (3) overlap with the active `scoped_rendering_ref_inference` spec (`RenderIndividualScoped` is being modified by both), and (4) a potential dependency on `afspec_go` that is not declared. These items prevent immediate \"ready\" status but are answerable with targeted clarifications.",
+      "gaps": [
+        "Overlap with active spec `scoped_rendering_ref_inference`: both specs modify `render_individual_scoped` / `RenderIndividualScoped`. No dependency or ordering relationship is declared between them, creating a merge-conflict risk.",
+        "Potential dependency on active spec `afspec_go`: this PRD adds Go rendering methods to the `afspec` Go package, which is the subject of `afspec_go`. No `## Dependencies` section exists in this PRD declaring that relationship.",
+        "No measurable acceptance criteria or test scenarios are defined for the truncation logic (e.g., 'given a spec whose Level-0 render is X tokens over budget, Level-1 output must be within budget'). Goals are feature-descriptive rather than outcome-verifiable.",
+        "Budget evaluation for `render_individual` / `render_individual_scoped` sums values across the result dict, but the PRD does not specify how keys with empty or missing values (e.g., a spec with no architecture section) are handled \u2014 could cause off-by-one budget decisions.",
+        "The 'No truncation metadata' non-goal is declared for the Python API but not explicitly addressed for the Go API. It is unclear whether Go callers will also have no signal that truncation occurred.",
+        "Owner field is empty \u2014 no accountable person is identified for this spec."
+      ],
+      "questions": [
+        {
+          "id": "q1",
+          "text": "This PRD modifies `render_individual_scoped` / `RenderIndividualScoped`, which is also being changed by the active spec `scoped_rendering_ref_inference`. Should `spec_rendering_budget_cap` depend on, extend, or be sequenced after `scoped_rendering_ref_inference`, or are the two changes independent and safe to develop in parallel?",
+          "context": "Both specs touch the same function signatures. Without an explicit ordering or dependency declaration, the two implementations risk conflicting changes to the same code paths.",
+          "options": [
+            "spec_rendering_budget_cap depends on scoped_rendering_ref_inference (implement after)",
+            "scoped_rendering_ref_inference depends on spec_rendering_budget_cap (implement after)",
+            "They are independent and can be developed in parallel with a defined merge strategy",
+            "One spec should supersede the other \u2014 please specify which"
+          ],
+          "required": true
+        },
+        {
+          "id": "q2",
+          "text": "This PRD adds Go rendering methods to the `afspec` Go package, which is also the subject of the active spec `afspec_go`. Should a `## Dependencies` section be added declaring a dependency on `afspec_go`, or does this PRD's Go work proceed independently of that spec?",
+          "context": "Declaring the dependency ensures the Go implementation foundations from `afspec_go` are in place before this spec's Go work begins, and prevents duplicate or conflicting Go package changes.",
+          "options": [
+            "Add a dependency on afspec_go \u2014 this spec's Go work should build on top of it",
+            "The Go work is independent \u2014 afspec_go covers different Go consumers, not the rendering layer",
+            "This spec should be scoped to Python only; Go parity can be tracked separately"
+          ],
+          "required": true
+        },
+        {
+          "id": "q3",
+          "text": "Can you add at least one concrete acceptance criterion per goal? For example: 'Given a spec whose full render is 2,000 tokens and max_tokens=1,200, the Level-1 output must be \u22641,200 tokens.' These allow artifact generation to produce matching test cases.",
+          "context": "The current goals describe features to implement but do not define pass/fail conditions. Without measurable criteria, generated tests cannot be validated against intent.",
+          "options": [],
+          "required": true
+        },
+        {
+          "id": "q4",
+          "text": "When a spec has no `architecture` section, Level-1 truncation has nothing to drop. Should the budget evaluation in that case skip Level 1 and proceed directly to Level 2, or should it still attempt Level 1 (no-op) and then Level 2?",
+          "context": "The current design does not address specs that are missing optional sections. Clarifying this edge case prevents ambiguous implementation behavior and ensures test coverage.",
+          "options": [
+            "Skip Level 1 (no-op) and proceed directly to Level 2 if architecture is absent",
+            "Still apply Level 1 as a no-op, then evaluate budget before applying Level 2",
+            "Document this as undefined behavior \u2014 callers should not rely on it"
+          ],
+          "required": false
+        },
+        {
+          "id": "q5",
+          "text": "The 'No truncation metadata' non-goal is stated for the Python API. Does it also apply to the Go API? Should Go callers (CLIs, servers, CI tools) also receive no signal that truncation occurred?",
+          "context": "Go consumers such as CI tools or servers may have stronger observability requirements than Python callers. Confirming parity \u2014 or documenting a difference \u2014 prevents a gap from being discovered during implementation.",
+          "options": [
+            "Yes, Go also returns no truncation metadata \u2014 identical behavior to Python",
+            "Go should return a truncation flag or level (e.g., a second return value or a struct)",
+            "Defer the Go observability decision to the afspec_go spec"
+          ],
+          "required": false
+        },
+        {
+          "id": "q6",
+          "text": "Who is the owner of this spec? The `owner` field is currently empty.",
+          "context": "An identified owner ensures accountability for design decisions and review sign-off during implementation.",
+          "options": [],
+          "required": false
+        }
+      ]
+    },
+    {
+      "quality": "ready",
+      "summary": "The PRD is now complete and ready for implementation. All five gaps identified in the previous assessment have been resolved: measurable acceptance criteria have been added to each goal; both dependency relationships (afspec_go / spec 01 and scoped_rendering_ref_inference / spec 02) are declared in a new Dependencies section with implementation ordering; the \"no truncation metadata\" non-goal now explicitly covers both Python and Go; the missing-architecture edge case in the budget evaluation loop is fully specified; and the owner field is populated (mkuehl). The Background section was also expanded to provide context for unfamiliar readers.",
+      "gaps": [],
+      "questions": []
+    }
+  ],
+  "qa_exchanges": [
+    {
+      "assessment_index": 0,
+      "answers": {
+        "q1": "spec_rendering_budget_cap depends on scoped_rendering_ref_inference (implement after). Spec 02 is already fully implemented \u2014 all task groups complete. This spec builds on the ref inference work already merged into main. Add a dependency declaration.",
+        "q2": "Add a dependency on afspec_go \u2014 this spec's Go work should build on top of it. Spec 01 is also fully implemented. The Go rendering functions this spec modifies were established by afspec_go.",
+        "q3": "Acceptance criteria per goal:\n\n1. Budget cap: Given a spec whose Level 0 render totals N estimated tokens and max_tokens is set to M < N, the returned output must have estimated tokens <= M (when achievable by Level 1 or Level 2 truncation). When max_tokens is None, output is byte-identical to current behavior.\n\n2. Token estimation: estimate_tokens('abcd') == 1. estimate_tokens('') == 0. estimate_tokens(text) == len(text) // 4 for any input.\n\n3. Progressive truncation: Given a spec with architecture present, Level 1 output must not contain the architecture key (dict) or architecture section (combined). Given Level 2, test case entries must contain only id, description, type, and requirement linkage \u2014 no assertion_pseudocode, input, or expected.\n\n4. Go parity: For any Spec value, Python render_individual(spec, max_tokens=N) and Go RenderIndividual(WithMaxTokens(N)) must produce structurally equivalent output (same keys present/absent, same truncation level applied).",
+        "q4": "Skip Level 1 (no-op) and proceed directly to Level 2 if architecture is absent. The evaluation loop should check whether Level 1 actually changed anything before re-evaluating the budget \u2014 if architecture was already absent, proceed to Level 2.",
+        "q5": "Yes, Go also returns no truncation metadata \u2014 identical behavior to Python. Both implementations return the same types with or without budget.",
+        "q6": "mkuehl"
+      },
+      "timestamp": "2026-08-10T13:38:37.270997+00:00"
+    }
+  ],
+  "generated_artifacts": [
+    "requirements",
+    "test_spec",
+    "tasks"
+  ],
+  "mode": "interactive"
+}
