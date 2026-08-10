@@ -14,6 +14,7 @@ from afspec.models import (
     EARSPattern,
     Spec,
     TaskGroup,
+    TaskGroupKind,
 )
 from afspec.schemas import schemas as load_schemas
 
@@ -1230,6 +1231,39 @@ def _check_subtask_overload(group: TaskGroup) -> list[ValidationWarning]:
     return warnings
 
 
+def _check_missing_subtask_refs(group: TaskGroup) -> list[ValidationWarning]:
+    """Warn when subtasks have empty ``requirement_refs`` or ``test_spec_refs``.
+
+    Skips the entire group if its ``kind`` is
+    :attr:`TaskGroupKind.WIRING_VERIFICATION`.  For every other group,
+    emits exactly one :class:`ValidationWarning` per subtask that has
+    either (or both) ref lists empty, with the missing field names joined
+    by ``' and '``.
+    """
+    if group.kind == TaskGroupKind.WIRING_VERIFICATION:
+        return []
+
+    warnings: list[ValidationWarning] = []
+    for subtask in group.subtasks:
+        missing: list[str] = []
+        if not subtask.requirement_refs:
+            missing.append("requirement_refs")
+        if not subtask.test_spec_refs:
+            missing.append("test_spec_refs")
+        if missing:
+            field_names = " and ".join(missing)
+            warnings.append(
+                ValidationWarning(
+                    message=(
+                        f"Subtask {subtask.id} has empty {field_names} "
+                        "— scoped rendering will fall back to full spec dump"
+                    ),
+                    entity_id=subtask.id,
+                )
+            )
+    return warnings
+
+
 _ERROR_PATH_RE = re.compile(
     r"\b(?:error|fail|reject|denied|deny|invalid|unauthorized|"
     r"unauthorised|forbidden|timeout|not found)\b",
@@ -1361,6 +1395,7 @@ def validate(spec: Spec) -> ValidationResult:
         warnings.extend(_check_group_test_spec_refs(group))
         warnings.extend(_check_group_subtask_count(group))
         warnings.extend(_check_subtask_overload(group))
+        warnings.extend(_check_missing_subtask_refs(group))
     warnings.extend(_check_error_path_return_contract(spec))
     warnings.extend(_check_vague_language(spec))
     warnings.extend(_check_scope_limit(spec))
