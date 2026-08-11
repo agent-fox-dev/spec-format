@@ -1,6 +1,7 @@
 package afspec
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -3223,5 +3224,521 @@ func TestValidateCrossSpec_MissingBoundaryCoverage(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Warning rule tests (task group 8 / test spec TS-04-19 through TS-04-25)
+// ---------------------------------------------------------------------------
+
+// makeMinimalSpec creates a minimal Spec with matching IDs across all artifacts.
+func makeMinimalSpec() *Spec {
+	return &Spec{
+		SpecID:        "04",
+		SpecName:      "test_warnings",
+		Title:         "Test Warnings",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "04",
+			SpecName:              "test_warnings",
+			SchemaVersion:         1,
+			Introduction:          "Test.",
+			Glossary:              RequirementsV1JsonGlossary{},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "04",
+			SpecName:      "test_warnings",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "04",
+			SpecName:      "test_warnings",
+			SchemaVersion: 1,
+			TestCommands: TestCommands{
+				SpecTests: "go test ./...",
+				AllTests:  "go test ./...",
+				Linter:    "go vet ./...",
+			},
+			Dependencies: []TaskDependency{},
+			TaskGroups:   []TaskGroup{},
+			Traceability: []TraceabilityEntry{},
+		},
+	}
+}
+
+// TS-04-19: Validate appends a warning when a task group's total
+// test_spec_refs count across all subtasks exceeds 15.
+// Requirement: 04-REQ-14.1
+func TestValidate_Warning_GroupTestSpecRefsCeiling(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id: 1, Title: "Group 1", Kind: TaskGroupKindTests,
+			Subtasks: []Subtask{
+				{Id: "1.1", Title: "s1", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"a", "b", "c", "d", "e", "f"}, RequirementRefs: []string{}},
+				{Id: "1.2", Title: "s2", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"g", "h", "i", "j", "k", "l"}, RequirementRefs: []string{}},
+				{Id: "1.3", Title: "s3", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"m", "n", "o", "p", "q"}, RequirementRefs: []string{}},
+			},
+			Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+		},
+	}
+	result := spec.Validate()
+	var found bool
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(w.Message, "17") || strings.Contains(lower, "test_spec_refs") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about group test_spec_refs count 17, got warnings: %v", result.Warnings)
+	}
+}
+
+// 04-REQ-14.E1: Exactly 15 total test_spec_refs produces no warning.
+func TestValidate_Warning_GroupTestSpecRefsCeiling_ExactlyAtThreshold(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id: 1, Title: "Group 1", Kind: TaskGroupKindTests,
+			Subtasks: []Subtask{
+				{Id: "1.1", Title: "s1", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"a", "b", "c", "d", "e"}, RequirementRefs: []string{}},
+				{Id: "1.2", Title: "s2", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"f", "g", "h", "i", "j"}, RequirementRefs: []string{}},
+				{Id: "1.3", Title: "s3", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"k", "l", "m", "n", "o"}, RequirementRefs: []string{}},
+			},
+			Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+		},
+	}
+	result := spec.Validate()
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if (strings.Contains(w.Message, "15") || strings.Contains(lower, "test_spec_refs")) &&
+			strings.Contains(lower, "exceed") {
+			t.Errorf("expected no group test_spec_refs ceiling warning at exactly 15, got: %s", w.Message)
+		}
+	}
+}
+
+// TS-04-20: Validate appends a warning when a task group has more than 6
+// non-verification subtasks.
+// Requirement: 04-REQ-15.1
+func TestValidate_Warning_GroupSubtaskCount(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	subtasks := make([]Subtask, 7)
+	for i := range subtasks {
+		subtasks[i] = Subtask{
+			Id: fmt.Sprintf("1.%d", i+1), Title: fmt.Sprintf("s%d", i+1),
+			State: SubtaskStatePending, Details: []string{},
+			TestSpecRefs: []string{}, RequirementRefs: []string{},
+		}
+	}
+	spec.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id: 1, Title: "Group 1", Kind: TaskGroupKindTests,
+			Subtasks:     subtasks,
+			Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+		},
+	}
+	result := spec.Validate()
+	var found bool
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(w.Message, "7") || strings.Contains(lower, "subtask") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about group subtask count exceeding 6, got warnings: %v", result.Warnings)
+	}
+}
+
+// 04-REQ-15.E1: Exactly 6 non-verification subtasks produces no warning.
+func TestValidate_Warning_GroupSubtaskCount_ExactlyAtThreshold(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	subtasks := make([]Subtask, 6)
+	for i := range subtasks {
+		subtasks[i] = Subtask{
+			Id: fmt.Sprintf("1.%d", i+1), Title: fmt.Sprintf("s%d", i+1),
+			State: SubtaskStatePending, Details: []string{},
+			TestSpecRefs: []string{}, RequirementRefs: []string{},
+		}
+	}
+	spec.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id: 1, Title: "Group 1", Kind: TaskGroupKindTests,
+			Subtasks:     subtasks,
+			Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+		},
+	}
+	result := spec.Validate()
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(lower, "subtask") && strings.Contains(lower, "exceed") {
+			t.Errorf("expected no subtask count warning at exactly 6, got: %s", w.Message)
+		}
+	}
+}
+
+// TS-04-21: Validate appends a warning when a single subtask has more than 8
+// test_spec_refs entries.
+// Requirement: 04-REQ-16.1
+func TestValidate_Warning_SubtaskTestSpecRefsCeiling(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id: 1, Title: "Group 1", Kind: TaskGroupKindTests,
+			Subtasks: []Subtask{
+				{Id: "1.1", Title: "big subtask", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}, RequirementRefs: []string{}},
+			},
+			Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+		},
+	}
+	result := spec.Validate()
+	var found bool
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(w.Message, "9") || strings.Contains(lower, "test_spec_refs") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about subtask test_spec_refs count 9, got warnings: %v", result.Warnings)
+	}
+}
+
+// 04-REQ-16.E1: Exactly 8 test_spec_refs produces no warning.
+func TestValidate_Warning_SubtaskTestSpecRefsCeiling_ExactlyAtThreshold(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id: 1, Title: "Group 1", Kind: TaskGroupKindTests,
+			Subtasks: []Subtask{
+				{Id: "1.1", Title: "subtask", State: SubtaskStatePending, Details: []string{},
+					TestSpecRefs: []string{"a", "b", "c", "d", "e", "f", "g", "h"}, RequirementRefs: []string{}},
+			},
+			Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+		},
+	}
+	result := spec.Validate()
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(lower, "test_spec_refs") && strings.Contains(lower, "exceed") && w.EntityID == "1.1" {
+			t.Errorf("expected no subtask test_spec_refs warning at exactly 8, got: %s", w.Message)
+		}
+	}
+}
+
+// TS-04-22: Validate appends a warning when a criterion has error_condition
+// or error-indicating action keyword and null return_contract.
+// Requirement: 04-REQ-17.1
+func TestValidate_Warning_ErrorPathReturnContract(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Error Handling",
+			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternEventDriven, System: "the system",
+				Action: "handle the error", ErrorCondition: strPtr("network timeout"), ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	var found bool
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(w.Message, "04-REQ-1.1") || strings.Contains(lower, "return_contract") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about missing return_contract on error path, got warnings: %v", result.Warnings)
+	}
+}
+
+// TS-04-22 variant: error-indicating keyword in action triggers warning.
+func TestValidate_Warning_ErrorPathReturnContract_ActionKeyword(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Error keyword",
+			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternEventDriven, System: "the system",
+				Action: "reject the invalid input", ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	var found bool
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(w.Message, "04-REQ-1.1") || strings.Contains(lower, "return_contract") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning for error keyword in action, got warnings: %v", result.Warnings)
+	}
+}
+
+// 04-REQ-17: No warning when return_contract is non-null.
+func TestValidate_Warning_ErrorPathReturnContract_NonNull(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Error With Contract",
+			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternEventDriven, System: "the system",
+				Action: "handle the error", ErrorCondition: strPtr("network timeout"),
+				ReturnContract: CriterionReturnContract(strPtr("returns HTTP 503")),
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	for _, w := range result.Warnings {
+		if w.EntityID == "04-REQ-1.1" && strings.Contains(strings.ToLower(w.Message), "return_contract") {
+			t.Errorf("expected no error path warning when contract is set, got: %s", w.Message)
+		}
+	}
+}
+
+// 04-REQ-17.E1: Unwanted pattern with null return_contract produces
+// both an integrity error (cross_file_10) and a warning.
+func TestValidate_Warning_ErrorPathReturnContract_UnwantedDualEntry(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Unwanted Error Path",
+			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUnwanted, System: "the system",
+				Action: "fail with error", ErrorCondition: strPtr("unexpected input"), ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	var hasError bool
+	for _, e := range result.Errors {
+		if e.Check == "cross_file_10" && e.EntityID == "04-REQ-1.1" {
+			hasError = true
+			break
+		}
+	}
+	if !hasError {
+		t.Error("expected integrity error from cross_file_10 for unwanted criterion")
+	}
+	var hasWarning bool
+	for _, w := range result.Warnings {
+		if w.EntityID == "04-REQ-1.1" && strings.Contains(strings.ToLower(w.Message), "return_contract") {
+			hasWarning = true
+			break
+		}
+	}
+	if !hasWarning {
+		t.Error("expected warning about missing return_contract on error path")
+	}
+}
+
+// TS-04-23: Validate appends one warning per vague word occurrence.
+// Requirement: 04-REQ-18.1
+func TestValidate_Warning_VagueLanguageDetection(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Vague Criterion",
+			UserStory: UserStory{Role: "developer", Goal: "detect vagueness", Benefit: "clarity"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous, System: "the system",
+				Action: "handle appropriately", Trigger: strPtr("properly configured"), ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	var vagueWarnings []ValidationEntry
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(lower, "appropriately") || strings.Contains(lower, "properly") {
+			vagueWarnings = append(vagueWarnings, w)
+		}
+	}
+	if len(vagueWarnings) != 2 {
+		t.Errorf("expected 2 vague warnings (appropriately + properly), got %d: %v", len(vagueWarnings), vagueWarnings)
+	}
+}
+
+// 04-REQ-18.E1: One warning per occurrence across multiple fields/requirements.
+func TestValidate_Warning_VagueLanguageDetection_MultipleOccurrences(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "First",
+			UserStory: UserStory{Role: "dev", Goal: "detect", Benefit: "clarity"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous, System: "sys",
+				Action: "handle correctly", ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+		{
+			Id: "04-REQ-2", Title: "Second",
+			UserStory: UserStory{Role: "dev", Goal: "detect", Benefit: "clarity"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-2.1", EarsPattern: CriterionEarsPatternUbiquitous, System: "sys",
+				Action: "provide adequate response with sufficient detail", ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	var vagueWarnings []ValidationEntry
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(lower, "correctly") || strings.Contains(lower, "adequate") || strings.Contains(lower, "sufficient") {
+			vagueWarnings = append(vagueWarnings, w)
+		}
+	}
+	if len(vagueWarnings) != 3 {
+		t.Errorf("expected 3 vague warnings, got %d: %v", len(vagueWarnings), vagueWarnings)
+	}
+}
+
+// No vague warnings for clean language.
+func TestValidate_Warning_VagueLanguageDetection_NoVagueTerms(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Clean",
+			UserStory: UserStory{Role: "dev", Goal: "clear specs", Benefit: "clarity"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous, System: "sys",
+				Action: "return a 200 status code", ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	for _, w := range result.Warnings {
+		if strings.Contains(strings.ToLower(w.Message), "vague") {
+			t.Errorf("expected no vague warnings, got: %s", w.Message)
+		}
+	}
+}
+
+// TS-04-24: Vague language regex is compiled at package level.
+// Requirement: 04-REQ-18.2
+func TestValidate_Warning_VagueLanguageRegexPackageLevel(t *testing.T) {
+	if vagueLanguageRe == nil {
+		t.Fatal("vagueLanguageRe is nil; expected package-level compiled regex")
+	}
+	for _, term := range []string{"appropriate", "properly", "correctly", "adequate", "sufficient"} {
+		if !vagueLanguageRe.MatchString(term) {
+			t.Errorf("vagueLanguageRe should match %q", term)
+		}
+	}
+	for _, term := range []string{"return", "validate", "check"} {
+		if vagueLanguageRe.MatchString(term) {
+			t.Errorf("vagueLanguageRe should not match %q", term)
+		}
+	}
+}
+
+// TS-04-25: Validate appends scope limit warning when > 10 requirements.
+// Requirement: 04-REQ-19.1
+func TestValidate_Warning_ScopeLimit(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	for i := 1; i <= 11; i++ {
+		spec.Requirements.Requirements = append(spec.Requirements.Requirements, Requirement{
+			Id: fmt.Sprintf("04-REQ-%d", i), Title: fmt.Sprintf("Req %d", i),
+			UserStory: UserStory{Role: "dev", Goal: "scope", Benefit: "manageable"},
+			AcceptanceCriteria: []Criterion{{
+				Id: fmt.Sprintf("04-REQ-%d.1", i), EarsPattern: CriterionEarsPatternUbiquitous,
+				System: "sys", Action: fmt.Sprintf("do %d", i), ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		})
+	}
+	result := spec.Validate()
+	var found bool
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(lower, "split") || strings.Contains(lower, "large") || strings.Contains(w.Message, "11") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected scope limit warning for 11 reqs, got warnings: %v", result.Warnings)
+	}
+}
+
+// 04-REQ-19.E1: Exactly 10 requirements produces no warning.
+func TestValidate_Warning_ScopeLimit_ExactlyAtThreshold(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	for i := 1; i <= 10; i++ {
+		spec.Requirements.Requirements = append(spec.Requirements.Requirements, Requirement{
+			Id: fmt.Sprintf("04-REQ-%d", i), Title: fmt.Sprintf("Req %d", i),
+			UserStory: UserStory{Role: "dev", Goal: "scope", Benefit: "manageable"},
+			AcceptanceCriteria: []Criterion{{
+				Id: fmt.Sprintf("04-REQ-%d.1", i), EarsPattern: CriterionEarsPatternUbiquitous,
+				System: "sys", Action: fmt.Sprintf("do %d", i), ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		})
+	}
+	result := spec.Validate()
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(lower, "split") || strings.Contains(lower, "large") || strings.Contains(lower, "too") {
+			t.Errorf("expected no scope limit warning at exactly 10 reqs, got: %s", w.Message)
+		}
 	}
 }

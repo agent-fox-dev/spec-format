@@ -291,6 +291,14 @@ var backtickNumericRe = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 // backtickQuotedRe matches terms wrapped in single or double quotes.
 var backtickQuotedRe = regexp.MustCompile(`^["'].*["']$`)
 
+// vagueLanguageRe matches vague words that reduce testability in criterion fields.
+// Compiled at package initialization time per 04-REQ-18.2.
+var vagueLanguageRe = regexp.MustCompile(`(?i)\b(appropriate|appropriately|properly|correctly|adequate|adequately|sufficient|sufficiently)\b`)
+
+// errorKeywordRe matches error-indicating keywords in criterion action fields.
+// Used for 04-REQ-17 to detect error paths that should have a return_contract.
+var errorKeywordRe = regexp.MustCompile(`(?i)\b(error|fail|invalid|reject)\b`)
+
 // ValidateCrossFile checks dangling references, coverage gaps, glossary
 // completeness, and ID format validity across all artifacts and returns
 // a ValidationResult.
@@ -986,6 +994,175 @@ func (s *Spec) Validate() ValidationResult {
 	if s.Tasks != nil {
 		for _, group := range s.Tasks.TaskGroups {
 			allWarnings = append(allWarnings, checkMissingSubtaskRefs(group)...)
+		}
+	}
+
+	// --- Warning: group test_spec_refs ceiling (04-REQ-14) ---
+	// For each task group, sum test_spec_refs across all subtasks; warn if > 15.
+	if s.Tasks != nil {
+		for _, group := range s.Tasks.TaskGroups {
+			total := 0
+			for _, sub := range group.Subtasks {
+				total += len(sub.TestSpecRefs)
+			}
+			if total > 15 {
+				allWarnings = append(allWarnings, ValidationEntry{
+					Category: "warning",
+					Message:  fmt.Sprintf("task group %d has %d total test_spec_refs across subtasks (exceeds 15)", group.Id, total),
+					EntityID: fmt.Sprintf("%d", group.Id),
+				})
+			}
+		}
+	}
+
+	// --- Warning: group subtask count (04-REQ-15) ---
+	// For each task group, count non-verification subtasks; warn if > 6.
+	// The Verification field on TaskGroup is the verification subtask;
+	// group.Subtasks contains only non-verification subtasks.
+	if s.Tasks != nil {
+		for _, group := range s.Tasks.TaskGroups {
+			count := len(group.Subtasks)
+			if count > 6 {
+				allWarnings = append(allWarnings, ValidationEntry{
+					Category: "warning",
+					Message:  fmt.Sprintf("task group %d has %d non-verification subtasks (exceeds 6)", group.Id, count),
+					EntityID: fmt.Sprintf("%d", group.Id),
+				})
+			}
+		}
+	}
+
+	// --- Warning: subtask test_spec_refs ceiling (04-REQ-16) ---
+	// For each subtask, warn if test_spec_refs count > 8.
+	if s.Tasks != nil {
+		for _, group := range s.Tasks.TaskGroups {
+			for _, sub := range group.Subtasks {
+				if len(sub.TestSpecRefs) > 8 {
+					allWarnings = append(allWarnings, ValidationEntry{
+						Category: "warning",
+						Message:  fmt.Sprintf("subtask %s has %d test_spec_refs (exceeds 8)", sub.Id, len(sub.TestSpecRefs)),
+						EntityID: sub.Id,
+					})
+				}
+			}
+		}
+	}
+
+	// --- Warning: error path return_contract (04-REQ-17) ---
+	// For each criterion with a non-null error_condition or error-indicating
+	// keywords in action, warn if return_contract is null.
+	if s.Requirements != nil {
+		for _, req := range s.Requirements.Requirements {
+			for _, ac := range req.AcceptanceCriteria {
+				hasErrorIndicator := ac.ErrorCondition != nil && *ac.ErrorCondition != ""
+				if !hasErrorIndicator {
+					hasErrorIndicator = errorKeywordRe.MatchString(ac.Action)
+				}
+				if hasErrorIndicator && (ac.ReturnContract == nil || *ac.ReturnContract == "") {
+					allWarnings = append(allWarnings, ValidationEntry{
+						Category: "warning",
+						Message:  fmt.Sprintf("criterion %s has error path but missing return_contract", ac.Id),
+						EntityID: ac.Id,
+					})
+				}
+			}
+			for _, ec := range req.EdgeCases {
+				hasErrorIndicator := ec.ErrorCondition != nil && *ec.ErrorCondition != ""
+				if !hasErrorIndicator {
+					hasErrorIndicator = errorKeywordRe.MatchString(ec.Action)
+				}
+				if hasErrorIndicator && (ec.ReturnContract == nil || *ec.ReturnContract == "") {
+					allWarnings = append(allWarnings, ValidationEntry{
+						Category: "warning",
+						Message:  fmt.Sprintf("criterion %s has error path but missing return_contract", ec.Id),
+						EntityID: ec.Id,
+					})
+				}
+			}
+		}
+	}
+
+	// --- Warning: vague language detection (04-REQ-18) ---
+	// Scan criterion fields for vague words; one warning per occurrence.
+	if s.Requirements != nil {
+		type fieldEntry struct {
+			name  string
+			value string
+		}
+		for _, req := range s.Requirements.Requirements {
+			for _, ac := range req.AcceptanceCriteria {
+				fields := []fieldEntry{
+					{"action", ac.Action},
+				}
+				if ac.Trigger != nil {
+					fields = append(fields, fieldEntry{"trigger", *ac.Trigger})
+				}
+				if ac.Condition != nil {
+					fields = append(fields, fieldEntry{"condition", *ac.Condition})
+				}
+				if ac.ErrorCondition != nil {
+					fields = append(fields, fieldEntry{"error_condition", *ac.ErrorCondition})
+				}
+				if ac.State != nil {
+					fields = append(fields, fieldEntry{"state", *ac.State})
+				}
+				if ac.Feature != nil {
+					fields = append(fields, fieldEntry{"feature", *ac.Feature})
+				}
+				for _, f := range fields {
+					matches := vagueLanguageRe.FindAllString(f.value, -1)
+					for _, match := range matches {
+						allWarnings = append(allWarnings, ValidationEntry{
+							Category: "warning",
+							Message:  fmt.Sprintf("vague term %q in field %s of criterion %s", strings.ToLower(match), f.name, ac.Id),
+							EntityID: ac.Id,
+						})
+					}
+				}
+			}
+			for _, ec := range req.EdgeCases {
+				fields := []fieldEntry{
+					{"action", ec.Action},
+				}
+				if ec.Trigger != nil {
+					fields = append(fields, fieldEntry{"trigger", *ec.Trigger})
+				}
+				if ec.Condition != nil {
+					fields = append(fields, fieldEntry{"condition", *ec.Condition})
+				}
+				if ec.ErrorCondition != nil {
+					fields = append(fields, fieldEntry{"error_condition", *ec.ErrorCondition})
+				}
+				if ec.State != nil {
+					fields = append(fields, fieldEntry{"state", *ec.State})
+				}
+				if ec.Feature != nil {
+					fields = append(fields, fieldEntry{"feature", *ec.Feature})
+				}
+				for _, f := range fields {
+					matches := vagueLanguageRe.FindAllString(f.value, -1)
+					for _, match := range matches {
+						allWarnings = append(allWarnings, ValidationEntry{
+							Category: "warning",
+							Message:  fmt.Sprintf("vague term %q in field %s of criterion %s", strings.ToLower(match), f.name, ec.Id),
+							EntityID: ec.Id,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// --- Warning: spec scope limit (04-REQ-19) ---
+	// Warn when a spec has more than 10 requirements.
+	if s.Requirements != nil {
+		count := len(s.Requirements.Requirements)
+		if count > 10 {
+			allWarnings = append(allWarnings, ValidationEntry{
+				Category: "warning",
+				Message:  fmt.Sprintf("spec has %d requirements; consider splitting into smaller specs — spec may be too large", count),
+				EntityID: s.SpecID,
+			})
 		}
 	}
 
