@@ -2,7 +2,9 @@ package agentspec
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 )
 
 // agentOptions holds the resolved configuration from AgentOption functional options.
@@ -75,20 +77,613 @@ func NewSpecAgent(modelTier string) *SpecAgent {
 // AssessPRD sends a PRD to the LLM with the assessment system prompt and
 // submit_assessment tool, returning a validated Assessment.
 func (sa *SpecAgent) AssessPRD(ctx context.Context, prdText, specName string, opts ...AgentOption) (Assessment, error) {
-	// TODO: implement
-	return Assessment{}, fmt.Errorf("AssessPRD: not implemented")
+	// Apply agent options.
+	o := applyOptions(opts)
+
+	// Build system and user prompts.
+	systemPrompt, err := AssessmentSystemPrompt(o.projectDir)
+	if err != nil {
+		return Assessment{}, &AgentError{
+			Detail:        fmt.Sprintf("AssessPRD: failed to load system prompt: %v", err),
+			ErrorCategory: "internal",
+			Cause:         err,
+		}
+	}
+
+	userPrompt, err := AssessmentUserPrompt(prdText, specName, o.projectDir, o.specLandscape)
+	if err != nil {
+		return Assessment{}, &AgentError{
+			Detail:        fmt.Sprintf("AssessPRD: failed to load user prompt: %v", err),
+			ErrorCategory: "internal",
+			Cause:         err,
+		}
+	}
+
+	// Convert assessment tool definitions to Tool structs.
+	toolDefs := mapToTools(AssessmentTools())
+
+	// Build AICall options.
+	callOpts := AICallOptions{
+		ModelTier:  sa.modelTier,
+		System:    systemPrompt,
+		Messages:  []Message{{Role: "user", Content: userPrompt}},
+		Tools:     toolDefs,
+		ToolChoice: map[string]any{"type": "any"},
+		Context:   "AssessPRD",
+	}
+
+	// Invoke AICall (or test mock).
+	callFn := sa.resolveCallFunc()
+	_, raw, err := callFn(ctx, callOpts)
+	if err != nil {
+		return Assessment{}, wrapCallError(err)
+	}
+
+	// Process response.
+	resp, ok := raw.(*MessageResponse)
+	if !ok {
+		return Assessment{}, &AgentError{
+			Detail:        "AssessPRD: unexpected response type from AICall",
+			ErrorCategory: "internal",
+		}
+	}
+
+	// Check stop reason for error conditions.
+	if err := checkStopReason(resp.StopReason); err != nil {
+		return Assessment{}, err
+	}
+
+	// Extract submit_assessment tool call.
+	toolInput, err := extractToolCall(resp, "submit_assessment")
+	if err != nil {
+		return Assessment{}, err
+	}
+
+	// Parse tool input into Assessment.
+	assessment, err := parseAssessment(toolInput)
+	if err != nil {
+		return Assessment{}, &AgentError{
+			Detail:        fmt.Sprintf("AssessPRD: failed to parse assessment: %v", err),
+			ErrorCategory: "internal",
+			Cause:         err,
+		}
+	}
+
+	return assessment, nil
 }
 
 // RefinePRD sends a PRD with user answers and prior assessment to the LLM,
 // returning an updated PRD text and new Assessment.
 func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[string]string, prevAssessment Assessment, opts ...AgentOption) (string, Assessment, error) {
-	// TODO: implement
-	return "", Assessment{}, fmt.Errorf("RefinePRD: not implemented")
+	// Apply agent options.
+	o := applyOptions(opts)
+
+	// Build system and user prompts.
+	systemPrompt, err := RefinementSystemPrompt(o.projectDir)
+	if err != nil {
+		return "", Assessment{}, &AgentError{
+			Detail:        fmt.Sprintf("RefinePRD: failed to load system prompt: %v", err),
+			ErrorCategory: "internal",
+			Cause:         err,
+		}
+	}
+
+	userPrompt, err := RefinementUserPrompt(prdText, answers, prevAssessment, o.projectDir, o.specLandscape)
+	if err != nil {
+		return "", Assessment{}, &AgentError{
+			Detail:        fmt.Sprintf("RefinePRD: failed to load user prompt: %v", err),
+			ErrorCategory: "internal",
+			Cause:         err,
+		}
+	}
+
+	// Convert refinement tool definitions to Tool structs.
+	toolDefs := mapToTools(RefinementTools())
+
+	// Build AICall options.
+	callOpts := AICallOptions{
+		ModelTier:  sa.modelTier,
+		System:    systemPrompt,
+		Messages:  []Message{{Role: "user", Content: userPrompt}},
+		Tools:     toolDefs,
+		ToolChoice: map[string]any{"type": "any"},
+		Context:   "RefinePRD",
+	}
+
+	// Invoke AICall (or test mock).
+	callFn := sa.resolveCallFunc()
+	_, raw, err := callFn(ctx, callOpts)
+	if err != nil {
+		return "", Assessment{}, wrapCallError(err)
+	}
+
+	// Process response.
+	resp, ok := raw.(*MessageResponse)
+	if !ok {
+		return "", Assessment{}, &AgentError{
+			Detail:        "RefinePRD: unexpected response type from AICall",
+			ErrorCategory: "internal",
+		}
+	}
+
+	// Check stop reason for error conditions.
+	if err := checkStopReason(resp.StopReason); err != nil {
+		return "", Assessment{}, err
+	}
+
+	// Extract submit_prd_update tool call.
+	prdInput, err := extractToolCall(resp, "submit_prd_update")
+	if err != nil {
+		return "", Assessment{}, err
+	}
+
+	// Parse updated PRD text.
+	updatedPRD, err := parsePRDUpdate(prdInput)
+	if err != nil {
+		return "", Assessment{}, &AgentError{
+			Detail:        fmt.Sprintf("RefinePRD: failed to parse PRD update: %v", err),
+			ErrorCategory: "internal",
+			Cause:         err,
+		}
+	}
+
+	// Try to extract submit_assessment from the same response.
+	assessmentInput, assessErr := extractToolCall(resp, "submit_assessment")
+	if assessErr == nil {
+		// Assessment found in same response — parse it.
+		assessment, parseErr := parseAssessment(assessmentInput)
+		if parseErr != nil {
+			return "", Assessment{}, &AgentError{
+				Detail:        fmt.Sprintf("RefinePRD: failed to parse assessment: %v", parseErr),
+				ErrorCategory: "internal",
+				Cause:         parseErr,
+			}
+		}
+		return updatedPRD, assessment, nil
+	}
+
+	// Assessment not found in first response — make a fallback call
+	// with only the assessment tool to get a re-assessment.
+	assessToolDefs := mapToTools(AssessmentTools())
+	fallbackOpts := AICallOptions{
+		ModelTier: sa.modelTier,
+		System:   systemPrompt,
+		Messages: []Message{
+			{Role: "user", Content: userPrompt},
+			{Role: "assistant", Content: "I've updated the PRD. Now let me assess the updated version."},
+			{Role: "user", Content: fmt.Sprintf("Please assess the following updated PRD:\n\n%s", updatedPRD)},
+		},
+		Tools:      assessToolDefs,
+		ToolChoice: map[string]any{"type": "any"},
+		Context:    "RefinePRD:fallback_assessment",
+	}
+
+	_, raw2, err2 := callFn(ctx, fallbackOpts)
+	if err2 != nil {
+		return "", Assessment{}, wrapCallError(err2)
+	}
+
+	resp2, ok := raw2.(*MessageResponse)
+	if !ok {
+		return "", Assessment{}, &AgentError{
+			Detail:        "RefinePRD: unexpected response type from fallback AICall",
+			ErrorCategory: "internal",
+		}
+	}
+
+	if err := checkStopReason(resp2.StopReason); err != nil {
+		return "", Assessment{}, err
+	}
+
+	assessmentInput2, err2 := extractToolCall(resp2, "submit_assessment")
+	if err2 != nil {
+		return "", Assessment{}, err2
+	}
+
+	assessment, parseErr := parseAssessment(assessmentInput2)
+	if parseErr != nil {
+		return "", Assessment{}, &AgentError{
+			Detail:        fmt.Sprintf("RefinePRD: failed to parse fallback assessment: %v", parseErr),
+			ErrorCategory: "internal",
+			Cause:         parseErr,
+		}
+	}
+
+	return updatedPRD, assessment, nil
 }
 
 // GenerateArtifacts sequentially generates requirements, test_spec, and tasks
 // artifacts with validation and repair loops.
 func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, specName string, opts ...AgentOption) (map[string]any, error) {
-	// TODO: implement
-	return nil, fmt.Errorf("GenerateArtifacts: not implemented")
+	// Apply agent options.
+	o := applyOptions(opts)
+
+	// Build system prompt.
+	systemPrompt, err := GenerationSystemPrompt(o.projectDir)
+	if err != nil {
+		return nil, &AgentError{
+			Detail:        fmt.Sprintf("GenerateArtifacts: failed to load system prompt: %v", err),
+			ErrorCategory: "internal",
+			Cause:         err,
+		}
+	}
+
+	callFn := sa.resolveCallFunc()
+
+	// Generate artifacts sequentially: requirements, test_spec, tasks.
+	artifactOrder := []string{"requirements", "test_spec", "tasks"}
+	result := make(map[string]any)
+	priorArtifacts := make(map[string]any)
+
+	temp := 0.2
+	const maxRepairs = 2
+
+	for _, artifactName := range artifactOrder {
+		// Check context before each artifact.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		// Build user prompt with prior artifacts context.
+		userPrompt, err := GenerationUserPrompt(
+			prdText, artifactName, specID, o.projectDir,
+			priorArtifacts, o.dependentInterfaces, o.specLandscape,
+		)
+		if err != nil {
+			return nil, &AgentError{
+				Detail:        fmt.Sprintf("GenerateArtifacts: failed to build prompt for %s: %v", artifactName, err),
+				ErrorCategory: "internal",
+				Cause:         err,
+			}
+		}
+
+		// Build tool definitions for this artifact.
+		toolDefs := mapToTools(ArtifactTool(artifactName))
+
+		callOpts := AICallOptions{
+			ModelTier:   sa.modelTier,
+			System:     systemPrompt,
+			Messages:   []Message{{Role: "user", Content: userPrompt}},
+			Tools:      toolDefs,
+			ToolChoice: map[string]any{"type": "any"},
+			Temperature: &temp,
+			Context:    fmt.Sprintf("GenerateArtifacts:%s", artifactName),
+		}
+
+		_, raw, err := callFn(ctx, callOpts)
+		if err != nil {
+			return nil, wrapCallError(err)
+		}
+
+		resp, ok := raw.(*MessageResponse)
+		if !ok {
+			return nil, &AgentError{
+				Detail:        fmt.Sprintf("GenerateArtifacts: unexpected response type for %s", artifactName),
+				ErrorCategory: "internal",
+			}
+		}
+
+		if err := checkStopReason(resp.StopReason); err != nil {
+			return nil, err
+		}
+
+		// Extract artifact tool call.
+		toolName := "submit_" + artifactName
+		toolInput, err := extractToolCall(resp, toolName)
+		if err != nil {
+			// Treat missing tool call as validation error — enter repair loop.
+			toolInput = nil
+		}
+
+		// Validate the artifact content.
+		content, validErr := validateArtifactContent(toolInput, artifactName)
+
+		// Repair loop: up to maxRepairs attempts if validation fails.
+		for repair := 0; repair < maxRepairs && validErr != nil; repair++ {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+
+			repairPrompt, repairErr := RepairUserPrompt(
+				artifactName, toolInput, []string{validErr.Error()}, o.projectDir,
+			)
+			if repairErr != nil {
+				return nil, &AgentError{
+					Detail:        fmt.Sprintf("GenerateArtifacts: failed to build repair prompt for %s: %v", artifactName, repairErr),
+					ErrorCategory: "internal",
+					Cause:         repairErr,
+				}
+			}
+
+			repairOpts := AICallOptions{
+				ModelTier:   sa.modelTier,
+				System:     systemPrompt,
+				Messages:   []Message{{Role: "user", Content: repairPrompt}},
+				Tools:      toolDefs,
+				ToolChoice: map[string]any{"type": "any"},
+				Temperature: &temp,
+				Context:    fmt.Sprintf("GenerateArtifacts:%s:repair:%d", artifactName, repair+1),
+			}
+
+			_, raw, err = callFn(ctx, repairOpts)
+			if err != nil {
+				return nil, wrapCallError(err)
+			}
+
+			resp, ok = raw.(*MessageResponse)
+			if !ok {
+				return nil, &AgentError{
+					Detail:        fmt.Sprintf("GenerateArtifacts: unexpected response type for %s repair", artifactName),
+					ErrorCategory: "internal",
+				}
+			}
+
+			if err := checkStopReason(resp.StopReason); err != nil {
+				return nil, err
+			}
+
+			toolInput, err = extractToolCall(resp, toolName)
+			if err != nil {
+				toolInput = nil
+			}
+
+			content, validErr = validateArtifactContent(toolInput, artifactName)
+		}
+
+		if validErr != nil {
+			return nil, &AgentError{
+				Detail:        fmt.Sprintf("GenerateArtifacts: validation failed for %s after %d repair attempts: %v", artifactName, maxRepairs, validErr),
+				ErrorCategory: "validation",
+				Cause:         validErr,
+			}
+		}
+
+		// Store artifact content.
+		result[artifactName] = content
+		priorArtifacts[artifactName] = content
+
+		// Invoke OnArtifact callback if set.
+		if o.onArtifact != nil {
+			if cbErr := safeCallback(o.onArtifact, artifactName, content); cbErr != nil {
+				return nil, cbErr
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// safeCallback invokes a callback function, recovering from panics and
+// returning them as errors.
+func safeCallback(fn func(string, any), name string, content any) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &AgentError{
+				Detail:        fmt.Sprintf("OnArtifact callback panicked for %s: %v", name, r),
+				ErrorCategory: "internal",
+			}
+		}
+	}()
+	fn(name, content)
+	return nil
+}
+
+// resolveCallFunc returns the AI call function to use — the test mock
+// if set, or the real AICall function.
+func (sa *SpecAgent) resolveCallFunc() func(ctx context.Context, opts AICallOptions) (string, any, error) {
+	if sa.aiCallFunc != nil {
+		return sa.aiCallFunc
+	}
+	return func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		return AICall(ctx, opts)
+	}
+}
+
+// mapToTools converts tool definitions from map format (as returned by
+// AssessmentTools, RefinementTools, etc.) to the Tool struct format
+// used by AICallOptions.
+func mapToTools(defs []map[string]any) []Tool {
+	tools := make([]Tool, len(defs))
+	for i, def := range defs {
+		name, _ := def["name"].(string)
+		desc, _ := def["description"].(string)
+		tools[i] = Tool{
+			Name:        name,
+			Description: desc,
+			InputSchema: def["input_schema"],
+		}
+	}
+	return tools
+}
+
+// checkStopReason checks the LLM response stop reason and returns an
+// AgentError for known error stop reasons. Returns nil for acceptable
+// stop reasons like "end_turn" or "tool_use".
+func checkStopReason(stopReason string) error {
+	switch stopReason {
+	case "refusal":
+		return &AgentError{
+			Detail:        "LLM refused the request",
+			ErrorCategory: "refusal",
+		}
+	case "context_window_exceeded":
+		return &AgentError{
+			Detail:        "context window exceeded",
+			ErrorCategory: "context_window",
+		}
+	case "pause_turn":
+		return &AgentError{
+			Detail:        "turn paused by the API",
+			ErrorCategory: "pause_turn",
+		}
+	default:
+		return nil
+	}
+}
+
+// extractToolCall finds a tool_use content block with the given name in
+// the response and returns its Input. Returns an AgentError with
+// category "internal" if the tool call is not found.
+func extractToolCall(resp *MessageResponse, toolName string) (any, error) {
+	if resp == nil {
+		return nil, &AgentError{
+			Detail:        fmt.Sprintf("missing %s tool call: nil response", toolName),
+			ErrorCategory: "internal",
+		}
+	}
+	for _, block := range resp.Content {
+		if block.Type == "tool_use" && block.Name == toolName {
+			return block.Input, nil
+		}
+	}
+	return nil, &AgentError{
+		Detail:        fmt.Sprintf("missing %s tool call in response", toolName),
+		ErrorCategory: "internal",
+	}
+}
+
+// parseAssessment converts a tool call input (expected to be
+// map[string]any) into an Assessment struct.
+func parseAssessment(input any) (Assessment, error) {
+	m, ok := input.(map[string]any)
+	if !ok {
+		return Assessment{}, fmt.Errorf("assessment payload is not a map: %T", input)
+	}
+
+	var a Assessment
+	a.Quality, _ = m["quality"].(string)
+	a.Summary, _ = m["summary"].(string)
+
+	// Parse gaps — could be []string or []any.
+	switch g := m["gaps"].(type) {
+	case []string:
+		a.Gaps = g
+	case []any:
+		for _, item := range g {
+			if s, ok := item.(string); ok {
+				a.Gaps = append(a.Gaps, s)
+			}
+		}
+	}
+
+	// Parse questions — could be []map[string]any or []any.
+	switch q := m["questions"].(type) {
+	case []map[string]any:
+		a.Questions = q
+	case []any:
+		for _, item := range q {
+			if qm, ok := item.(map[string]any); ok {
+				a.Questions = append(a.Questions, qm)
+			}
+		}
+	}
+
+	return a, nil
+}
+
+// parsePRDUpdate extracts the updated_prd string from a submit_prd_update
+// tool call input.
+func parsePRDUpdate(input any) (string, error) {
+	m, ok := input.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("PRD update payload is not a map: %T", input)
+	}
+	prd, ok := m["updated_prd"].(string)
+	if !ok {
+		return "", fmt.Errorf("PRD update payload missing 'updated_prd' string field")
+	}
+	return prd, nil
+}
+
+// wrapCallError ensures that errors from AICall are returned as
+// *AgentError. If the error is already an *AgentError, it is returned
+// as-is. Other errors are wrapped with category "internal".
+func wrapCallError(err error) error {
+	var agentErr *AgentError
+	if errors.As(err, &agentErr) {
+		return agentErr
+	}
+	return &AgentError{
+		Detail:        err.Error(),
+		ErrorCategory: "internal",
+		Cause:         err,
+	}
+}
+
+// validateArtifactContent checks that the tool input is a valid
+// map[string]any with expected artifact fields. Returns the content map
+// and nil on success, or nil and an error describing validation failures.
+func validateArtifactContent(input any, artifactName string) (map[string]any, error) {
+	if input == nil {
+		return nil, fmt.Errorf("nil content for artifact %s", artifactName)
+	}
+	m, ok := input.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("artifact %s content is not a map: %T", artifactName, input)
+	}
+
+	// Check for expected keys based on artifact type.
+	var requiredKeys []string
+	switch artifactName {
+	case "requirements":
+		requiredKeys = []string{"spec_id", "spec_name", "requirements"}
+	case "test_spec":
+		requiredKeys = []string{"spec_id", "spec_name", "test_cases"}
+	case "tasks":
+		requiredKeys = []string{"spec_id", "spec_name", "tasks"}
+	}
+
+	var missing []string
+	for _, key := range requiredKeys {
+		if _, exists := m[key]; !exists {
+			missing = append(missing, key)
+		}
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("artifact %s missing required keys: %s", artifactName, strings.Join(missing, ", "))
+	}
+
+	return m, nil
+}
+
+// classifyAnthropicError maps HTTP status codes from Anthropic SDK errors
+// to AgentError with the appropriate category, retryable flag, and HTTP
+// status code.
+func classifyAnthropicError(err error) *AgentError {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		agentErr := &AgentError{
+			Detail:     apiErr.Msg,
+			HTTPStatus: &apiErr.StatusCode,
+			Cause:      err,
+		}
+		switch {
+		case apiErr.StatusCode == 429:
+			agentErr.ErrorCategory = "rate_limit"
+			agentErr.Retryable = true
+		case apiErr.StatusCode == 401 || apiErr.StatusCode == 403:
+			agentErr.ErrorCategory = "auth"
+			agentErr.Retryable = false
+		case apiErr.StatusCode == 503 || apiErr.StatusCode == 529:
+			agentErr.ErrorCategory = "overloaded"
+			agentErr.Retryable = true
+		case apiErr.StatusCode >= 500:
+			agentErr.ErrorCategory = "transient"
+			agentErr.Retryable = true
+		case apiErr.StatusCode == 400:
+			agentErr.ErrorCategory = "input"
+			agentErr.Retryable = false
+		default:
+			agentErr.ErrorCategory = "internal"
+			agentErr.Retryable = false
+		}
+		return agentErr
+	}
+	return &AgentError{
+		Detail:        err.Error(),
+		ErrorCategory: "internal",
+		Retryable:     false,
+		Cause:         err,
+	}
 }
