@@ -1,11 +1,13 @@
 package agentspec
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	afspec "github.com/agent-fox-dev/spec-format"
 )
@@ -42,9 +44,12 @@ type Assessment struct {
 }
 
 // QAExchange records a set of answers to assessment questions at a
-// point in time.
+// point in time, including the assessment index the answers correspond
+// to and a UTC timestamp.
 type QAExchange struct {
-	Answers []map[string]any `json:"answers"`
+	AssessmentIndex int               `json:"assessment_index"`
+	Answers         map[string]string `json:"answers"`
+	Timestamp       time.Time         `json:"timestamp"`
 }
 
 // LastError records the most recent error encountered during a session
@@ -54,10 +59,19 @@ type LastError struct {
 	Type    string `json:"type"`
 }
 
+// assessor abstracts the SpecAgent AI pipeline for testability.
+// SpecAgent satisfies this interface; tests provide a mock.
+type assessor interface {
+	AssessPRD(ctx context.Context, prdText, specName string, opts ...AgentOption) (Assessment, error)
+	RefinePRD(ctx context.Context, prdText string, answers map[string]string, prevAssessment Assessment, opts ...AgentOption) (string, Assessment, error)
+	GenerateArtifacts(ctx context.Context, prdText, specID, specName string, opts ...AgentOption) (map[string]any, error)
+}
+
 // SpecSession represents the stateful session for authoring a single spec,
 // persisted to _session.json inside a spec directory.
 type SpecSession struct {
 	specDir            string
+	agent              assessor
 	Current            SessionState `json:"state"`
 	Mode               string       `json:"mode"`
 	PRDPath            string       `json:"prd_path"`
@@ -261,6 +275,15 @@ var knownArtifacts = []string{
 	"requirements.json",
 	"test_spec.json",
 	"tasks.json",
+}
+
+// GenerateResult holds the result of artifact generation. It contains
+// the list of generated artifact names, the validation result, and
+// any warnings encountered during generation.
+type GenerateResult struct {
+	Artifacts  []string                `json:"artifacts"`
+	Validation SessionValidationResult `json:"validation"`
+	Warnings   []string                `json:"warnings"`
 }
 
 // Validate loads the spec from the session's spec directory and runs
@@ -527,4 +550,51 @@ func extractPRDBody(content string) string {
 	}
 	body := strings.TrimSpace(rest[idx2+3:])
 	return body
+}
+
+// Assess transitions to StateAssessing, creates a SpecAgent (or uses an
+// injected one), loads the spec landscape from sibling specs, calls
+// AssessPRD, appends the result to the assessment history, and persists
+// session state. Returns (Assessment, nil) on success.
+//
+// On error, persists the error as lastError in session state without
+// appending to assessment history, then returns (Assessment{}, error).
+func (s *SpecSession) Assess(ctx context.Context) (Assessment, error) {
+	// TODO: implement
+	return Assessment{}, fmt.Errorf("Assess: not implemented")
+}
+
+// Refine transitions to StateRefining, calls RefinePRD with the current
+// PRD text, user answers, and latest assessment; updates the PRD file on
+// disk with the refined text; appends the new assessment to history;
+// records a QA exchange with assessment_index, answers, and UTC
+// timestamp; and persists session state.
+//
+// On error, persists the error as lastError without updating the PRD
+// file, without appending to assessment history, and without recording
+// a QA exchange.
+func (s *SpecSession) Refine(ctx context.Context, answers map[string]string) (Assessment, error) {
+	// TODO: implement
+	return Assessment{}, fmt.Errorf("Refine: not implemented")
+}
+
+// Generate transitions to StateGenerating immediately, checks for
+// existing artifact files to skip already-generated artifacts (partial
+// failure recovery), calls GenerateArtifacts with an OnArtifact callback
+// that writes each artifact to disk via afspec MarshalJSON and records
+// it in generatedArtifacts, transitions to StateGenerated after all
+// artifacts are generated, runs Validate, and returns a GenerateResult.
+//
+// On error, does not transition to StateGenerated, persists the error
+// as lastError, and returns (GenerateResult{}, error).
+func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) {
+	// TODO: implement
+	return GenerateResult{}, fmt.Errorf("Generate: not implemented")
+}
+
+// persistState writes the current session state to _session.json
+// atomically using the temp-file-and-rename pattern.
+func (s *SpecSession) persistState() error {
+	// TODO: implement
+	return fmt.Errorf("persistState: not implemented")
 }
