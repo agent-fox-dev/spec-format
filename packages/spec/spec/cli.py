@@ -680,6 +680,22 @@ def _run_cross_spec_checks(spec_dir: Path) -> list[dict[str, Any]]:
     return cross_spec_errors
 
 
+def _add_counts(result: dict[str, Any]) -> dict[str, Any]:
+    """Add ``error_count`` and ``warning_count`` to a validation result dict."""
+    result["error_count"] = len(result.get("errors", []))
+    result["warning_count"] = len(result.get("warnings", []))
+    return result
+
+
+def _shorten_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Return a condensed copy with only ``valid``, ``error_count``, ``warning_count``."""
+    return {
+        "valid": result["valid"],
+        "error_count": len(result.get("errors", [])),
+        "warning_count": len(result.get("warnings", [])),
+    }
+
+
 @main.command("validate")
 @click.argument("spec", required=False, default=None)
 @click.option(
@@ -689,8 +705,17 @@ def _run_cross_spec_checks(spec_dir: Path) -> list[dict[str, Any]]:
     default=False,
     help="Run cross-spec interface consistency checks",
 )
+@click.option(
+    "--short",
+    "short_output",
+    is_flag=True,
+    default=False,
+    help="Condensed output: only valid, error_count, and warning_count",
+)
 @click.pass_context
-def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> None:
+def validate_cmd(
+    ctx: click.Context, spec: str | None, cross_check: bool, short_output: bool
+) -> None:
     """Run schema and cross-file checks.
 
     When SPEC is given, validates that single spec.
@@ -727,7 +752,10 @@ def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> Non
         for meta in metas:
             target = Path(meta.dir)
             result = _validate_single_spec(target)
-            specs_results[target.name] = result
+            if short_output:
+                specs_results[target.name] = _shorten_result(result)
+            else:
+                specs_results[target.name] = _add_counts(result)
             if not result["valid"]:
                 all_valid = False
 
@@ -735,7 +763,16 @@ def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> Non
             cross_errors = _run_cross_spec_checks(spec_dir)
             if cross_errors:
                 all_valid = False
-                specs_results["_cross_spec"] = {"valid": False, "errors": cross_errors}
+                if short_output:
+                    specs_results["_cross_spec"] = {
+                        "valid": False,
+                        "error_count": len(cross_errors),
+                        "warning_count": 0,
+                    }
+                else:
+                    specs_results["_cross_spec"] = _add_counts(
+                        {"valid": False, "errors": cross_errors}
+                    )
 
         output: dict[str, Any] = {"valid": all_valid, "specs": specs_results}
         if all_valid:
@@ -754,6 +791,11 @@ def validate_cmd(ctx: click.Context, spec: str | None, cross_check: bool) -> Non
         result["errors"].extend(cross_errors)
         if cross_errors:
             result["valid"] = False
+
+    if short_output:
+        result = _shorten_result(result)
+    else:
+        result = _add_counts(result)
 
     if result["valid"]:
         emit_ok(**result)

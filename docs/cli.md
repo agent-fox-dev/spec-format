@@ -133,6 +133,7 @@ spec validate [OPTIONS] [SPEC]
 | Option | Description |
 |--------|-------------|
 | `--cross` | Run cross-spec interface consistency checks |
+| `--short` | Condensed output: emit only `valid`, `error_count`, and `warning_count` — no `errors` or `warnings` arrays. In multi-spec mode each per-spec entry is similarly condensed. |
 
 **Example:**
 
@@ -145,6 +146,12 @@ spec validate 01_auth_redesign
 
 # Include cross-spec checks
 spec validate --cross
+
+# Condensed output (single spec)
+spec validate --short 01_auth_redesign
+
+# Condensed output (all specs)
+spec validate --short
 ```
 
 ### lint

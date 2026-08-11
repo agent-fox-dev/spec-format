@@ -570,14 +570,15 @@ class TestCLICleanSpec:
         assert "true" in output_lower
 
     def test_no_warning_in_output(self, runner: CliRunner, clean_spec_dir: Path) -> None:
-        """Output contains no warning messages."""
+        """Output contains no warning messages (warning_count is 0, no warnings array)."""
         spec_parent = clean_spec_dir.parent
         result = runner.invoke(
             cli_main,
             ["--spec-dir", str(spec_parent), "--quiet", "validate", "01_clean_test"],
         )
-        output_lower = result.output.lower()
-        assert "warning" not in output_lower, f"Expected no warning messages for clean spec, got:\n{result.output}"
+        data = json.loads(result.output)
+        assert data.get("warning_count", 0) == 0, f"Expected warning_count 0, got:\n{result.output}"
+        assert "warnings" not in data, f"Expected no warnings array for clean spec, got:\n{result.output}"
 
 
 # ---------------------------------------------------------------------------
@@ -716,8 +717,9 @@ class TestCLIMalformedSpec:
                 "01_malformed_test",
             ],
         )
-        output_lower = result.output.lower()
-        assert "warning" not in output_lower, f"Expected no warning messages for malformed spec, got:\n{result.output}"
+        data = json.loads(result.output)
+        assert data.get("warning_count", 0) == 0, f"Expected warning_count 0, got:\n{result.output}"
+        assert "warnings" not in data, f"Expected no warnings array for malformed spec, got:\n{result.output}"
 
 
 # ---------------------------------------------------------------------------
@@ -1091,3 +1093,156 @@ class TestBackwardCompatMultipleTestGroups:
         error_texts = [str(e).lower() for e in result.errors]
         kind_errors = [text for text in error_texts if "kind" in text and "group 2" in text]
         assert len(kind_errors) == 0, f"Unexpected kind error for group 2: {kind_errors}"
+
+
+# ---------------------------------------------------------------------------
+# TS-NS-1: --short single-spec output has only valid/error_count/warning_count
+# ---------------------------------------------------------------------------
+
+
+class TestShortSingleSpec:
+    """TS-NS-1: --short SPEC emits condensed JSON with no arrays."""
+
+    def test_short_keys_valid_spec(self, runner: CliRunner, clean_spec_dir: Path) -> None:
+        """--short output has exactly valid, error_count, warning_count (valid spec)."""
+        spec_parent = clean_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "--short", "01_clean_test"],
+        )
+        data = json.loads(result.output)
+        # Remove 'ok' key added by emit_ok for valid specs
+        data.pop("ok", None)
+        assert set(data.keys()) == {"valid", "error_count", "warning_count"}
+        assert data["valid"] is True
+        assert isinstance(data["error_count"], int)
+        assert isinstance(data["warning_count"], int)
+
+    def test_short_no_errors_array(self, runner: CliRunner, clean_spec_dir: Path) -> None:
+        """--short output has no 'errors' or 'warnings' keys."""
+        spec_parent = clean_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "--short", "01_clean_test"],
+        )
+        data = json.loads(result.output)
+        assert "errors" not in data
+        assert "warnings" not in data
+
+    def test_short_invalid_spec(self, runner: CliRunner, error_and_warning_spec_dir: Path) -> None:
+        """--short output for invalid spec has correct keys and counts."""
+        spec_parent = error_and_warning_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "--short", "01_error_warning_test"],
+        )
+        data = json.loads(result.output)
+        assert set(data.keys()) == {"valid", "error_count", "warning_count"}
+        assert data["valid"] is False
+        assert data["error_count"] > 0
+        assert isinstance(data["warning_count"], int)
+
+
+# ---------------------------------------------------------------------------
+# TS-NS-2: Normal output includes error_count and warning_count
+# ---------------------------------------------------------------------------
+
+
+class TestNormalOutputCounts:
+    """TS-NS-2: Normal validate output includes error_count and warning_count."""
+
+    def test_normal_has_counts_valid(self, runner: CliRunner, clean_spec_dir: Path) -> None:
+        """Normal output has error_count == len(errors) for valid spec."""
+        spec_parent = clean_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "01_clean_test"],
+        )
+        data = json.loads(result.output)
+        assert data["error_count"] == len(data.get("errors", []))
+        assert data["warning_count"] == len(data.get("warnings", []))
+
+    def test_normal_has_counts_with_errors(self, runner: CliRunner, error_and_warning_spec_dir: Path) -> None:
+        """Normal output has error_count matching errors array length."""
+        spec_parent = error_and_warning_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "01_error_warning_test"],
+        )
+        data = json.loads(result.output)
+        assert "errors" in data
+        assert data["error_count"] == len(data["errors"])
+        assert data["warning_count"] == len(data.get("warnings", []))
+
+    def test_normal_still_has_errors_array(self, runner: CliRunner, error_and_warning_spec_dir: Path) -> None:
+        """Normal output still contains the full errors array."""
+        spec_parent = error_and_warning_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "01_error_warning_test"],
+        )
+        data = json.loads(result.output)
+        assert "errors" in data
+        assert isinstance(data["errors"], list)
+
+
+# ---------------------------------------------------------------------------
+# TS-NS-3: --short multi-spec output
+# ---------------------------------------------------------------------------
+
+
+class TestShortMultiSpec:
+    """TS-NS-3: --short without SPEC emits condensed per-spec results."""
+
+    def test_short_multi_spec_structure(self, runner: CliRunner, tmp_path: Path) -> None:
+        """--short multi-spec: top-level has valid+specs, each entry is condensed."""
+        # Create two spec directories
+        _write_spec_fixture(tmp_path, spec_id="A1", spec_name="spec_a", dir_name="01_spec_a", num_refs=2)
+        _write_spec_fixture(tmp_path, spec_id="B2", spec_name="spec_b", dir_name="02_spec_b", num_refs=2)
+        # campaign.yaml needed for discovery
+        (tmp_path / "campaign.yaml").write_text("name: test\ndescription: test campaign\n")
+
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(tmp_path), "--quiet", "validate", "--short"],
+        )
+        data = json.loads(result.output)
+        # Remove 'ok' key for assertion
+        data.pop("ok", None)
+        assert "valid" in data
+        assert "specs" in data
+        assert isinstance(data["specs"], dict)
+
+        for spec_name, spec_result in data["specs"].items():
+            assert set(spec_result.keys()) == {"valid", "error_count", "warning_count"}, (
+                f"Spec {spec_name} has unexpected keys: {spec_result.keys()}"
+            )
+            assert "errors" not in spec_result
+            assert "warnings" not in spec_result
+
+
+# ---------------------------------------------------------------------------
+# TS-NS-4: --short preserves exit code contract
+# ---------------------------------------------------------------------------
+
+
+class TestShortExitCode:
+    """TS-NS-4: --short preserves exit code 0/1 contract."""
+
+    def test_exit_code_zero_valid(self, runner: CliRunner, clean_spec_dir: Path) -> None:
+        """Exit code 0 when --short and spec is valid."""
+        spec_parent = clean_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "--short", "01_clean_test"],
+        )
+        assert result.exit_code == 0
+
+    def test_exit_code_one_invalid(self, runner: CliRunner, error_and_warning_spec_dir: Path) -> None:
+        """Exit code 1 when --short and spec has errors."""
+        spec_parent = error_and_warning_spec_dir.parent
+        result = runner.invoke(
+            cli_main,
+            ["--spec-dir", str(spec_parent), "--quiet", "validate", "--short", "01_error_warning_test"],
+        )
+        assert result.exit_code == 1
