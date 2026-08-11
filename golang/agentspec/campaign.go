@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
+	afspec "github.com/agent-fox-dev/spec-format"
 	"github.com/goccy/go-yaml"
 )
 
@@ -175,15 +180,167 @@ func OpenCampaign(path string) (*Campaign, error) {
 // that match the {NN}_{snake_case} spec directory naming pattern, sorted
 // by numeric prefix ascending. The archive/ subdirectory is excluded.
 func (c *Campaign) Specs() ([]string, error) {
-	// TODO: implement
-	return nil, nil
+	entries, err := os.ReadDir(c.Path)
+	if err != nil {
+		return nil, &CampaignError{
+			Msg:   fmt.Sprintf("failed to read campaign directory %s: %v", c.Path, err),
+			Cause: err,
+		}
+	}
+
+	type specEntry struct {
+		name   string
+		prefix string
+	}
+
+	var specs []specEntry
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == "archive" {
+			continue
+		}
+		if !afspec.IsSpecDirName(name) {
+			continue
+		}
+		prefix, _, err := afspec.ParseSpecDirName(name)
+		if err != nil {
+			continue
+		}
+		specs = append(specs, specEntry{name: name, prefix: prefix})
+	}
+
+	// Sort by numeric prefix ascending.
+	sort.Slice(specs, func(i, j int) bool {
+		return specs[i].prefix < specs[j].prefix
+	})
+
+	result := make([]string, len(specs))
+	for i, s := range specs {
+		result[i] = s.name
+	}
+	return result, nil
 }
+
+// specNamePattern validates that specName matches [a-z][a-z0-9_]*.
+var specNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // NewSpec provisions a new spec directory within the campaign from a PRD
 // file. It validates the spec name, computes the next numeric prefix,
 // creates the directory, writes prd.md with YAML frontmatter, and
 // initializes a SpecSession via CreateSession.
 func (c *Campaign) NewSpec(specName, prdPath, mode, source string) (*SpecSession, error) {
-	// TODO: implement
-	return nil, nil
+	// Validate specName against [a-z][a-z0-9_]*.
+	if !specNamePattern.MatchString(specName) {
+		return nil, &CampaignError{
+			Msg: fmt.Sprintf("invalid spec name %q: must match [a-z][a-z0-9_]*", specName),
+		}
+	}
+
+	// Validate prdPath exists and is readable.
+	prdBody, err := os.ReadFile(prdPath)
+	if err != nil {
+		return nil, &CampaignError{
+			Msg:   fmt.Sprintf("failed to read PRD file %s: %v", prdPath, err),
+			Cause: err,
+		}
+	}
+
+	// Compute next numeric prefix by scanning both active specs and archive/.
+	maxPrefix := 0
+
+	// Scan active specs.
+	entries, err := os.ReadDir(c.Path)
+	if err != nil {
+		return nil, &CampaignError{
+			Msg:   fmt.Sprintf("failed to read campaign directory %s: %v", c.Path, err),
+			Cause: err,
+		}
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == "archive" {
+			continue
+		}
+		if afspec.IsSpecDirName(name) {
+			prefixStr, _, err := afspec.ParseSpecDirName(name)
+			if err == nil {
+				if n, err := strconv.Atoi(prefixStr); err == nil && n > maxPrefix {
+					maxPrefix = n
+				}
+			}
+		}
+	}
+
+	// Scan archive/ subdirectory for higher prefixes.
+	archiveDir := filepath.Join(c.Path, "archive")
+	if archiveEntries, err := os.ReadDir(archiveDir); err == nil {
+		for _, entry := range archiveEntries {
+			if !entry.IsDir() {
+				continue
+			}
+			if afspec.IsSpecDirName(entry.Name()) {
+				prefixStr, _, err := afspec.ParseSpecDirName(entry.Name())
+				if err == nil {
+					if n, err := strconv.Atoi(prefixStr); err == nil && n > maxPrefix {
+						maxPrefix = n
+					}
+				}
+			}
+		}
+	}
+
+	nextPrefix := maxPrefix + 1
+	specDirName := fmt.Sprintf("%02d_%s", nextPrefix, specName)
+	specDir := filepath.Join(c.Path, specDirName)
+
+	// Create spec directory.
+	if err := os.MkdirAll(specDir, 0o755); err != nil {
+		return nil, &CampaignError{
+			Msg:   fmt.Sprintf("failed to create spec directory %s: %v", specDir, err),
+			Cause: err,
+		}
+	}
+
+	// Build prd.md with YAML frontmatter.
+	now := time.Now().UTC()
+	specID := fmt.Sprintf("%02d", nextPrefix)
+
+	var prdMD strings.Builder
+	prdMD.WriteString("---\n")
+	prdMD.WriteString(fmt.Sprintf("spec_id: %s\n", specID))
+	prdMD.WriteString(fmt.Sprintf("spec_name: %s\n", specName))
+	prdMD.WriteString(fmt.Sprintf("title: %s\n", specName))
+	prdMD.WriteString("status: draft\n")
+	prdMD.WriteString(fmt.Sprintf("created_at: %s\n", now.Format(time.RFC3339)))
+	prdMD.WriteString(fmt.Sprintf("updated_at: %s\n", now.Format(time.RFC3339)))
+	prdMD.WriteString("owner: \"\"\n")
+	prdMD.WriteString(fmt.Sprintf("source: %s\n", source))
+	prdMD.WriteString("schema_version: 1\n")
+	prdMD.WriteString("---\n")
+	prdMD.Write(prdBody)
+
+	// Write prd.md.
+	prdFilePath := filepath.Join(specDir, "prd.md")
+	if err := os.WriteFile(prdFilePath, []byte(prdMD.String()), 0o644); err != nil {
+		return nil, &CampaignError{
+			Msg:   fmt.Sprintf("failed to write prd.md: %v", err),
+			Cause: err,
+		}
+	}
+
+	// Initialize session via CreateSession.
+	session, err := CreateSession(specDir, mode, source)
+	if err != nil {
+		// Per 06-REQ-6.E1: return the error from CreateSession;
+		// the spec directory and prd.md remain on disk for manual recovery.
+		return nil, err
+	}
+
+	return session, nil
 }

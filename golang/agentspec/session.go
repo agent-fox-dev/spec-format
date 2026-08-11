@@ -1,5 +1,12 @@
 package agentspec
 
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
 // SessionState enumerates the valid states of a SpecSession.
 type SessionState string
 
@@ -84,8 +91,70 @@ func (s *SpecSession) PendingQuestions() []map[string]any {
 // it to _session.json inside specDir using the atomic temp-file-and-rename
 // pattern. Returns a SessionError on failure.
 func CreateSession(specDir, mode, source string) (*SpecSession, error) {
-	// TODO: implement
-	return nil, nil
+	if specDir == "" {
+		return nil, &SessionError{Msg: "specDir must not be empty"}
+	}
+
+	session := &SpecSession{
+		specDir:            specDir,
+		Current:            StateInit,
+		Mode:               mode,
+		PRDPath:            source,
+		AssessmentHistory:  []Assessment{},
+		QAExchanges:        []QAExchange{},
+		GeneratedArtifacts: []string{},
+	}
+
+	// Marshal session to JSON.
+	data, err := json.Marshal(session)
+	if err != nil {
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("failed to marshal session: %v", err),
+			Cause: err,
+		}
+	}
+
+	// Atomic write: write to temp file in same directory, then rename.
+	sessionPath := filepath.Join(specDir, "_session.json")
+	tmpFile, err := os.CreateTemp(specDir, "_session.json.tmp.*")
+	if err != nil {
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("failed to create temp file for _session.json: %v", err),
+			Cause: err,
+		}
+	}
+	tmpPath := tmpFile.Name()
+
+	success := false
+	defer func() {
+		if !success {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("failed to write _session.json temp file: %v", err),
+			Cause: err,
+		}
+	}
+	if err := tmpFile.Close(); err != nil {
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("failed to close _session.json temp file: %v", err),
+			Cause: err,
+		}
+	}
+
+	if err := os.Rename(tmpPath, sessionPath); err != nil {
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("failed to rename temp file to _session.json: %v", err),
+			Cause: err,
+		}
+	}
+
+	success = true
+	return session, nil
 }
 
 // ResumeSession reads _session.json from specDir and reconstructs a
