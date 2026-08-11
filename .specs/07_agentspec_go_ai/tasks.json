@@ -1147,7 +1147,7 @@
           "requirement_refs": [
             "07-REQ-7"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1167,7 +1167,7 @@
           "requirement_refs": [
             "07-REQ-7"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1186,7 +1186,7 @@
           "requirement_refs": [
             "07-REQ-7"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],
