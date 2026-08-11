@@ -558,8 +558,48 @@ func extractPRDBody(content string) string {
 // On error, persists the error as lastError in session state without
 // appending to assessment history, then returns (Assessment{}, error).
 func (s *SpecSession) Assess(ctx context.Context) (Assessment, error) {
-	// TODO: implement
-	return Assessment{}, fmt.Errorf("Assess: not implemented")
+	// Transition to StateAssessing.
+	s.Current = StateAssessing
+
+	// Read the PRD file.
+	prdText, err := s.readPRD()
+	if err != nil {
+		s.persistError(err)
+		return Assessment{}, err
+	}
+
+	// Load spec landscape from sibling specs (best-effort).
+	landscape := s.loadSiblingLandscape()
+
+	// Resolve the agent to use.
+	agent := s.resolveAgent()
+
+	// Extract spec name from directory basename.
+	specName := filepath.Base(s.specDir)
+
+	// Build agent options.
+	opts := []AgentOption{
+		WithSpecLandscape(landscape),
+		WithProjectDir(s.specDir),
+	}
+
+	// Call AssessPRD.
+	assessment, err := agent.AssessPRD(ctx, prdText, specName, opts...)
+	if err != nil {
+		s.persistError(err)
+		return Assessment{}, err
+	}
+
+	// Append the successful assessment to in-memory history.
+	s.AssessmentHistory = append(s.AssessmentHistory, assessment)
+
+	// Persist session state.
+	if err := s.persistSession(); err != nil {
+		// Per REQ-9.E1: return persist error; in-memory history retains the entry.
+		return Assessment{}, err
+	}
+
+	return assessment, nil
 }
 
 // Refine transitions to StateRefining, calls RefinePRD with the current
@@ -572,8 +612,134 @@ func (s *SpecSession) Assess(ctx context.Context) (Assessment, error) {
 // file, without appending to assessment history, and without recording
 // a QA exchange.
 func (s *SpecSession) Refine(ctx context.Context, answers map[string]string) (Assessment, error) {
-	// TODO: implement
-	return Assessment{}, fmt.Errorf("Refine: not implemented")
+	// Transition to StateRefining.
+	s.Current = StateRefining
+
+	// Read the current PRD file.
+	prdText, err := s.readPRD()
+	if err != nil {
+		s.persistError(err)
+		return Assessment{}, err
+	}
+
+	// Get the latest assessment from history (may be zero-value if empty).
+	var prevAssessment Assessment
+	if len(s.AssessmentHistory) > 0 {
+		prevAssessment = s.AssessmentHistory[len(s.AssessmentHistory)-1]
+	}
+
+	// Load spec landscape from sibling specs (best-effort).
+	landscape := s.loadSiblingLandscape()
+
+	// Resolve the agent to use.
+	agent := s.resolveAgent()
+
+	// Build agent options.
+	opts := []AgentOption{
+		WithSpecLandscape(landscape),
+		WithProjectDir(s.specDir),
+	}
+
+	// Call RefinePRD.
+	updatedPRD, newAssessment, err := agent.RefinePRD(ctx, prdText, answers, prevAssessment, opts...)
+	if err != nil {
+		s.persistError(err)
+		return Assessment{}, err
+	}
+
+	// Write the updated PRD to disk.
+	prdPath := filepath.Join(s.specDir, s.PRDPath)
+	if err := os.WriteFile(prdPath, []byte(updatedPRD), 0o644); err != nil {
+		// Per REQ-10.E1: do NOT record QA exchange or update assessment.
+		s.persistError(err)
+		return Assessment{}, err
+	}
+
+	// Append the new assessment to history.
+	s.AssessmentHistory = append(s.AssessmentHistory, newAssessment)
+
+	// Record the QA exchange.
+	exchange := QAExchange{
+		AssessmentIndex: len(s.AssessmentHistory) - 2, // index of the assessment the answers corresponded to
+		Answers:         answers,
+		Timestamp:       time.Now().UTC(),
+	}
+	s.QAExchanges = append(s.QAExchanges, exchange)
+
+	// Persist session state.
+	if err := s.persistSession(); err != nil {
+		return Assessment{}, err
+	}
+
+	return newAssessment, nil
+}
+
+// readPRD reads the PRD file from disk and returns its text content.
+func (s *SpecSession) readPRD() (string, error) {
+	prdPath := filepath.Join(s.specDir, s.PRDPath)
+	data, err := os.ReadFile(prdPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read PRD file %s: %w", prdPath, err)
+	}
+	return string(data), nil
+}
+
+// resolveAgent returns the assessor to use — the injected mock if set,
+// or a new SpecAgent with the default model tier.
+func (s *SpecSession) resolveAgent() assessor {
+	if s.agent != nil {
+		return s.agent
+	}
+	return NewSpecAgent("STANDARD")
+}
+
+// persistError sets the LastErr field and persists the session state.
+// If persistence fails, the error is silently discarded (the caller
+// already has an error to return).
+func (s *SpecSession) persistError(err error) {
+	s.LastErr = &LastError{
+		Message: err.Error(),
+		Type:    fmt.Sprintf("%T", err),
+	}
+	_ = s.persistSession()
+}
+
+// loadSiblingLandscape attempts to load spec landscape entries from
+// sibling spec directories (same parent directory). Returns an empty
+// slice on any error — landscape loading is best-effort.
+func (s *SpecSession) loadSiblingLandscape() []map[string]any {
+	parentDir := filepath.Dir(s.specDir)
+	currentName := filepath.Base(s.specDir)
+
+	entries, err := os.ReadDir(parentDir)
+	if err != nil {
+		return nil
+	}
+
+	var landscape []map[string]any
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == currentName || name == "archive" {
+			continue
+		}
+		if !afspec.IsSpecDirName(name) {
+			continue
+		}
+		prefix, specName, err := afspec.ParseSpecDirName(name)
+		if err != nil {
+			continue
+		}
+		landscape = append(landscape, map[string]any{
+			"spec_id": prefix,
+			"title":   specName,
+			"status":  "active",
+		})
+	}
+
+	return landscape
 }
 
 // Generate transitions to StateGenerating immediately, checks for
