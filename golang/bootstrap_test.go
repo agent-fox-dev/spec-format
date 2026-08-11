@@ -107,6 +107,23 @@ func buildValidBootstrapArtifacts() (*RequirementsV1Json, *TestSpecV1Json, *Task
 				},
 				Verification: VerificationSubtask{Id: "1.V", Checks: []string{"Tests pass"}},
 			},
+			{
+				Id:    2,
+				Kind:  TaskGroupKindWiringVerification,
+				Title: "Wiring verification",
+				Subtasks: []Subtask{
+					{
+						Id:              "2.1",
+						Title:           "Stub and dead-code audit",
+						Details:         []string{"Verify no stubs remain"},
+						TestSpecRefs:    []string{"TS-01-SMOKE-1"},
+						RequirementRefs: []string{"01-REQ-1.1"},
+						State:           SubtaskStatePending,
+						Optional:        false,
+					},
+				},
+				Verification: VerificationSubtask{Id: "2.V", Checks: []string{"All smoke tests pass"}},
+			},
 		},
 		Dependencies: []TaskDependency{},
 		TestCommands: TestCommands{AllTests: "go test", SpecTests: "go test", Linter: "go vet"},

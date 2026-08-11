@@ -950,7 +950,7 @@
             "05-REQ-9",
             "05-REQ-10"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -986,7 +986,7 @@
             "05-REQ-9",
             "05-REQ-10"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1010,7 +1010,7 @@
             "05-REQ-9",
             "05-REQ-10"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1054,7 +1054,7 @@
             "05-REQ-9",
             "05-REQ-10"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],

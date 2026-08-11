@@ -46,9 +46,10 @@
       "subtasks": [
         {
           "id": "2.1",
-          "title": "Trace execution paths end-to-end",
+          "title": "Stub and dead-code audit, trace execution paths end-to-end",
           "details": [
-            "Verify all paths are wired"
+            "Verify all paths are wired",
+            "Confirm no stubs remain"
           ],
           "test_spec_refs": [
             "TS-01-SMOKE-1"
