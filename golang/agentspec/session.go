@@ -94,3 +94,40 @@ func ResumeSession(specDir string) (*SpecSession, error) {
 	// TODO: implement
 	return nil, nil
 }
+
+// SessionValidationResult holds the result of validating artifacts in a
+// spec session directory. Valid is true when no schema or integrity
+// errors are found.
+type SessionValidationResult struct {
+	Valid             bool
+	SchemaErrors      []string
+	IntegrityErrors   []string
+	RepairSuggestions []RepairSuggestion
+}
+
+// RepairSuggestion describes a suggested fix for a validation error,
+// including whether it can be applied automatically.
+type RepairSuggestion struct {
+	Description string
+	AutoFixable bool
+}
+
+// Validate loads the spec from the session's spec directory and runs
+// validation, categorizing errors as schema or integrity errors. If
+// LoadSpec fails (e.g., missing artifacts), it falls back to loading
+// individual JSON artifact files and validating those.
+func (s *SpecSession) Validate() (SessionValidationResult, error) {
+	// TODO: implement
+	return SessionValidationResult{}, nil
+}
+
+// Render loads the spec from the session's spec directory and renders
+// the artifacts. When combined is true, it delegates to
+// afspec.RenderCombined and returns the combined string. When combined
+// is false, it delegates to afspec.RenderIndividual and returns a
+// map[string]string keyed by artifact name. If LoadSpec fails, it
+// falls back to rendering only available artifact files.
+func (s *SpecSession) Render(combined bool) (any, error) {
+	// TODO: implement
+	return nil, nil
+}
