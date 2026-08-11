@@ -34,11 +34,13 @@ func (e *CampaignError) Unwrap() error   { return e.Cause }
 // SessionError is returned for illegal state transitions or invalid
 // session state operations.
 type SessionError struct {
-	Msg string
+	Msg   string
+	Cause error
 }
 
 func (e *SessionError) Error() string   { return e.Msg }
 func (e *SessionError) Category() string { return "" }
+func (e *SessionError) Unwrap() error   { return e.Cause }
 
 // AgentError is the richest error type, carrying structured details about
 // an agent operation failure.
