@@ -1,6 +1,9 @@
 package agentspec
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ModelTier classifies LLM models by capability level.
 type ModelTier string
@@ -23,10 +26,30 @@ type ModelEntry struct {
 
 // ModelRegistry maps model ID strings to their ModelEntry metadata.
 // Populated at init time with known Anthropic models.
-var ModelRegistry = map[string]ModelEntry{}
+var ModelRegistry = map[string]ModelEntry{
+	"claude-haiku-4-5": {
+		ModelID: "claude-haiku-4-5",
+		Tier:    TierSimple,
+		Variant: "simple",
+	},
+	"claude-sonnet-4-6": {
+		ModelID: "claude-sonnet-4-6",
+		Tier:    TierStandard,
+		Variant: "standard",
+	},
+	"claude-opus-4-6": {
+		ModelID: "claude-opus-4-6",
+		Tier:    TierAdvanced,
+		Variant: "advanced",
+	},
+}
 
 // TierDefaults maps each ModelTier to its default model ID string.
-var TierDefaults = map[ModelTier]string{}
+var TierDefaults = map[ModelTier]string{
+	TierSimple:   "claude-haiku-4-5",
+	TierStandard: "claude-sonnet-4-6",
+	TierAdvanced: "claude-opus-4-6",
+}
 
 // ResolveModel resolves a model name or tier constant string to a canonical
 // Anthropic model ID. It performs case-insensitive matching for tier constants
@@ -35,6 +58,20 @@ var TierDefaults = map[ModelTier]string{}
 // Returns the resolved model ID and nil on success, or an empty string and
 // a descriptive error if the name is not recognized.
 func ResolveModel(name string) (string, error) {
-	// TODO: implement model resolution logic
-	return "", fmt.Errorf("ResolveModel: not implemented")
+	if name == "" {
+		return "", fmt.Errorf("ResolveModel: model name must not be empty")
+	}
+
+	// Case-insensitive tier constant matching.
+	upper := strings.ToUpper(name)
+	if modelID, ok := TierDefaults[ModelTier(upper)]; ok {
+		return modelID, nil
+	}
+
+	// Direct lookup in model registry by model ID.
+	if entry, ok := ModelRegistry[name]; ok {
+		return entry.ModelID, nil
+	}
+
+	return "", fmt.Errorf("ResolveModel: unrecognized model name %q", name)
 }
