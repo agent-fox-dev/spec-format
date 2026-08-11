@@ -63,7 +63,8 @@ type MessageRequest struct {
 
 // MessageResponse holds the result of a single LLM API call.
 type MessageResponse struct {
-	Content []ContentBlock
+	Content    []ContentBlock
+	StopReason string
 }
 
 // Doer is the interface for sending LLM requests. AICall uses this
