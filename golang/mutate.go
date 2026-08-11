@@ -361,18 +361,75 @@ func AddSmokeTest(ts TestSpecV1Json, st SmokeTest) (TestSpecV1Json, error) {
 // Tasks collection mutation functions (05-REQ-4)
 // ---------------------------------------------------------------------------
 
+// deepCopyTasks returns a deep copy of a TasksV1Json, ensuring that all slice
+// fields are independently allocated. Callers can safely mutate the returned
+// struct without affecting the original.
+func deepCopyTasks(t TasksV1Json) TasksV1Json {
+	out := t // shallow copy of scalar/struct fields
+
+	// Deep copy TaskGroups (and nested Subtasks within each group).
+	out.TaskGroups = make([]TaskGroup, len(t.TaskGroups))
+	for i, g := range t.TaskGroups {
+		out.TaskGroups[i] = g
+		out.TaskGroups[i].Subtasks = make([]Subtask, len(g.Subtasks))
+		for j, s := range g.Subtasks {
+			out.TaskGroups[i].Subtasks[j] = s
+			// Deep copy nested slices within Subtask.
+			out.TaskGroups[i].Subtasks[j].Details = make([]string, len(s.Details))
+			copy(out.TaskGroups[i].Subtasks[j].Details, s.Details)
+			out.TaskGroups[i].Subtasks[j].RequirementRefs = make([]string, len(s.RequirementRefs))
+			copy(out.TaskGroups[i].Subtasks[j].RequirementRefs, s.RequirementRefs)
+			out.TaskGroups[i].Subtasks[j].TestSpecRefs = make([]string, len(s.TestSpecRefs))
+			copy(out.TaskGroups[i].Subtasks[j].TestSpecRefs, s.TestSpecRefs)
+		}
+		// Deep copy Verification checks slice.
+		out.TaskGroups[i].Verification.Checks = make([]string, len(g.Verification.Checks))
+		copy(out.TaskGroups[i].Verification.Checks, g.Verification.Checks)
+	}
+
+	// Deep copy Dependencies slice.
+	out.Dependencies = make([]TaskDependency, len(t.Dependencies))
+	copy(out.Dependencies, t.Dependencies)
+
+	// Deep copy Traceability slice.
+	out.Traceability = make([]TraceabilityEntry, len(t.Traceability))
+	copy(out.Traceability, t.Traceability)
+
+	return out
+}
+
 // AddTaskGroup returns a new TasksV1Json with the given TaskGroup appended.
 // Returns an error if a TaskGroup with the same ID already exists.
 // The original is not modified.
 func AddTaskGroup(t TasksV1Json, g TaskGroup) (TasksV1Json, error) {
-	panic("not implemented")
+	for _, existing := range t.TaskGroups {
+		if existing.Id == g.Id {
+			return t, fmt.Errorf("duplicate task group ID %d", g.Id)
+		}
+	}
+	out := deepCopyTasks(t)
+	out.TaskGroups = append(out.TaskGroups, g)
+	return out, nil
 }
 
 // AddSubtask returns a new TaskGroup with the given Subtask appended.
 // Returns an error if a Subtask with the same ID already exists.
 // The original is not modified.
 func AddSubtask(g TaskGroup, s Subtask) (TaskGroup, error) {
-	panic("not implemented")
+	for _, existing := range g.Subtasks {
+		if existing.Id == s.Id {
+			return g, fmt.Errorf("duplicate subtask ID %q", s.Id)
+		}
+	}
+	out := g // shallow copy
+	// Copy subtasks slice so append doesn't mutate the original.
+	out.Subtasks = make([]Subtask, len(g.Subtasks), len(g.Subtasks)+1)
+	copy(out.Subtasks, g.Subtasks)
+	out.Subtasks = append(out.Subtasks, s)
+	// Copy verification checks to isolate from original.
+	out.Verification.Checks = make([]string, len(g.Verification.Checks))
+	copy(out.Verification.Checks, g.Verification.Checks)
+	return out, nil
 }
 
 // AddTraceabilityEntry returns a new TasksV1Json with the given
@@ -380,13 +437,22 @@ func AddSubtask(g TaskGroup, s Subtask) (TaskGroup, error) {
 // (requirement_id, test_spec_id) pair already exists.
 // The original is not modified.
 func AddTraceabilityEntry(t TasksV1Json, e TraceabilityEntry) (TasksV1Json, error) {
-	panic("not implemented")
+	for _, existing := range t.Traceability {
+		if existing.RequirementId == e.RequirementId && existing.TestSpecId == e.TestSpecId {
+			return t, fmt.Errorf("duplicate traceability entry (requirement_id=%q, test_spec_id=%q)", e.RequirementId, e.TestSpecId)
+		}
+	}
+	out := deepCopyTasks(t)
+	out.Traceability = append(out.Traceability, e)
+	return out, nil
 }
 
 // AddDependency returns a new TasksV1Json with the given TaskDependency
 // appended unconditionally. The original is not modified.
 func AddDependency(t TasksV1Json, d TaskDependency) TasksV1Json {
-	panic("not implemented")
+	out := deepCopyTasks(t)
+	out.Dependencies = append(out.Dependencies, d)
+	return out
 }
 
 // ---------------------------------------------------------------------------

@@ -563,7 +563,7 @@
           "requirement_refs": [
             "05-REQ-4"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],
