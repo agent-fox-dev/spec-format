@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	afspec "github.com/agent-fox-dev/spec-format"
 )
 
 // validSessionStates enumerates all recognized SessionState values.
@@ -253,13 +256,170 @@ type RepairSuggestion struct {
 	AutoFixable bool
 }
 
+// knownArtifacts lists the JSON artifact filenames that LoadSpec expects.
+var knownArtifacts = []string{
+	"requirements.json",
+	"test_spec.json",
+	"tasks.json",
+}
+
 // Validate loads the spec from the session's spec directory and runs
 // validation, categorizing errors as schema or integrity errors. If
 // LoadSpec fails (e.g., missing artifacts), it falls back to loading
 // individual JSON artifact files and validating those.
 func (s *SpecSession) Validate() (SessionValidationResult, error) {
-	// TODO: implement
-	return SessionValidationResult{}, nil
+	// Try the happy path: load the full spec and validate.
+	spec, loadErr := afspec.LoadSpec(s.specDir)
+	if loadErr == nil {
+		vr := spec.Validate()
+		return categorizeValidationResult(vr), nil
+	}
+
+	// LoadSpec failed — fall back to individual artifact validation.
+	return s.validateFallback()
+}
+
+// categorizeValidationResult converts an afspec.ValidationResult into a
+// SessionValidationResult, splitting entries by category.
+func categorizeValidationResult(vr afspec.ValidationResult) SessionValidationResult {
+	result := SessionValidationResult{
+		Valid:           vr.Valid,
+		SchemaErrors:    []string{},
+		IntegrityErrors: []string{},
+	}
+
+	for _, entry := range vr.Errors {
+		msg := formatValidationEntry(entry)
+		switch entry.Category {
+		case "schema":
+			result.SchemaErrors = append(result.SchemaErrors, msg)
+		case "integrity":
+			result.IntegrityErrors = append(result.IntegrityErrors, msg)
+			if entry.Check != "" {
+				result.RepairSuggestions = append(result.RepairSuggestions, RepairSuggestion{
+					Description: fmt.Sprintf("Fix %s: %s", entry.Check, entry.Message),
+					AutoFixable: false,
+				})
+			}
+		default:
+			result.IntegrityErrors = append(result.IntegrityErrors, msg)
+		}
+	}
+
+	return result
+}
+
+// formatValidationEntry formats a ValidationEntry into a human-readable string.
+func formatValidationEntry(entry afspec.ValidationEntry) string {
+	parts := []string{}
+	if entry.Artifact != "" {
+		parts = append(parts, entry.Artifact)
+	}
+	if entry.Path != "" {
+		parts = append(parts, entry.Path)
+	}
+	if entry.Check != "" {
+		parts = append(parts, entry.Check)
+	}
+	if len(parts) > 0 {
+		return fmt.Sprintf("[%s] %s", strings.Join(parts, ": "), entry.Message)
+	}
+	return entry.Message
+}
+
+// validateFallback loads individual JSON artifact files that are present
+// in the spec directory, validates each one, and returns a combined
+// SessionValidationResult with Valid=false.
+func (s *SpecSession) validateFallback() (SessionValidationResult, error) {
+	result := SessionValidationResult{
+		Valid:           false,
+		SchemaErrors:    []string{},
+		IntegrityErrors: []string{},
+	}
+
+	foundAny := false
+
+	for _, artifactName := range knownArtifacts {
+		artifactPath := filepath.Join(s.specDir, artifactName)
+		data, err := os.ReadFile(artifactPath)
+		if err != nil {
+			// File doesn't exist or is unreadable — record as integrity error.
+			if os.IsNotExist(err) {
+				result.IntegrityErrors = append(result.IntegrityErrors,
+					fmt.Sprintf("missing artifact: %s", artifactName))
+			} else {
+				result.IntegrityErrors = append(result.IntegrityErrors,
+					fmt.Sprintf("cannot read %s: %v", artifactName, err))
+			}
+			continue
+		}
+
+		foundAny = true
+
+		// Validate that the file contains well-formed JSON.
+		var raw json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			result.SchemaErrors = append(result.SchemaErrors,
+				fmt.Sprintf("invalid JSON in %s: %v", artifactName, err))
+			continue
+		}
+
+		// Try to unmarshal into the specific type and build a partial spec
+		// for schema validation only (cross-file validation is not meaningful
+		// for partial specs).
+		partialSpec, parseErr := parseArtifactIntoSpec(artifactName, data)
+		if parseErr != nil {
+			result.SchemaErrors = append(result.SchemaErrors,
+				fmt.Sprintf("schema error in %s: %v", artifactName, parseErr))
+			continue
+		}
+
+		// Run schema-only validation on the partial spec (skip cross-file
+		// checks which produce false positives on incomplete specs).
+		if partialSpec != nil {
+			vr := partialSpec.ValidateSchema()
+			partial := categorizeValidationResult(vr)
+			result.SchemaErrors = append(result.SchemaErrors, partial.SchemaErrors...)
+			result.IntegrityErrors = append(result.IntegrityErrors, partial.IntegrityErrors...)
+			result.RepairSuggestions = append(result.RepairSuggestions, partial.RepairSuggestions...)
+		}
+	}
+
+	if !foundAny {
+		result.IntegrityErrors = append(result.IntegrityErrors,
+			"no artifact files found in spec directory")
+	}
+
+	return result, nil
+}
+
+// parseArtifactIntoSpec parses a single artifact's data into a partial Spec
+// containing only that artifact, suitable for validation.
+func parseArtifactIntoSpec(artifactName string, data []byte) (*afspec.Spec, error) {
+	spec := &afspec.Spec{}
+	switch artifactName {
+	case "requirements.json":
+		var req afspec.RequirementsV1Json
+		if err := json.Unmarshal(data, &req); err != nil {
+			return nil, err
+		}
+		spec.Requirements = &req
+	case "test_spec.json":
+		var ts afspec.TestSpecV1Json
+		if err := json.Unmarshal(data, &ts); err != nil {
+			return nil, err
+		}
+		spec.TestSpec = &ts
+	case "tasks.json":
+		var tasks afspec.TasksV1Json
+		if err := json.Unmarshal(data, &tasks); err != nil {
+			return nil, err
+		}
+		spec.Tasks = &tasks
+	default:
+		return nil, nil
+	}
+	return spec, nil
 }
 
 // Render loads the spec from the session's spec directory and renders
@@ -269,6 +429,102 @@ func (s *SpecSession) Validate() (SessionValidationResult, error) {
 // map[string]string keyed by artifact name. If LoadSpec fails, it
 // falls back to rendering only available artifact files.
 func (s *SpecSession) Render(combined bool) (any, error) {
-	// TODO: implement
-	return nil, nil
+	// Try the happy path: load the full spec and render.
+	spec, loadErr := afspec.LoadSpec(s.specDir)
+	if loadErr == nil {
+		if combined {
+			return spec.RenderCombined(), nil
+		}
+		return spec.RenderIndividual(), nil
+	}
+
+	// LoadSpec failed — fall back to rendering available artifacts.
+	return s.renderFallback(combined)
+}
+
+// renderFallback loads individual artifact files that are present in the
+// spec directory, builds a partial Spec, and renders it.
+func (s *SpecSession) renderFallback(combined bool) (any, error) {
+	spec := s.loadPartialSpec()
+
+	hasArtifacts := spec.Requirements != nil || spec.TestSpec != nil ||
+		spec.Tasks != nil || spec.Architecture != ""
+
+	if !hasArtifacts {
+		if combined {
+			return "", nil
+		}
+		return map[string]string{}, nil
+	}
+
+	if combined {
+		return spec.RenderCombined(), nil
+	}
+
+	return spec.RenderIndividual(), nil
+}
+
+// loadPartialSpec attempts to load whatever artifact files are present in
+// the spec directory into a partial Spec.
+func (s *SpecSession) loadPartialSpec() *afspec.Spec {
+	spec := &afspec.Spec{}
+
+	// Try to load PRD body.
+	prdPath := filepath.Join(s.specDir, "prd.md")
+	if prdData, err := os.ReadFile(prdPath); err == nil {
+		// Extract body after frontmatter (everything after second "---").
+		body := extractPRDBody(string(prdData))
+		spec.PRDBody = body
+	}
+
+	// Try to load each JSON artifact.
+	reqPath := filepath.Join(s.specDir, "requirements.json")
+	if data, err := os.ReadFile(reqPath); err == nil {
+		var req afspec.RequirementsV1Json
+		if json.Unmarshal(data, &req) == nil {
+			spec.Requirements = &req
+		}
+	}
+
+	tsPath := filepath.Join(s.specDir, "test_spec.json")
+	if data, err := os.ReadFile(tsPath); err == nil {
+		var ts afspec.TestSpecV1Json
+		if json.Unmarshal(data, &ts) == nil {
+			spec.TestSpec = &ts
+		}
+	}
+
+	tasksPath := filepath.Join(s.specDir, "tasks.json")
+	if data, err := os.ReadFile(tasksPath); err == nil {
+		var tasks afspec.TasksV1Json
+		if json.Unmarshal(data, &tasks) == nil {
+			spec.Tasks = &tasks
+		}
+	}
+
+	// Try to load architecture.
+	archPath := filepath.Join(s.specDir, "architecture.md")
+	if data, err := os.ReadFile(archPath); err == nil {
+		spec.Architecture = string(data)
+	}
+
+	return spec
+}
+
+// extractPRDBody extracts the Markdown body from a PRD file, stripping
+// the YAML frontmatter delimited by "---" lines.
+func extractPRDBody(content string) string {
+	// Find the opening "---"
+	idx := strings.Index(content, "---")
+	if idx < 0 {
+		return content
+	}
+	// Find the closing "---"
+	rest := content[idx+3:]
+	idx2 := strings.Index(rest, "---")
+	if idx2 < 0 {
+		return content
+	}
+	body := strings.TrimSpace(rest[idx2+3:])
+	return body
 }

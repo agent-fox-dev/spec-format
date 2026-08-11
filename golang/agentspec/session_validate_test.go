@@ -72,7 +72,12 @@ This is a test PRD body.
 		"spec_id": "06",
 		"spec_name": "test_spec",
 		"schema_version": 1,
-		"test_commands": {},
+		"dependencies": [],
+		"test_commands": {
+			"all_tests": "go test ./...",
+			"spec_tests": "go test ./agentspec/...",
+			"linter": "go vet ./..."
+		},
 		"task_groups": [],
 		"traceability": []
 	}`
