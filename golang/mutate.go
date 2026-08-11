@@ -177,55 +177,184 @@ func AddErrorHandling(req RequirementsV1Json, e ErrorHandlingEntry) (Requirement
 
 // AddCriterion returns a new Requirement with the given Criterion appended to
 // acceptance_criteria. Returns an error if a Criterion with the same ID
-// already exists. The original is not modified.
+// already exists in acceptance_criteria. The original is not modified.
 func AddCriterion(r Requirement, c Criterion) (Requirement, error) {
-	panic("not implemented")
+	for _, existing := range r.AcceptanceCriteria {
+		if existing.Id == c.Id {
+			return r, fmt.Errorf("duplicate criterion ID %q", c.Id)
+		}
+	}
+	out := r // shallow copy
+	// Copy acceptance_criteria slice so append doesn't mutate the original.
+	out.AcceptanceCriteria = make([]Criterion, len(r.AcceptanceCriteria), len(r.AcceptanceCriteria)+1)
+	copy(out.AcceptanceCriteria, r.AcceptanceCriteria)
+	out.AcceptanceCriteria = append(out.AcceptanceCriteria, c)
+	// Copy edge_cases to isolate from original.
+	if r.EdgeCases != nil {
+		out.EdgeCases = make([]Criterion, len(r.EdgeCases))
+		copy(out.EdgeCases, r.EdgeCases)
+	}
+	return out, nil
 }
 
 // AddEdgeCase returns a new Requirement with the given Criterion appended to
-// edge_cases. Returns an error if a Criterion with the same ID already exists.
-// The original is not modified.
+// edge_cases. Returns an error if a Criterion with the same ID already exists
+// in edge_cases. The original is not modified.
 func AddEdgeCase(r Requirement, c Criterion) (Requirement, error) {
-	panic("not implemented")
+	for _, existing := range r.EdgeCases {
+		if existing.Id == c.Id {
+			return r, fmt.Errorf("duplicate edge case ID %q", c.Id)
+		}
+	}
+	out := r // shallow copy
+	// Copy edge_cases slice so append doesn't mutate the original.
+	out.EdgeCases = make([]Criterion, len(r.EdgeCases), len(r.EdgeCases)+1)
+	copy(out.EdgeCases, r.EdgeCases)
+	out.EdgeCases = append(out.EdgeCases, c)
+	// Copy acceptance_criteria to isolate from original.
+	if r.AcceptanceCriteria != nil {
+		out.AcceptanceCriteria = make([]Criterion, len(r.AcceptanceCriteria))
+		copy(out.AcceptanceCriteria, r.AcceptanceCriteria)
+	}
+	return out, nil
 }
 
 // GetCriterion searches both acceptance_criteria and edge_cases for a Criterion
 // with the given ID. Returns a pointer to the first match and true, or nil and
 // false if not found in either slice.
 func GetCriterion(r Requirement, id string) (*Criterion, bool) {
-	panic("not implemented")
+	for i := range r.AcceptanceCriteria {
+		if r.AcceptanceCriteria[i].Id == id {
+			return &r.AcceptanceCriteria[i], true
+		}
+	}
+	for i := range r.EdgeCases {
+		if r.EdgeCases[i].Id == id {
+			return &r.EdgeCases[i], true
+		}
+	}
+	return nil, false
 }
 
 // ---------------------------------------------------------------------------
 // TestSpec collection mutation functions (05-REQ-3)
 // ---------------------------------------------------------------------------
 
+// deepCopyTestSpec returns a deep copy of a TestSpecV1Json, ensuring that all
+// slice fields are independently allocated. Callers can safely mutate the
+// returned struct without affecting the original.
+func deepCopyTestSpec(ts TestSpecV1Json) TestSpecV1Json {
+	out := ts // shallow copy of scalar/struct fields
+
+	// Deep copy TestCases.
+	if ts.TestCases != nil {
+		out.TestCases = make([]TestCase, len(ts.TestCases))
+		copy(out.TestCases, ts.TestCases)
+	}
+	// Deep copy PropertyTests (and nested Validates slices).
+	if ts.PropertyTests != nil {
+		out.PropertyTests = make([]PropertyTest, len(ts.PropertyTests))
+		for i, pt := range ts.PropertyTests {
+			out.PropertyTests[i] = pt
+			if pt.Validates != nil {
+				out.PropertyTests[i].Validates = make([]string, len(pt.Validates))
+				copy(out.PropertyTests[i].Validates, pt.Validates)
+			}
+		}
+	}
+	// Deep copy EdgeCaseTests.
+	if ts.EdgeCaseTests != nil {
+		out.EdgeCaseTests = make([]EdgeCaseTest, len(ts.EdgeCaseTests))
+		copy(out.EdgeCaseTests, ts.EdgeCaseTests)
+	}
+	// Deep copy SmokeTests (and nested slice fields).
+	if ts.SmokeTests != nil {
+		out.SmokeTests = make([]SmokeTest, len(ts.SmokeTests))
+		for i, st := range ts.SmokeTests {
+			out.SmokeTests[i] = st
+			if st.ExpectedEffects != nil {
+				out.SmokeTests[i].ExpectedEffects = make([]string, len(st.ExpectedEffects))
+				copy(out.SmokeTests[i].ExpectedEffects, st.ExpectedEffects)
+			}
+			if st.RealComponents != nil {
+				out.SmokeTests[i].RealComponents = make([]string, len(st.RealComponents))
+				copy(out.SmokeTests[i].RealComponents, st.RealComponents)
+			}
+			if st.Mockable != nil {
+				out.SmokeTests[i].Mockable = make([]string, len(st.Mockable))
+				copy(out.SmokeTests[i].Mockable, st.Mockable)
+			}
+		}
+	}
+	return out
+}
+
 // AddTestCase returns a new TestSpecV1Json with the given TestCase appended.
 // Returns an error if a TestCase with the same ID already exists.
 // The original is not modified.
 func AddTestCase(ts TestSpecV1Json, tc TestCase) (TestSpecV1Json, error) {
-	panic("not implemented")
+	for _, existing := range ts.TestCases {
+		if existing.Id == tc.Id {
+			return ts, fmt.Errorf("duplicate test case ID %q", tc.Id)
+		}
+	}
+	out := deepCopyTestSpec(ts)
+	if out.TestCases == nil {
+		out.TestCases = make([]TestCase, 0, 1)
+	}
+	out.TestCases = append(out.TestCases, tc)
+	return out, nil
 }
 
 // AddPropertyTest returns a new TestSpecV1Json with the given PropertyTest
 // appended. Returns an error if a PropertyTest with the same ID already exists.
 // The original is not modified.
 func AddPropertyTest(ts TestSpecV1Json, pt PropertyTest) (TestSpecV1Json, error) {
-	panic("not implemented")
+	for _, existing := range ts.PropertyTests {
+		if existing.Id == pt.Id {
+			return ts, fmt.Errorf("duplicate property test ID %q", pt.Id)
+		}
+	}
+	out := deepCopyTestSpec(ts)
+	if out.PropertyTests == nil {
+		out.PropertyTests = make([]PropertyTest, 0, 1)
+	}
+	out.PropertyTests = append(out.PropertyTests, pt)
+	return out, nil
 }
 
 // AddEdgeCaseTest returns a new TestSpecV1Json with the given EdgeCaseTest
 // appended. Returns an error if an EdgeCaseTest with the same ID already
 // exists. The original is not modified.
 func AddEdgeCaseTest(ts TestSpecV1Json, et EdgeCaseTest) (TestSpecV1Json, error) {
-	panic("not implemented")
+	for _, existing := range ts.EdgeCaseTests {
+		if existing.Id == et.Id {
+			return ts, fmt.Errorf("duplicate edge case test ID %q", et.Id)
+		}
+	}
+	out := deepCopyTestSpec(ts)
+	if out.EdgeCaseTests == nil {
+		out.EdgeCaseTests = make([]EdgeCaseTest, 0, 1)
+	}
+	out.EdgeCaseTests = append(out.EdgeCaseTests, et)
+	return out, nil
 }
 
 // AddSmokeTest returns a new TestSpecV1Json with the given SmokeTest appended.
 // Returns an error if a SmokeTest with the same ID already exists.
 // The original is not modified.
 func AddSmokeTest(ts TestSpecV1Json, st SmokeTest) (TestSpecV1Json, error) {
-	panic("not implemented")
+	for _, existing := range ts.SmokeTests {
+		if existing.Id == st.Id {
+			return ts, fmt.Errorf("duplicate smoke test ID %q", st.Id)
+		}
+	}
+	out := deepCopyTestSpec(ts)
+	if out.SmokeTests == nil {
+		out.SmokeTests = make([]SmokeTest, 0, 1)
+	}
+	out.SmokeTests = append(out.SmokeTests, st)
+	return out, nil
 }
 
 // ---------------------------------------------------------------------------
