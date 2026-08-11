@@ -518,6 +518,107 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 		}
 	}
 
+	// --- Cross-file rule 3: Property test coverage ---
+	// Each correctness_property must have a matching property_test (by property_id).
+	if s.Requirements != nil && len(s.Requirements.CorrectnessProperties) > 0 {
+		// Build set of covered property_ids from property_tests
+		coveredPropertyIDs := map[string]bool{}
+		if s.TestSpec != nil {
+			for _, pt := range s.TestSpec.PropertyTests {
+				coveredPropertyIDs[pt.PropertyId] = true
+			}
+		}
+		for i, cp := range s.Requirements.CorrectnessProperties {
+			if !coveredPropertyIDs[cp.Id] {
+				errors = append(errors, ValidationEntry{
+					Category:      "integrity",
+					Check:         "cross_file_3",
+					Message:       fmt.Sprintf("correctness property %s has no matching property_test", cp.Id),
+					Artifact:      "requirements.json",
+					Path:          fmt.Sprintf("requirements.correctness_properties[%d]", i),
+					RequirementID: cp.Id,
+				})
+			}
+		}
+	}
+
+	// --- Cross-file rule 4: Execution path smoke test coverage ---
+	// Each execution_path must have a matching smoke_test (by execution_path_id).
+	if s.Requirements != nil && len(s.Requirements.ExecutionPaths) > 0 {
+		// Build set of covered execution_path_ids from smoke_tests
+		coveredPathIDs := map[string]bool{}
+		if s.TestSpec != nil {
+			for _, sm := range s.TestSpec.SmokeTests {
+				coveredPathIDs[sm.ExecutionPathId] = true
+			}
+		}
+		for _, ep := range s.Requirements.ExecutionPaths {
+			if !coveredPathIDs[ep.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_4",
+					Message:  fmt.Sprintf("execution path %s has no matching smoke_test", ep.Id),
+					Artifact: "requirements.json",
+					EntityID: ep.Id,
+				})
+			}
+		}
+	}
+
+	// --- Cross-file rule 5: test_spec_id resolution ---
+	// Every test_spec_id in traceability entries and subtask test_spec_refs
+	// must resolve to a known test entry in test_spec.
+	{
+		// Build set of all known test IDs from test_spec
+		knownTestIDs := map[string]bool{}
+		if s.TestSpec != nil {
+			for _, tc := range s.TestSpec.TestCases {
+				knownTestIDs[tc.Id] = true
+			}
+			for _, pt := range s.TestSpec.PropertyTests {
+				knownTestIDs[pt.Id] = true
+			}
+			for _, ec := range s.TestSpec.EdgeCaseTests {
+				knownTestIDs[ec.Id] = true
+			}
+			for _, sm := range s.TestSpec.SmokeTests {
+				knownTestIDs[sm.Id] = true
+			}
+		}
+
+		// Check traceability entries
+		if s.Tasks != nil {
+			for _, te := range s.Tasks.Traceability {
+				if te.TestSpecId != "" && !knownTestIDs[te.TestSpecId] {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "cross_file_5",
+						Message:  fmt.Sprintf("traceability entry references unresolvable test_spec_id %s", te.TestSpecId),
+						Artifact: "tasks.json",
+						EntityID: te.TestSpecId,
+					})
+				}
+			}
+
+			// Check subtask test_spec_refs
+			for _, group := range s.Tasks.TaskGroups {
+				for _, sub := range group.Subtasks {
+					for _, ref := range sub.TestSpecRefs {
+						if ref != "" && !knownTestIDs[ref] {
+							errors = append(errors, ValidationEntry{
+								Category: "integrity",
+								Check:    "cross_file_5",
+								Message:  fmt.Sprintf("subtask %s test_spec_refs contains unresolvable test_spec_id %s", sub.Id, ref),
+								Artifact: "tasks.json",
+								EntityID: ref,
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// --- Spec ID/name consistency across artifacts ---
 	if s.Requirements != nil {
 		if s.Requirements.SpecId != s.SpecID {
