@@ -890,7 +890,7 @@
             "06-REQ-11",
             "06-REQ-12"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -910,7 +910,7 @@
           "requirement_refs": [
             "06-REQ-13"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],
