@@ -420,8 +420,8 @@ func TestValidateCrossSpec_GlossaryConflict(t *testing.T) {
 
 // TestValidateStructured_ValidSpec verifies that ValidateStructured on a
 // valid spec returns a map with 'valid' true, 'errors' as empty slice,
-// and no 'warnings' key.
-// Test Spec: TS-01-15, Requirement: 01-REQ-8.1
+// and 'warnings' as empty slice.
+// Test Spec: TS-01-15, Requirement: 01-REQ-8.1, 04-REQ-20.1
 func TestValidateStructured_ValidSpec(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -448,16 +448,20 @@ func TestValidateStructured_ValidSpec(t *testing.T) {
 		t.Errorf("result['errors'] has %d entries, want 0", len(errs))
 	}
 
-	// No warnings key should be present for a fully valid spec with no warnings
-	if _, hasWarnings := result["warnings"]; hasWarnings {
-		t.Error("result has 'warnings' key, want it absent for fully valid spec")
+	// 'warnings' key must always be present per 04-REQ-20.1
+	warnings, ok := result["warnings"].([]map[string]any)
+	if !ok {
+		t.Fatalf("result['warnings'] is not []map[string]any, got %T", result["warnings"])
+	}
+	if len(warnings) != 0 {
+		t.Errorf("result['warnings'] has %d entries, want 0 for fully valid spec", len(warnings))
 	}
 }
 
 // TestValidateStructured_SchemaErrors verifies that ValidateStructured on
 // a spec with schema errors returns a map with 'valid' false and 'errors'
-// entries with 'category', 'message', and 'artifact' fields.
-// Test Spec: TS-01-16, Requirement: 01-REQ-8.2
+// entries with 'category', 'rule', 'message', 'file', and 'path' fields.
+// Test Spec: TS-01-16, Requirement: 01-REQ-8.2, 04-REQ-20.2
 func TestValidateStructured_SchemaErrors(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -488,15 +492,21 @@ func TestValidateStructured_SchemaErrors(t *testing.T) {
 	if msg, _ := e["message"].(string); msg == "" {
 		t.Error("error message is empty, want non-empty")
 	}
-	if art, _ := e["artifact"].(string); art == "" {
-		t.Error("error artifact is empty, want non-empty")
+	if file, _ := e["file"].(string); file == "" {
+		t.Error("error file is empty, want non-empty")
+	}
+	if _, hasRule := e["rule"]; !hasRule {
+		t.Error("error map missing 'rule' key")
+	}
+	if _, hasPath := e["path"]; !hasPath {
+		t.Error("error map missing 'path' key")
 	}
 }
 
 // TestValidateStructured_IntegrityErrors verifies that ValidateStructured
 // on a spec with integrity errors returns entries with 'category'=='integrity',
-// 'message', and 'check' fields.
-// Test Spec: TS-01-17, Requirement: 01-REQ-8.3
+// 'rule', 'message', 'file', and 'path' fields.
+// Test Spec: TS-01-17, Requirement: 01-REQ-8.3, 04-REQ-20.2
 func TestValidateStructured_IntegrityErrors(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -521,11 +531,17 @@ func TestValidateStructured_IntegrityErrors(t *testing.T) {
 	for _, e := range errs {
 		if cat, _ := e["category"].(string); cat == "integrity" {
 			found = true
-			if chk, _ := e["check"].(string); chk == "" {
-				t.Error("integrity error check is empty, want non-empty")
+			if rule, _ := e["rule"].(string); rule == "" {
+				t.Error("integrity error rule is empty, want non-empty")
 			}
 			if msg, _ := e["message"].(string); msg == "" {
 				t.Error("integrity error message is empty, want non-empty")
+			}
+			if _, hasFile := e["file"]; !hasFile {
+				t.Error("integrity error map missing 'file' key")
+			}
+			if _, hasPath := e["path"]; !hasPath {
+				t.Error("integrity error map missing 'path' key")
 			}
 			break
 		}
@@ -537,8 +553,8 @@ func TestValidateStructured_IntegrityErrors(t *testing.T) {
 
 // TestValidateStructured_WithWarnings verifies that ValidateStructured on
 // a spec with warnings includes a 'warnings' key with entries containing
-// 'category'=='warning', 'message', and 'entity_id' fields.
-// Test Spec: TS-01-18, Requirement: 01-REQ-8.4
+// 'message' and 'entity_id' fields.
+// Test Spec: TS-01-18, Requirement: 01-REQ-8.4, 04-REQ-20.3
 func TestValidateStructured_WithWarnings(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -563,9 +579,6 @@ func TestValidateStructured_WithWarnings(t *testing.T) {
 	}
 
 	w := warnings[0]
-	if cat, _ := w["category"].(string); cat != "warning" {
-		t.Errorf("warning category = %q, want %q", cat, "warning")
-	}
 	if msg, _ := w["message"].(string); msg == "" {
 		t.Error("warning message is empty, want non-empty")
 	}
@@ -574,10 +587,11 @@ func TestValidateStructured_WithWarnings(t *testing.T) {
 	}
 }
 
-// TestValidateStructured_NoWarningsKey verifies that the 'warnings' key
-// is omitted when there are no warnings.
-// Requirement: 01-REQ-8.E1
-func TestValidateStructured_NoWarningsKey(t *testing.T) {
+// TestValidateStructured_WarningsKeyAlwaysPresent verifies that the
+// 'warnings' key is always present, even when there are no warnings.
+// Per 04-REQ-20.E1, warnings is an empty slice when no warnings exist.
+// Requirement: 01-REQ-8.E1, 04-REQ-20.E1
+func TestValidateStructured_WarningsKeyAlwaysPresent(t *testing.T) {
 	defer requireImplemented(t)
 
 	spec, err := LoadSpec("./../testdata/valid_spec")
@@ -587,8 +601,12 @@ func TestValidateStructured_NoWarningsKey(t *testing.T) {
 
 	result := spec.ValidateStructured()
 
-	if _, hasWarnings := result["warnings"]; hasWarnings {
-		t.Error("result has 'warnings' key, want it absent when there are no warnings")
+	warnings, ok := result["warnings"].([]map[string]any)
+	if !ok {
+		t.Fatalf("result['warnings'] is not []map[string]any, got %T", result["warnings"])
+	}
+	if len(warnings) != 0 {
+		t.Errorf("result['warnings'] has %d entries, want 0 for spec with no warnings", len(warnings))
 	}
 }
 
@@ -3740,5 +3758,297 @@ func TestValidate_Warning_ScopeLimit_ExactlyAtThreshold(t *testing.T) {
 		if strings.Contains(lower, "split") || strings.Contains(lower, "large") || strings.Contains(lower, "too") {
 			t.Errorf("expected no scope limit warning at exactly 10 reqs, got: %s", w.Message)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task Group 9: ValidateStructured output shape alignment (04-REQ-20)
+// Test Spec: TS-04-26, TS-04-27, TS-04-28
+// Property: 04-PROP-5
+// ---------------------------------------------------------------------------
+
+// TestValidateStructured_OutputShape_ValidKeys verifies that
+// ValidateStructured returns a map with keys 'errors', 'warnings', and
+// 'valid', where 'valid' is true when errors is empty.
+// Test Spec: TS-04-26. Requirements: 04-REQ-20.1, 04-REQ-20.E1, 04-REQ-20.E2.
+func TestValidateStructured_OutputShape_ValidKeys(t *testing.T) {
+	defer requireImplemented(t)
+
+	t.Run("valid_spec_all_keys_present", func(t *testing.T) {
+		// Use a programmatically-built minimal valid spec to avoid
+		// testdata dependencies on cross-file rule implementation state.
+		spec := makeMinimalSpec()
+		output := spec.ValidateStructured()
+
+		// Assert all three keys exist
+		if _, ok := output["valid"]; !ok {
+			t.Fatal("output missing 'valid' key")
+		}
+		if _, ok := output["errors"]; !ok {
+			t.Fatal("output missing 'errors' key")
+		}
+		if _, ok := output["warnings"]; !ok {
+			t.Fatal("output missing 'warnings' key")
+		}
+
+		// Assert types
+		valid, ok := output["valid"].(bool)
+		if !ok {
+			t.Fatalf("output['valid'] is not bool, got %T", output["valid"])
+		}
+		if !valid {
+			t.Error("output['valid'] = false, want true for valid spec")
+		}
+
+		errs, ok := output["errors"].([]map[string]any)
+		if !ok {
+			t.Fatalf("output['errors'] is not []map[string]any, got %T", output["errors"])
+		}
+		if len(errs) != 0 {
+			t.Errorf("output['errors'] has %d entries, want 0", len(errs))
+		}
+
+		warnings, ok := output["warnings"].([]map[string]any)
+		if !ok {
+			t.Fatalf("output['warnings'] is not []map[string]any, got %T", output["warnings"])
+		}
+		if len(warnings) != 0 {
+			t.Errorf("output['warnings'] has %d entries, want 0", len(warnings))
+		}
+	})
+
+	t.Run("spec_with_errors_valid_is_false", func(t *testing.T) {
+		spec := buildInvalidSpec()
+		output := spec.ValidateStructured()
+
+		valid, ok := output["valid"].(bool)
+		if !ok {
+			t.Fatalf("output['valid'] is not bool, got %T", output["valid"])
+		}
+		if valid {
+			t.Error("output['valid'] = true, want false for spec with errors")
+		}
+
+		errs, ok := output["errors"].([]map[string]any)
+		if !ok {
+			t.Fatalf("output['errors'] is not []map[string]any, got %T", output["errors"])
+		}
+		if len(errs) == 0 {
+			t.Error("output['errors'] is empty, want non-empty for spec with errors")
+		}
+	})
+}
+
+// TestValidateStructured_OutputShape_ErrorFields verifies that each error
+// map in ValidateStructured output includes 'category', 'rule', 'message',
+// 'file', and 'path' fields, with 'category' set to 'schema' or 'integrity'
+// as appropriate.
+// Test Spec: TS-04-27. Requirements: 04-REQ-20.2.
+func TestValidateStructured_OutputShape_ErrorFields(t *testing.T) {
+	defer requireImplemented(t)
+
+	// Build a spec that triggers both a schema error and an integrity error.
+	// Schema error: requirement with empty ID violates JSON schema.
+	// Integrity error: correctness property with no matching property test.
+	spec := &Spec{
+		SpecID:        "04",
+		SpecName:      "test_output_shape",
+		Title:         "Test Output Shape",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "04",
+			SpecName:      "test_output_shape",
+			SchemaVersion: 1,
+			Introduction:  "Test spec for output shape validation.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "",    // empty ID — schema violation
+					Title: "",   // empty title — schema violation
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{},
+					EdgeCases:          []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{
+				{
+					Id: "04-PROP-1", Title: "Uncovered Prop",
+					ForAny: "any input", Invariant: "holds",
+					Validates: []string{"04-REQ-1.1"},
+				},
+			},
+			ExecutionPaths: []ExecutionPath{},
+			ErrorHandling:  []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "04",
+			SpecName:      "test_output_shape",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{}, // no property tests — triggers cross_file_3
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "04",
+			SpecName:      "test_output_shape",
+			SchemaVersion: 1,
+			TestCommands: TestCommands{
+				SpecTests: "go test ./...",
+				AllTests:  "go test ./...",
+				Linter:    "go vet ./...",
+			},
+			Dependencies: []TaskDependency{},
+			TaskGroups:   []TaskGroup{},
+			Traceability: []TraceabilityEntry{},
+		},
+	}
+
+	output := spec.ValidateStructured()
+
+	errs, ok := output["errors"].([]map[string]any)
+	if !ok {
+		t.Fatalf("output['errors'] is not []map[string]any, got %T", output["errors"])
+	}
+	if len(errs) == 0 {
+		t.Fatal("output['errors'] is empty, want at least one entry")
+	}
+
+	// Every error map must contain all 5 keys
+	for i, e := range errs {
+		for _, key := range []string{"category", "rule", "message", "file", "path"} {
+			if _, exists := e[key]; !exists {
+				t.Errorf("errors[%d] missing key %q", i, key)
+			}
+		}
+	}
+
+	// Verify at least one schema error
+	var hasSchema bool
+	for _, e := range errs {
+		if cat, _ := e["category"].(string); cat == "schema" {
+			hasSchema = true
+			break
+		}
+	}
+	if !hasSchema {
+		t.Error("expected at least one error with category='schema'")
+	}
+
+	// Verify at least one integrity error
+	var hasIntegrity bool
+	for _, e := range errs {
+		if cat, _ := e["category"].(string); cat == "integrity" {
+			hasIntegrity = true
+			break
+		}
+	}
+	if !hasIntegrity {
+		t.Error("expected at least one error with category='integrity'")
+	}
+}
+
+// TestValidateStructured_OutputShape_WarningFields verifies that each
+// warning map in ValidateStructured output includes 'message' and
+// 'entity_id' fields with non-empty values.
+// Test Spec: TS-04-28. Requirements: 04-REQ-20.3.
+func TestValidateStructured_OutputShape_WarningFields(t *testing.T) {
+	defer requireImplemented(t)
+
+	// Build a spec with 11 requirements to trigger scope limit warning.
+	spec := makeMinimalSpec()
+	for i := 1; i <= 11; i++ {
+		spec.Requirements.Requirements = append(spec.Requirements.Requirements, Requirement{
+			Id:    fmt.Sprintf("04-REQ-%d", i),
+			Title: fmt.Sprintf("Requirement %d", i),
+			UserStory: UserStory{
+				Role: "developer", Goal: "scope test", Benefit: "manageable specs",
+			},
+			AcceptanceCriteria: []Criterion{
+				{
+					Id: fmt.Sprintf("04-REQ-%d.1", i), EarsPattern: CriterionEarsPatternUbiquitous,
+					System: "the system", Action: fmt.Sprintf("do action %d", i),
+					ReturnContract: nil,
+				},
+			},
+			EdgeCases: []Criterion{},
+		})
+	}
+
+	output := spec.ValidateStructured()
+
+	warnings, ok := output["warnings"].([]map[string]any)
+	if !ok {
+		t.Fatalf("output['warnings'] is not []map[string]any, got %T", output["warnings"])
+	}
+	if len(warnings) == 0 {
+		t.Fatal("output['warnings'] is empty, want at least one entry")
+	}
+
+	for i, w := range warnings {
+		msg, _ := w["message"].(string)
+		if msg == "" {
+			t.Errorf("warnings[%d] 'message' is empty, want non-empty", i)
+		}
+		if _, hasEntityID := w["entity_id"]; !hasEntityID {
+			t.Errorf("warnings[%d] missing 'entity_id' key", i)
+		}
+	}
+}
+
+// TestValidateStructured_ValidFlagConsistency is the property test for
+// 04-PROP-5: the 'valid' field in ValidateStructured output is true if
+// and only if the 'errors' slice is empty.
+// Property: 04-PROP-5. Validates: 04-REQ-20.1, 04-REQ-20.E1, 04-REQ-20.E2.
+func TestValidateStructured_ValidFlagConsistency(t *testing.T) {
+	defer requireImplemented(t)
+
+	cases := []struct {
+		name string
+		spec *Spec
+	}{
+		{"valid_spec", func() *Spec {
+			s, _ := LoadSpec("./../testdata/valid_spec")
+			return s
+		}()},
+		{"invalid_spec", buildInvalidSpec()},
+		{"warnings_only_spec", buildSpecWithWarnings()},
+		{"minimal_spec", makeMinimalSpec()},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.spec == nil {
+				t.Skip("spec not loaded")
+			}
+			output := tt.spec.ValidateStructured()
+
+			valid, ok := output["valid"].(bool)
+			if !ok {
+				t.Fatalf("output['valid'] is not bool, got %T", output["valid"])
+			}
+
+			errs, ok := output["errors"].([]map[string]any)
+			if !ok {
+				t.Fatalf("output['errors'] is not []map[string]any, got %T", output["errors"])
+			}
+
+			// PROP-5 invariant: valid == (len(errors) == 0)
+			if valid && len(errs) != 0 {
+				t.Errorf("valid is true but errors has %d entries — violates PROP-5", len(errs))
+			}
+			if !valid && len(errs) == 0 {
+				t.Error("valid is false but errors is empty — violates PROP-5")
+			}
+		})
 	}
 }

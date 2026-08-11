@@ -796,7 +796,7 @@
           "requirement_refs": [
             "04-REQ-20"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -816,7 +816,7 @@
           "requirement_refs": [
             "04-REQ-20"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -835,7 +835,7 @@
           "requirement_refs": [
             "04-REQ-20"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],

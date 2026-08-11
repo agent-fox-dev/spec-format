@@ -137,6 +137,7 @@ func flattenValidationError(ve *jsonschema.ValidationError, artifact string) []V
 		}
 		entries = append(entries, ValidationEntry{
 			Category: "schema",
+			Check:    "json_schema",
 			Message:  msg,
 			Artifact: artifact,
 			Path:     instanceLoc,
@@ -159,6 +160,7 @@ func validateArtifactSchema(artifact any, schemaName, artifactName string) []Val
 	if err != nil {
 		return []ValidationEntry{{
 			Category: "schema",
+			Check:    "json_schema",
 			Message:  fmt.Sprintf("schema compilation error: %s", err),
 			Artifact: artifactName,
 		}}
@@ -168,6 +170,7 @@ func validateArtifactSchema(artifact any, schemaName, artifactName string) []Val
 	if !ok {
 		return []ValidationEntry{{
 			Category: "schema",
+			Check:    "json_schema",
 			Message:  fmt.Sprintf("schema not found: %s", schemaName),
 			Artifact: artifactName,
 		}}
@@ -180,6 +183,7 @@ func validateArtifactSchema(artifact any, schemaName, artifactName string) []Val
 	if marshalErr != nil {
 		return []ValidationEntry{{
 			Category: "schema",
+			Check:    "json_schema",
 			Message:  fmt.Sprintf("cannot marshal %s: %s", artifactName, marshalErr),
 			Artifact: artifactName,
 		}}
@@ -189,6 +193,7 @@ func validateArtifactSchema(artifact any, schemaName, artifactName string) []Val
 	if parseErr := json.Unmarshal(data, &instance); parseErr != nil {
 		return []ValidationEntry{{
 			Category: "schema",
+			Check:    "json_schema",
 			Message:  fmt.Sprintf("cannot parse %s JSON: %s", artifactName, parseErr),
 			Artifact: artifactName,
 		}}
@@ -203,6 +208,7 @@ func validateArtifactSchema(artifact any, schemaName, artifactName string) []Val
 	if !ok {
 		return []ValidationEntry{{
 			Category: "schema",
+			Check:    "json_schema",
 			Message:  fmt.Sprintf("validation error: %s", validationErr),
 			Artifact: artifactName,
 		}}
@@ -1423,63 +1429,40 @@ func ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult {
 
 // ValidateStructured runs full validation and returns a structured
 // map[string]any for CLI consumption, with 'valid', 'errors', and
-// optionally 'warnings' keys.
+// 'warnings' keys matching the Python validate_structured shape.
+//
+// Error maps include: 'category', 'rule', 'message', 'file', 'path'.
+// Warning maps include: 'message', 'entity_id'.
+// 'valid' is true when errors is empty.
 func (s *Spec) ValidateStructured() map[string]any {
 	result := s.Validate()
 
 	errorMaps := make([]map[string]any, 0, len(result.Errors))
 	for _, e := range result.Errors {
 		entry := map[string]any{
-			"message": e.Message,
+			"category": e.Category,
+			"rule":     e.Check,
+			"message":  e.Message,
+			"file":     e.Artifact,
+			"path":     e.Path,
 		}
-
-		if e.Category != "" {
-			entry["category"] = e.Category
-		}
-		if e.Artifact != "" {
-			entry["artifact"] = e.Artifact
-		}
-		if e.Path != "" {
-			entry["path"] = e.Path
-		}
-		if e.Keyword != "" {
-			entry["keyword"] = e.Keyword
-		}
-		if e.Check != "" {
-			entry["check"] = e.Check
-		}
-		if e.RequirementID != "" {
-			entry["requirement_id"] = e.RequirementID
-		}
-		if e.Value != "" {
-			entry["value"] = e.Value
-		}
-
 		errorMaps = append(errorMaps, entry)
 	}
 
-	out := map[string]any{
-		"valid":  result.Valid,
-		"errors": errorMaps,
-	}
-
-	// Only include warnings key when there are warnings
-	if len(result.Warnings) > 0 {
-		warningMaps := make([]map[string]any, 0, len(result.Warnings))
-		for _, w := range result.Warnings {
-			entry := map[string]any{
-				"category": w.Category,
-				"message":  w.Message,
-			}
-			if w.EntityID != "" {
-				entry["entity_id"] = w.EntityID
-			}
-			warningMaps = append(warningMaps, entry)
+	warningMaps := make([]map[string]any, 0, len(result.Warnings))
+	for _, w := range result.Warnings {
+		entry := map[string]any{
+			"message":   w.Message,
+			"entity_id": w.EntityID,
 		}
-		out["warnings"] = warningMaps
+		warningMaps = append(warningMaps, entry)
 	}
 
-	return out
+	return map[string]any{
+		"valid":    len(result.Errors) == 0,
+		"errors":   errorMaps,
+		"warnings": warningMaps,
+	}
 }
 
 // DependencyGraph represents the inter-spec dependency graph built from
