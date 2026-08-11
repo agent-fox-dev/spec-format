@@ -2223,3 +2223,1005 @@ func TestValidateCrossFile_SubtaskRequirementRefs(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Task Group 2: Cross-file rules 7, 8, 9, 10 and task group structure
+// Cross-spec rules 1, 3, 4, 5
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Subtask 2.1: Unwanted pattern return_contract rule (04-REQ-7)
+// Test Spec: TS-04-9
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_UnwantedReturnContract verifies that ValidateCrossFile
+// produces one integrity error for each criterion with ears_pattern='unwanted'
+// that has a null or empty return_contract, and no error for unwanted criteria
+// with a non-empty return_contract.
+// Test Spec: TS-04-9. Requirements: 04-REQ-7.1, 04-REQ-7.E1, 04-REQ-7.E2.
+func TestValidateCrossFile_UnwantedReturnContract(t *testing.T) {
+	tests := []struct {
+		name             string
+		spec             *Spec
+		wantErrorCount   int
+		wantCriterionIDs []string // criterion IDs expected in error Messages
+	}{
+		{
+			name: "null_return_contract_produces_error",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Requirements.Requirements = []Requirement{
+					{
+						Id:    "04-REQ-99",
+						Title: "Unwanted Test",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "04-REQ-99.1", EarsPattern: CriterionEarsPatternUnwanted,
+								System: "the system", Action: "detect invalid input",
+								ReturnContract: nil, // null — should trigger error
+							},
+							{
+								Id: "04-REQ-99.2", EarsPattern: CriterionEarsPatternUnwanted,
+								System: "the system", Action: "detect another error",
+								ReturnContract: strPtr("returns error"), // non-null — no error
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount:   1,
+			wantCriterionIDs: []string{"04-REQ-99.1"},
+		},
+		{
+			name: "empty_string_return_contract_treated_as_null",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Requirements.Requirements = []Requirement{
+					{
+						Id:    "04-REQ-99",
+						Title: "Unwanted Test",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "04-REQ-99.1", EarsPattern: CriterionEarsPatternUnwanted,
+								System: "the system", Action: "detect invalid input",
+								ReturnContract: strPtr(""), // empty string — treated same as null
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount:   1,
+			wantCriterionIDs: []string{"04-REQ-99.1"},
+		},
+		{
+			name: "non_unwanted_pattern_null_contract_no_error",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Requirements.Requirements = []Requirement{
+					{
+						Id:    "04-REQ-99",
+						Title: "Non-Unwanted Test",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "04-REQ-99.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "do something",
+								ReturnContract: nil, // null but not 'unwanted' — no error from this rule
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount: 0,
+		},
+		{
+			name:           "no_unwanted_criteria_skips_rule",
+			spec:           buildCrossFileBaseSpec(),
+			wantErrorCount: 0,
+		},
+		{
+			name: "edge_case_criteria_also_checked",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Requirements.Requirements = []Requirement{
+					{
+						Id:    "04-REQ-99",
+						Title: "Unwanted Edge Case Test",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "04-REQ-99.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "do something",
+								ReturnContract: nil,
+							},
+						},
+						EdgeCases: []Criterion{
+							{
+								Id: "04-REQ-99.E1", EarsPattern: CriterionEarsPatternUnwanted,
+								System: "the system", Action: "handle edge error",
+								ReturnContract: nil, // null unwanted edge case — should trigger error
+							},
+						},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount:   1,
+			wantCriterionIDs: []string{"04-REQ-99.E1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.spec.ValidateCrossFile()
+			errors := filterByCheck(result.Errors, "cross_file_10")
+
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("cross_file_10 error count = %d, want %d; errors: %v",
+					len(errors), tt.wantErrorCount, errors)
+			}
+
+			for _, e := range errors {
+				if e.Category != "integrity" {
+					t.Errorf("cross_file_10 error category = %q, want %q", e.Category, "integrity")
+				}
+				if e.Message == "" {
+					t.Error("cross_file_10 error has empty Message")
+				}
+			}
+
+			// Check that expected criterion IDs appear in error messages
+			for _, wantID := range tt.wantCriterionIDs {
+				found := false
+				for _, e := range errors {
+					if strings.Contains(e.Message, wantID) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected criterion %q in error Message, not found", wantID)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Subtask 2.2: Task group structure validation (04-REQ-8)
+// Test Spec: TS-04-10, TS-04-11
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_TaskGroupStructure verifies that ValidateCrossFile
+// produces a schema-category error when the first task group does not have
+// kind='tests' or the last task group does not have kind='wiring_verification'.
+// Test Spec: TS-04-10, TS-04-11. Requirements: 04-REQ-8.1, 04-REQ-8.2,
+// 04-REQ-8.E1, 04-REQ-8.E2.
+func TestValidateCrossFile_TaskGroupStructure(t *testing.T) {
+	tests := []struct {
+		name              string
+		spec              *Spec
+		wantErrorCount    int
+		wantFirstGroupErr bool // error about first group not being 'tests'
+		wantLastGroupErr  bool // error about last group not being 'wiring_verification'
+	}{
+		{
+			name: "first_group_not_tests",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{
+					{Id: 1, Title: "Group 1", Kind: TaskGroupKindStandard, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}}},
+					{Id: 2, Title: "Group 2", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "2.V", Checks: []string{"check"}}},
+				}
+				return s
+			}(),
+			wantErrorCount:    1,
+			wantFirstGroupErr: true,
+		},
+		{
+			name: "last_group_not_wiring_verification",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{
+					{Id: 1, Title: "Group 1", Kind: TaskGroupKindTests, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}}},
+					{Id: 2, Title: "Group 2", Kind: TaskGroupKindStandard, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "2.V", Checks: []string{"check"}}},
+				}
+				return s
+			}(),
+			wantErrorCount:   1,
+			wantLastGroupErr: true,
+		},
+		{
+			name: "correct_structure_no_errors",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{
+					{Id: 1, Title: "Group 1", Kind: TaskGroupKindTests, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}}},
+					{Id: 2, Title: "Group 2", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "2.V", Checks: []string{"check"}}},
+				}
+				return s
+			}(),
+			wantErrorCount: 0,
+		},
+		{
+			name: "no_task_groups_skips_check",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{} // empty
+				return s
+			}(),
+			wantErrorCount: 0,
+		},
+		{
+			name: "single_group_violates_both_rules",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{
+					{Id: 1, Title: "Group 1", Kind: TaskGroupKindStandard, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}}},
+				}
+				return s
+			}(),
+			wantErrorCount:    2,
+			wantFirstGroupErr: true,
+			wantLastGroupErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.spec.ValidateCrossFile()
+			errors := filterByCheck(result.Errors, "task_group_structure")
+
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("task_group_structure error count = %d, want %d; errors: %v",
+					len(errors), tt.wantErrorCount, errors)
+			}
+
+			for _, e := range errors {
+				if e.Category != "schema" {
+					t.Errorf("task_group_structure error category = %q, want %q", e.Category, "schema")
+				}
+			}
+
+			if tt.wantFirstGroupErr {
+				found := false
+				for _, e := range errors {
+					lower := strings.ToLower(e.Message)
+					if strings.Contains(lower, "tests") || strings.Contains(lower, "first") {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Error("expected error mentioning 'tests' or 'first' for first group rule, not found")
+				}
+			}
+
+			if tt.wantLastGroupErr {
+				found := false
+				for _, e := range errors {
+					lower := strings.ToLower(e.Message)
+					if strings.Contains(lower, "wiring_verification") || strings.Contains(lower, "last") {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Error("expected error mentioning 'wiring_verification' or 'last' for last group rule, not found")
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Subtask 2.3: Wiring verification group semantics (04-REQ-9)
+// Test Spec: TS-04-12, TS-04-13, TS-04-14
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_WiringVerificationSemantics verifies that
+// ValidateCrossFile checks the wiring_verification group for meaningful
+// smoke test refs and a stub audit subtask. It produces integrity errors
+// when test_spec_refs are empty, no SMOKE reference is found, and no
+// subtask mentions 'stub' or 'dead'.
+// Test Spec: TS-04-12, TS-04-13, TS-04-14. Requirements: 04-REQ-9.1,
+// 04-REQ-9.2, 04-REQ-9.3, 04-REQ-9.E1, 04-REQ-9.E2.
+func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
+	// buildWiringSpec creates a spec with a proper first group (tests) and a
+	// wiring_verification group containing the given subtasks.
+	buildWiringSpec := func(subtasks []Subtask) *Spec {
+		s := buildCrossFileBaseSpec()
+		s.Tasks.TaskGroups = []TaskGroup{
+			{
+				Id: 1, Title: "Tests", Kind: TaskGroupKindTests,
+				Subtasks:     []Subtask{},
+				Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+			},
+			{
+				Id: 2, Title: "Wiring", Kind: TaskGroupKindWiringVerification,
+				Subtasks:     subtasks,
+				Verification: VerificationSubtask{Id: "2.V", Checks: []string{"check"}},
+			},
+		}
+		return s
+	}
+
+	t.Run("all_subtasks_empty_test_spec_refs", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{
+			{Id: "2.1", Title: "subtask A", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			{Id: "2.2", Title: "subtask B", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+		})
+		result := spec.ValidateCrossFile()
+
+		var refErrors []ValidationEntry
+		for _, e := range result.Errors {
+			if e.Category == "integrity" && strings.Contains(strings.ToLower(e.Message), "test_spec_refs") {
+				refErrors = append(refErrors, e)
+			}
+		}
+		if len(refErrors) < 1 {
+			t.Errorf("expected at least 1 integrity error about empty test_spec_refs in wiring group, got %d; all errors: %v",
+				len(refErrors), result.Errors)
+		}
+	})
+
+	t.Run("no_smoke_ref_in_test_spec_refs", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{
+			{
+				Id: "2.1", Title: "verify", State: SubtaskStatePending,
+				Details: []string{"detail"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-1", "TS-04-2"}, // no SMOKE entries
+			},
+		})
+		result := spec.ValidateCrossFile()
+
+		var smokeErrors []ValidationEntry
+		for _, e := range result.Errors {
+			if e.Category == "integrity" && strings.Contains(strings.ToLower(e.Message), "smoke") {
+				smokeErrors = append(smokeErrors, e)
+			}
+		}
+		if len(smokeErrors) < 1 {
+			t.Errorf("expected at least 1 integrity error about missing smoke reference, got %d; all errors: %v",
+				len(smokeErrors), result.Errors)
+		}
+	})
+
+	t.Run("no_stub_or_dead_mention", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{
+			{
+				Id: "2.1", Title: "Run smoke tests", State: SubtaskStatePending,
+				Details: []string{"Execute all integration tests"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-SMOKE-1"},
+			},
+		})
+		result := spec.ValidateCrossFile()
+
+		var stubErrors []ValidationEntry
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				stubErrors = append(stubErrors, e)
+			}
+		}
+		if len(stubErrors) < 1 {
+			t.Errorf("expected at least 1 integrity error about missing stub/dead-code audit, got %d; all errors: %v",
+				len(stubErrors), result.Errors)
+		}
+	})
+
+	t.Run("fully_valid_wiring_group", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{
+			{
+				Id: "2.1", Title: "Run smoke tests", State: SubtaskStatePending,
+				Details: []string{"detail"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-SMOKE-1"},
+			},
+			{
+				Id: "2.2", Title: "Audit stub removal", State: SubtaskStatePending,
+				Details: []string{"Verify all stubs are replaced"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-SMOKE-2"},
+			},
+		})
+		result := spec.ValidateCrossFile()
+
+		// Should have no wiring-specific integrity errors
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			isWiringErr := (strings.Contains(lower, "wiring") &&
+				(strings.Contains(lower, "test_spec_refs") ||
+					strings.Contains(lower, "smoke") ||
+					strings.Contains(lower, "stub") ||
+					strings.Contains(lower, "dead")))
+			if e.Category == "integrity" && isWiringErr {
+				t.Errorf("unexpected wiring verification error: %v", e)
+			}
+		}
+	})
+
+	t.Run("no_wiring_group_skips_checks", func(t *testing.T) {
+		s := buildCrossFileBaseSpec()
+		s.Tasks.TaskGroups = []TaskGroup{
+			{
+				Id: 1, Title: "Tests", Kind: TaskGroupKindTests,
+				Subtasks:     []Subtask{},
+				Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+			},
+		}
+		result := s.ValidateCrossFile()
+
+		// No wiring verification errors should appear when no wiring group exists
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			isWiringErr := (strings.Contains(lower, "wiring") &&
+				(strings.Contains(lower, "test_spec_refs") ||
+					strings.Contains(lower, "smoke") ||
+					strings.Contains(lower, "stub") ||
+					strings.Contains(lower, "dead")))
+			if e.Category == "integrity" && isWiringErr {
+				t.Errorf("unexpected wiring verification error when no wiring group: %v", e)
+			}
+		}
+	})
+
+	t.Run("wiring_group_no_subtasks_three_errors", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{}) // no subtasks
+		result := spec.ValidateCrossFile()
+
+		var wiringErrors int
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "test_spec_refs") ||
+				strings.Contains(lower, "smoke") ||
+				strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				wiringErrors++
+			}
+		}
+		if wiringErrors != 3 {
+			t.Errorf("expected 3 wiring verification errors for empty subtask group, got %d; all errors: %v",
+				wiringErrors, result.Errors)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Subtask 2.4: Cross-spec duplicate API symbol rule (04-REQ-10)
+// Test Spec: TS-04-15
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossSpec_DuplicateAPISymbol verifies that ValidateCrossSpec
+// produces one integrity error per mismatched API symbol signature between
+// two specs connected by a DependencyEdge.
+// Test Spec: TS-04-15. Requirements: 04-REQ-10.1, 04-REQ-10.E1, 04-REQ-10.E2.
+func TestValidateCrossSpec_DuplicateAPISymbol(t *testing.T) {
+	tests := []struct {
+		name           string
+		specs          []*Spec
+		graph          *DependencyGraph
+		wantErrorCount int
+		wantSymbol     string // symbol name expected in error Messages
+	}{
+		{
+			name: "mismatched_signature_produces_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Foo", ImportPath: "pkg/", Signature: "func Foo() int"},
+					}},
+				}
+				b := buildSpecB()
+				b.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Foo", ImportPath: "pkg/", Signature: "func Foo() string"},
+					}},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 1,
+			wantSymbol:     "Foo",
+		},
+		{
+			name: "matching_signature_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Foo", ImportPath: "pkg/", Signature: "func Foo() int"},
+					}},
+				}
+				b := buildSpecB()
+				b.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Foo", ImportPath: "pkg/", Signature: "func Foo() int"},
+					}},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+		{
+			name: "same_name_not_connected_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Foo", ImportPath: "pkg/", Signature: "func Foo() int"},
+					}},
+				}
+				b := buildSpecB()
+				b.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Foo", ImportPath: "pkg/", Signature: "func Foo() string"},
+					}},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph:          &DependencyGraph{Edges: []DependencyEdge{}}, // no connection
+			wantErrorCount: 0,
+		},
+		{
+			name: "no_shared_symbols_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Foo", ImportPath: "pkg/", Signature: "func Foo() int"},
+					}},
+				}
+				b := buildSpecB()
+				b.Requirements.ExternalApis = []ExternalApi{
+					{Package: "pkg", Version: "v1.0", Symbols: []ExternalApiSymbol{
+						{Name: "Bar", ImportPath: "pkg/", Signature: "func Bar() int"},
+					}},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+		{
+			name:           "empty_dependency_graph_no_error",
+			specs:          []*Spec{buildSpecA(), buildSpecB()},
+			graph:          &DependencyGraph{Edges: []DependencyEdge{}},
+			wantErrorCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ValidateCrossSpec(tt.specs, tt.graph)
+			errors := filterByCheck(result.Errors, "cross_spec_1")
+
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("cross_spec_1 error count = %d, want %d; errors: %v",
+					len(errors), tt.wantErrorCount, errors)
+			}
+
+			for _, e := range errors {
+				if e.Category != "integrity" {
+					t.Errorf("cross_spec_1 error category = %q, want %q", e.Category, "integrity")
+				}
+			}
+
+			if tt.wantSymbol != "" {
+				found := false
+				for _, e := range errors {
+					if strings.Contains(e.Message, tt.wantSymbol) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected symbol %q in error Message, not found", tt.wantSymbol)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Subtask 2.5: Cross-spec unknown dependency and interface contract rules
+// (04-REQ-11, 04-REQ-12)
+// Test Spec: TS-04-16, TS-04-17
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossSpec_UnknownDependency verifies that ValidateCrossSpec
+// produces one integrity error per depends_on_spec value that does not
+// match a key in the provided spec map.
+// Test Spec: TS-04-16. Requirements: 04-REQ-11.1, 04-REQ-11.E1.
+func TestValidateCrossSpec_UnknownDependency(t *testing.T) {
+	tests := []struct {
+		name           string
+		specs          []*Spec
+		graph          *DependencyGraph
+		wantErrorCount int
+		wantUnknown    string // unknown spec_id expected in error Messages
+	}{
+		{
+			name: "unknown_depends_on_spec_produces_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Tasks.Dependencies = []TaskDependency{
+					{DependsOnSpec: "specZ", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+				}
+				return []*Spec{a, buildSpecB()}
+			}(),
+			graph:          &DependencyGraph{Edges: []DependencyEdge{}},
+			wantErrorCount: 1,
+			wantUnknown:    "specZ",
+		},
+		{
+			name: "all_dependencies_resolve_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Tasks.Dependencies = []TaskDependency{
+					{DependsOnSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+				}
+				return []*Spec{a, buildSpecB()}
+			}(),
+			graph:          &DependencyGraph{Edges: []DependencyEdge{}},
+			wantErrorCount: 0,
+		},
+		{
+			name:           "no_task_dependencies_no_error",
+			specs:          []*Spec{buildSpecA(), buildSpecB()},
+			graph:          &DependencyGraph{Edges: []DependencyEdge{}},
+			wantErrorCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ValidateCrossSpec(tt.specs, tt.graph)
+			errors := filterByCheck(result.Errors, "cross_spec_3")
+
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("cross_spec_3 error count = %d, want %d; errors: %v",
+					len(errors), tt.wantErrorCount, errors)
+			}
+
+			for _, e := range errors {
+				if e.Category != "integrity" {
+					t.Errorf("cross_spec_3 error category = %q, want %q", e.Category, "integrity")
+				}
+			}
+
+			if tt.wantUnknown != "" {
+				found := false
+				for _, e := range errors {
+					if strings.Contains(e.Message, tt.wantUnknown) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected unknown spec %q in error Message, not found", tt.wantUnknown)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateCrossSpec_InterfaceContractMismatch verifies that
+// ValidateCrossSpec produces one integrity error when a downstream spec's
+// criterion references a backtick-wrapped symbol with a different
+// return_contract than the upstream spec's definition.
+// Test Spec: TS-04-17. Requirements: 04-REQ-12.1, 04-REQ-12.E1.
+func TestValidateCrossSpec_InterfaceContractMismatch(t *testing.T) {
+	tests := []struct {
+		name           string
+		specs          []*Spec
+		graph          *DependencyGraph
+		wantErrorCount int
+		wantSymbol     string // symbol expected in error Messages
+	}{
+		{
+			name: "different_return_contracts_produces_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.Requirements = []Requirement{
+					{
+						Id: "01-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "01-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("returns int"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				b := buildSpecB()
+				b.Requirements.Requirements = []Requirement{
+					{
+						Id: "02-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "02-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("returns string"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 1,
+			wantSymbol:     "Foo",
+		},
+		{
+			name: "matching_contracts_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.Requirements = []Requirement{
+					{
+						Id: "01-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "01-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("returns int"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				b := buildSpecB()
+				b.Requirements.Requirements = []Requirement{
+					{
+						Id: "02-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "02-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("returns int"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+		{
+			name: "both_null_contracts_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.Requirements = []Requirement{
+					{
+						Id: "01-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "01-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: nil,
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				b := buildSpecB()
+				b.Requirements.Requirements = []Requirement{
+					{
+						Id: "02-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "02-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: nil,
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ValidateCrossSpec(tt.specs, tt.graph)
+			errors := filterByCheck(result.Errors, "cross_spec_4")
+
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("cross_spec_4 error count = %d, want %d; errors: %v",
+					len(errors), tt.wantErrorCount, errors)
+			}
+
+			for _, e := range errors {
+				if e.Category != "integrity" {
+					t.Errorf("cross_spec_4 error category = %q, want %q", e.Category, "integrity")
+				}
+			}
+
+			if tt.wantSymbol != "" {
+				found := false
+				for _, e := range errors {
+					if strings.Contains(e.Message, tt.wantSymbol) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected symbol %q in error Message, not found", tt.wantSymbol)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Subtask 2.6: Cross-spec missing boundary coverage rule (04-REQ-13)
+// Test Spec: TS-04-18
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossSpec_MissingBoundaryCoverage verifies that
+// ValidateCrossSpec produces one integrity error per execution_path whose
+// actor matches a spec_id in the DependencyGraph but lacks a corresponding
+// smoke_test.
+// Test Spec: TS-04-18. Requirements: 04-REQ-13.1, 04-REQ-13.E1, 04-REQ-13.E2.
+func TestValidateCrossSpec_MissingBoundaryCoverage(t *testing.T) {
+	tests := []struct {
+		name           string
+		specs          []*Spec
+		graph          *DependencyGraph
+		wantErrorCount int
+		wantInMessage  []string // strings expected in error Messages
+	}{
+		{
+			name: "actor_matches_spec_no_smoke_test",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.ExecutionPaths = []ExecutionPath{
+					{
+						Id: "01-PATH-1", Title: "Path X",
+						Steps: []PathStep{
+							{Actor: "CLI", Action: "do something"},
+							{Actor: "02", Action: "call spec B"},
+						},
+					},
+				}
+				a.TestSpec.SmokeTests = []SmokeTest{} // no smoke tests
+				b := buildSpecB()
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 1,
+			wantInMessage:  []string{"01-PATH-1"},
+		},
+		{
+			name: "boundary_covered_by_smoke_test_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.ExecutionPaths = []ExecutionPath{
+					{
+						Id: "01-PATH-1", Title: "Path X",
+						Steps: []PathStep{
+							{Actor: "CLI", Action: "do something"},
+							{Actor: "02", Action: "call spec B"},
+						},
+					},
+				}
+				a.TestSpec.SmokeTests = []SmokeTest{
+					{
+						Id: "TS-01-SMOKE-1", ExecutionPathId: "01-PATH-1",
+						Description: "smoke boundary", Trigger: "run",
+						ExpectedEffects: []string{"pass"},
+						Mockable: []string{}, RealComponents: []string{"all"},
+					},
+				}
+				b := buildSpecB()
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+		{
+			name: "actor_not_in_graph_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.ExecutionPaths = []ExecutionPath{
+					{
+						Id: "01-PATH-1", Title: "Path X",
+						Steps: []PathStep{
+							{Actor: "CLI", Action: "do something"},
+							{Actor: "unknown_spec", Action: "call unknown"},
+						},
+					},
+				}
+				a.TestSpec.SmokeTests = []SmokeTest{}
+				b := buildSpecB()
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+		{
+			name: "no_execution_paths_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				// No execution paths
+				b := buildSpecB()
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ValidateCrossSpec(tt.specs, tt.graph)
+			errors := filterByCheck(result.Errors, "cross_spec_5")
+
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("cross_spec_5 error count = %d, want %d; errors: %v",
+					len(errors), tt.wantErrorCount, errors)
+			}
+
+			for _, e := range errors {
+				if e.Category != "integrity" {
+					t.Errorf("cross_spec_5 error category = %q, want %q", e.Category, "integrity")
+				}
+			}
+
+			for _, want := range tt.wantInMessage {
+				found := false
+				for _, e := range errors {
+					if strings.Contains(e.Message, want) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected %q in error Message, not found", want)
+				}
+			}
+		})
+	}
+}
