@@ -1,6 +1,7 @@
 package afspec
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -183,10 +184,111 @@ func ComputeExitCode(findings []LintFinding) int {
 // RunLintSpecs — full lint execution (05-REQ-9)
 // ---------------------------------------------------------------------------
 
+// isFullyImplemented checks whether a spec's tasks.json exists and all
+// subtasks across all groups have state 'done' or 'dropped'. Returns false
+// if tasks.json cannot be read, parsed, or has any subtask in another state.
+func isFullyImplemented(info LintSpecInfo) bool {
+	if !info.HasTasks {
+		return false
+	}
+
+	tasksPath := filepath.Join(info.Path, "tasks.json")
+	data, err := os.ReadFile(tasksPath)
+	if err != nil {
+		return false
+	}
+
+	var tasks TasksV1Json
+	if err := json.Unmarshal(data, &tasks); err != nil {
+		return false
+	}
+
+	for _, group := range tasks.TaskGroups {
+		for _, sub := range group.Subtasks {
+			if sub.State != SubtaskStateDone && sub.State != SubtaskStateDropped {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// validationEntryToFinding converts a ValidationEntry into a LintFinding for
+// the named spec. The severity is determined by the entry's category: entries
+// with category "warning" get severity "warning"; all others get "error".
+func validationEntryToFinding(specName string, entry ValidationEntry) LintFinding {
+	severity := "error"
+	if entry.Category == "warning" {
+		severity = "warning"
+	}
+
+	rule := entry.Check
+	if rule == "" {
+		rule = entry.Category
+	}
+
+	return LintFinding{
+		SpecName: specName,
+		File:     entry.Artifact,
+		Rule:     rule,
+		Severity: severity,
+		Message:  entry.Message,
+	}
+}
+
 // RunLintSpecs scans specsDir for spec folders, loads and validates each,
 // and returns a LintResult with sorted findings and computed exit code.
 // When lintAll is false, fully-implemented specs (all subtasks in state
 // 'done' or 'dropped') are skipped.
 func RunLintSpecs(specsDir string, lintAll bool) (LintResult, error) {
-	panic("not implemented")
+	infos, err := DiscoverLintSpecs(specsDir, "")
+	if err != nil {
+		return LintResult{}, err
+	}
+
+	var allFindings []LintFinding
+
+	for _, info := range infos {
+		// Skip fully-implemented specs when lintAll is false.
+		if !lintAll && isFullyImplemented(info) {
+			continue
+		}
+
+		// Load the spec from disk.
+		spec, loadErr := LoadSpec(info.Path)
+		if loadErr != nil {
+			// 05-REQ-9.E2 / 05-ERR-8: record a load-failure finding and
+			// continue processing remaining specs.
+			allFindings = append(allFindings, LintFinding{
+				SpecName: info.Name,
+				File:     "requirements.json",
+				Rule:     "load-failure",
+				Severity: "error",
+				Message:  loadErr.Error(),
+			})
+			continue
+		}
+
+		// Validate the loaded spec.
+		result := spec.Validate()
+
+		// Convert validation errors to LintFinding entries.
+		for _, e := range result.Errors {
+			allFindings = append(allFindings, validationEntryToFinding(info.Name, e))
+		}
+
+		// Convert validation warnings to LintFinding entries.
+		for _, w := range result.Warnings {
+			allFindings = append(allFindings, validationEntryToFinding(info.Name, w))
+		}
+	}
+
+	sorted := SortFindings(allFindings)
+	exitCode := ComputeExitCode(sorted)
+
+	return LintResult{
+		Findings: sorted,
+		ExitCode: exitCode,
+	}, nil
 }
