@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -107,8 +108,15 @@ func newRootCmd() *cobra.Command {
 }
 
 // Execute runs the root command. This is the binary entry point.
+// It creates a root context with signal handling (SIGINT, SIGTERM)
+// and passes it to all subcommands.
 func Execute() {
+	ctx, cancel := signalCtx(context.Background())
+	defer cancel()
+
 	cmd := newRootCmd()
+	cmd.SetContext(ctx)
+
 	err := cmd.Execute()
 	if err != nil {
 		if isAgentMode() {
