@@ -884,7 +884,7 @@
             "04-REQ-12",
             "04-REQ-13"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -905,7 +905,7 @@
           "requirement_refs": [
             "04-REQ-20"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -944,7 +944,7 @@
             "04-REQ-19",
             "04-REQ-20"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -964,7 +964,7 @@
           "requirement_refs": [
             "04-REQ-20"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],
