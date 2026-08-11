@@ -277,6 +277,10 @@ var edgeCaseTestIDPattern = regexp.MustCompile(`^TS-\d{2}-E\d+$`)
 // criterionIDPattern matches valid criterion IDs like "01-REQ-1.1" or "01-REQ-1.E1".
 var criterionIDPattern = regexp.MustCompile(`^\d{2}-REQ-\d+\.\d+$|^\d{2}-REQ-\d+\.E\d+$`)
 
+// wiringSmokeRefPattern matches smoke test references in wiring_verification
+// group test_spec_refs (e.g. "TS-04-SMOKE-1"). Compiled at package level.
+var wiringSmokeRefPattern = regexp.MustCompile(`^TS-.*-SMOKE-.*$`)
+
 // backtickTermRe extracts backtick-wrapped terms from text fields.
 // Compiled at package initialization time per 04-REQ-4.2.
 var backtickTermRe = regexp.MustCompile("`([^`]+)`")
@@ -792,6 +796,106 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 						})
 					}
 				}
+			}
+		}
+	}
+
+	// --- Task group structure validation (04-REQ-8) ---
+	// First group must have kind='tests'; last group must have kind='wiring_verification'.
+	// Skip if no task groups exist.
+	if s.Tasks != nil && len(s.Tasks.TaskGroups) > 0 {
+		groups := s.Tasks.TaskGroups
+		if groups[0].Kind != TaskGroupKindTests {
+			errors = append(errors, ValidationEntry{
+				Category: "schema",
+				Check:    "task_group_structure",
+				Message:  fmt.Sprintf("first task group must have kind 'tests', got '%s'", groups[0].Kind),
+				Artifact: "tasks.json",
+			})
+		}
+		if groups[len(groups)-1].Kind != TaskGroupKindWiringVerification {
+			errors = append(errors, ValidationEntry{
+				Category: "schema",
+				Check:    "task_group_structure",
+				Message:  fmt.Sprintf("last task group must have kind 'wiring_verification', got '%s'", groups[len(groups)-1].Kind),
+				Artifact: "tasks.json",
+			})
+		}
+	}
+
+	// --- Wiring verification group semantics (04-REQ-9) ---
+	// Check wiring_verification group for meaningful content:
+	//   A. at least one subtask has non-empty test_spec_refs
+	//   B. at least one test_spec_refs entry matches TS-*-SMOKE-*
+	//   C. at least one subtask title or details mentions 'stub' or 'dead'
+	if s.Tasks != nil && len(s.Tasks.TaskGroups) > 0 {
+		lastGroup := s.Tasks.TaskGroups[len(s.Tasks.TaskGroups)-1]
+		if lastGroup.Kind == TaskGroupKindWiringVerification {
+			// Sub-check A: at least one subtask has non-empty test_spec_refs
+			hasRefs := false
+			for _, sub := range lastGroup.Subtasks {
+				if len(sub.TestSpecRefs) > 0 {
+					hasRefs = true
+					break
+				}
+			}
+			if !hasRefs {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "wiring_verification",
+					Message:  "wiring_verification group: no subtask has non-empty test_spec_refs",
+					Artifact: "tasks.json",
+				})
+			}
+
+			// Sub-check B: at least one test_spec_refs entry matches TS-*-SMOKE-*
+			hasSmokeRef := false
+			for _, sub := range lastGroup.Subtasks {
+				for _, ref := range sub.TestSpecRefs {
+					if wiringSmokeRefPattern.MatchString(ref) {
+						hasSmokeRef = true
+						break
+					}
+				}
+				if hasSmokeRef {
+					break
+				}
+			}
+			if !hasSmokeRef {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "wiring_verification",
+					Message:  "wiring_verification group: no test_spec_refs entry matches smoke test pattern TS-*-SMOKE-*",
+					Artifact: "tasks.json",
+				})
+			}
+
+			// Sub-check C: at least one subtask mentions 'stub' or 'dead' in title or details
+			hasStubMention := false
+			for _, sub := range lastGroup.Subtasks {
+				lower := strings.ToLower(sub.Title)
+				if strings.Contains(lower, "stub") || strings.Contains(lower, "dead") {
+					hasStubMention = true
+					break
+				}
+				for _, detail := range sub.Details {
+					lower = strings.ToLower(detail)
+					if strings.Contains(lower, "stub") || strings.Contains(lower, "dead") {
+						hasStubMention = true
+						break
+					}
+				}
+				if hasStubMention {
+					break
+				}
+			}
+			if !hasStubMention {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "wiring_verification",
+					Message:  "wiring_verification group: no subtask mentions stub or dead-code audit in title or details",
+					Artifact: "tasks.json",
+				})
 			}
 		}
 	}
