@@ -538,18 +538,16 @@ func (s *SpecSession) loadPartialSpec() *afspec.Spec {
 // the YAML frontmatter delimited by "---" lines.
 func extractPRDBody(content string) string {
 	// Find the opening "---"
-	idx := strings.Index(content, "---")
-	if idx < 0 {
+	_, afterOpen, found := strings.Cut(content, "---")
+	if !found {
 		return content
 	}
 	// Find the closing "---"
-	rest := content[idx+3:]
-	idx2 := strings.Index(rest, "---")
-	if idx2 < 0 {
+	_, afterClose, found := strings.Cut(afterOpen, "---")
+	if !found {
 		return content
 	}
-	body := strings.TrimSpace(rest[idx2+3:])
-	return body
+	return strings.TrimSpace(afterClose)
 }
 
 // Assess transitions to StateAssessing, creates a SpecAgent (or uses an
@@ -592,9 +590,3 @@ func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) {
 	return GenerateResult{}, fmt.Errorf("Generate: not implemented")
 }
 
-// persistState writes the current session state to _session.json
-// atomically using the temp-file-and-rename pattern.
-func (s *SpecSession) persistState() error {
-	// TODO: implement
-	return fmt.Errorf("persistState: not implemented")
-}

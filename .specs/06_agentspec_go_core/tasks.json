@@ -1034,7 +1034,7 @@
             "06-REQ-6",
             "06-REQ-7"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1059,7 +1059,7 @@
             "06-REQ-8",
             "06-REQ-13"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1095,7 +1095,7 @@
             "06-REQ-14",
             "06-REQ-15"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1127,7 +1127,7 @@
             "06-REQ-12",
             "06-REQ-13"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1168,7 +1168,7 @@
             "06-REQ-14",
             "06-REQ-15"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],
