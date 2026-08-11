@@ -122,6 +122,13 @@ func cleanupPartialArtifacts(specPath string) {
 // In a full implementation this would call session.Generate(ctx) via the
 // AI layer. Returns a list of generated artifact file paths.
 func generateArtifacts(ctx context.Context, specPath string, session map[string]any) ([]string, error) {
+	// Test hook: block until context cancellation to simulate a long-running
+	// AI call. Activated by SPEC_TEST_BLOCK_AI=1 environment variable.
+	if os.Getenv("SPEC_TEST_BLOCK_AI") == "1" {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

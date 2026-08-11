@@ -165,9 +165,12 @@ func TestTS08_43_GenerateExitsOnSIGINT(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Start the generate command.
+	// Start the generate command with SPEC_TEST_BLOCK_AI=1 so the
+	// stub AI operation blocks until context cancellation, giving
+	// the signal time to arrive and be handled.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "generate", "08_signal_spec")
 	proc.Dir = tmpDir
+	proc.Env = append(os.Environ(), "SPEC_TEST_BLOCK_AI=1")
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	proc.Stdout = &stdoutBuf
@@ -177,9 +180,10 @@ func TestTS08_43_GenerateExitsOnSIGINT(t *testing.T) {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
-	// Send SIGINT after 100ms.
+	// Send SIGINT after 200ms to ensure the process has started
+	// and entered the blocking AI call.
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		if proc.Process != nil {
 			proc.Process.Signal(syscall.SIGINT)
 		}
@@ -194,15 +198,10 @@ func TestTS08_43_GenerateExitsOnSIGINT(t *testing.T) {
 	select {
 	case err := <-doneCh:
 		if err == nil {
-			// The process may exit 0 if the stub returns immediately.
-			// Either way, the process should not hang.
-			t.Log("process exited 0 (possibly stub returned before signal)")
-		} else {
-			// Exit code 1 is expected when interrupted.
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				if exitErr.ExitCode() != 1 {
-					t.Errorf("exit code = %d; want 1", exitErr.ExitCode())
-				}
+			t.Error("process exited 0; want exit 1 after SIGINT cancellation")
+		} else if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() != 1 {
+				t.Errorf("exit code = %d; want 1", exitErr.ExitCode())
 			}
 		}
 	case <-time.After(5 * time.Second):
@@ -259,8 +258,11 @@ func TestTS08_43_RefineExitsOnSIGTERM(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Start the refine command with SPEC_TEST_BLOCK_AI=1 so the
+	// stub AI operation blocks until context cancellation.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "refine", "08_signal_spec")
 	proc.Dir = tmpDir
+	proc.Env = append(os.Environ(), "SPEC_TEST_BLOCK_AI=1")
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	proc.Stdout = &stdoutBuf
@@ -270,8 +272,10 @@ func TestTS08_43_RefineExitsOnSIGTERM(t *testing.T) {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
+	// Send SIGTERM after 200ms to ensure the process has started
+	// and entered the blocking AI call.
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		if proc.Process != nil {
 			proc.Process.Signal(syscall.SIGTERM)
 		}
@@ -285,12 +289,10 @@ func TestTS08_43_RefineExitsOnSIGTERM(t *testing.T) {
 	select {
 	case err := <-doneCh:
 		if err == nil {
-			t.Log("process exited 0 (possibly stub returned before signal)")
-		} else {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				if exitErr.ExitCode() != 1 {
-					t.Errorf("exit code = %d; want 1", exitErr.ExitCode())
-				}
+			t.Error("process exited 0; want exit 1 after SIGTERM cancellation")
+		} else if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() != 1 {
+				t.Errorf("exit code = %d; want 1", exitErr.ExitCode())
 			}
 		}
 	case <-time.After(5 * time.Second):
@@ -348,8 +350,11 @@ func TestTS08_42_DoubleSignalForceExit(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Start the generate command with SPEC_TEST_BLOCK_AI=1 so the
+	// stub blocks, giving signals time to arrive.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "generate", "08_signal_spec")
 	proc.Dir = tmpDir
+	proc.Env = append(os.Environ(), "SPEC_TEST_BLOCK_AI=1")
 
 	if err := proc.Start(); err != nil {
 		t.Fatalf("failed to start process: %v", err)
@@ -357,7 +362,7 @@ func TestTS08_42_DoubleSignalForceExit(t *testing.T) {
 
 	// Send two SIGINTs in quick succession.
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		if proc.Process != nil {
 			proc.Process.Signal(syscall.SIGINT)
 			time.Sleep(50 * time.Millisecond)
@@ -372,9 +377,10 @@ func TestTS08_42_DoubleSignalForceExit(t *testing.T) {
 
 	select {
 	case err := <-doneCh:
-		// Process should have exited. Exit code 1 is expected.
+		// Process should have exited with code 1 (from os.Exit(1) on
+		// second signal or from context cancellation error path).
 		if err == nil {
-			t.Log("process exited 0 (stub may have returned before signals)")
+			t.Log("process exited 0 (context cancellation returned before second signal)")
 		} else if exitErr, ok := err.(*exec.ExitError); ok {
 			if exitErr.ExitCode() != 1 {
 				t.Logf("exit code = %d; expected 1 on double SIGINT", exitErr.ExitCode())

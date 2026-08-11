@@ -1166,7 +1166,7 @@
             "08-REQ-13",
             "08-REQ-14"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1190,7 +1190,7 @@
             "08-REQ-9",
             "08-REQ-11"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1215,7 +1215,7 @@
             "08-REQ-11",
             "08-REQ-12"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1239,7 +1239,7 @@
             "08-REQ-9",
             "08-REQ-12"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1268,7 +1268,7 @@
             "08-REQ-12",
             "08-REQ-16"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -1291,7 +1291,7 @@
             "08-REQ-7",
             "08-REQ-15"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],

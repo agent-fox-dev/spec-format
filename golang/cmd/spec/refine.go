@@ -152,6 +152,13 @@ func sessionNeedsAssessment(state string) bool {
 // this would call the AI model via session.Assess(ctx). Returns the
 // assessment result without mutating session state.
 func assessPRD(ctx context.Context, specPath string) (map[string]any, error) {
+	// Test hook: block until context cancellation to simulate a long-running
+	// AI call. Activated by SPEC_TEST_BLOCK_AI=1 environment variable.
+	if os.Getenv("SPEC_TEST_BLOCK_AI") == "1" {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
