@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -694,14 +695,23 @@ func (s *SpecSession) resolveAgent() assessor {
 }
 
 // persistError sets the LastErr field and persists the session state.
-// If persistence fails, the error is silently discarded (the caller
+// If atomic persistence fails (e.g. directory is read-only), it falls
+// back to a direct overwrite of the existing _session.json file. If
+// both methods fail, the error is silently discarded (the caller
 // already has an error to return).
 func (s *SpecSession) persistError(err error) {
 	s.LastErr = &LastError{
 		Message: err.Error(),
 		Type:    fmt.Sprintf("%T", err),
 	}
-	_ = s.persistSession()
+	if persistErr := s.persistSession(); persistErr != nil {
+		// Atomic persist failed — fall back to direct overwrite of
+		// existing _session.json (works when the directory is read-only
+		// but the file itself is writable).
+		if data, marshalErr := json.Marshal(s); marshalErr == nil {
+			_ = os.WriteFile(filepath.Join(s.specDir, "_session.json"), data, 0o644)
+		}
+	}
 }
 
 // loadSiblingLandscape attempts to load spec landscape entries from
@@ -742,6 +752,14 @@ func (s *SpecSession) loadSiblingLandscape() []map[string]any {
 	return landscape
 }
 
+// artifactNameToFile maps artifact names (as used by GenerateArtifacts)
+// to their on-disk JSON filenames.
+var artifactNameToFile = map[string]string{
+	"requirements": "requirements.json",
+	"test_spec":    "test_spec.json",
+	"tasks":        "tasks.json",
+}
+
 // Generate transitions to StateGenerating immediately, checks for
 // existing artifact files to skip already-generated artifacts (partial
 // failure recovery), calls GenerateArtifacts with an OnArtifact callback
@@ -752,7 +770,121 @@ func (s *SpecSession) loadSiblingLandscape() []map[string]any {
 // On error, does not transition to StateGenerated, persists the error
 // as lastError, and returns (GenerateResult{}, error).
 func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) {
-	// TODO: implement
-	return GenerateResult{}, fmt.Errorf("Generate: not implemented")
+	// Transition to StateGenerating immediately.
+	s.Current = StateGenerating
+
+	// Read the PRD file.
+	prdText, err := s.readPRD()
+	if err != nil {
+		s.persistError(err)
+		return GenerateResult{}, err
+	}
+
+	// Check for existing artifact files on disk (partial failure recovery).
+	existing := map[string]bool{}
+	for name, fileName := range artifactNameToFile {
+		artifactPath := filepath.Join(s.specDir, fileName)
+		if _, statErr := os.Stat(artifactPath); statErr == nil {
+			existing[name] = true
+		}
+	}
+
+	// Only call GenerateArtifacts if there are missing artifacts.
+	if len(existing) < len(artifactNameToFile) {
+		agent := s.resolveAgent()
+
+		// Extract spec ID and name from the directory basename.
+		dirName := filepath.Base(s.specDir)
+		specID, specName, parseErr := afspec.ParseSpecDirName(dirName)
+		if parseErr != nil {
+			// Fallback for non-standard directory names (e.g. in tests).
+			specID = ""
+			specName = dirName
+		}
+
+		landscape := s.loadSiblingLandscape()
+
+		// writeErr captures any error from the OnArtifact callback so it
+		// can be surfaced after GenerateArtifacts returns.
+		var writeErr error
+
+		onArtifact := func(name string, content any) {
+			if writeErr != nil {
+				return // A previous write failed; skip subsequent artifacts.
+			}
+
+			fileName, ok := artifactNameToFile[name]
+			if !ok {
+				fileName = name + ".json"
+			}
+			filePath := filepath.Join(s.specDir, fileName)
+
+			data, marshalErr := afspec.MarshalJSON(content)
+			if marshalErr != nil {
+				writeErr = fmt.Errorf("failed to serialize %s: %w", name, marshalErr)
+				return
+			}
+
+			if writeFileErr := os.WriteFile(filePath, data, 0o644); writeFileErr != nil {
+				writeErr = fmt.Errorf("failed to write %s: %w", fileName, writeFileErr)
+				return
+			}
+
+			s.GeneratedArtifacts = append(s.GeneratedArtifacts, name)
+		}
+
+		opts := []AgentOption{
+			WithSpecLandscape(landscape),
+			WithProjectDir(s.specDir),
+			WithOnArtifact(onArtifact),
+		}
+
+		_, err = agent.GenerateArtifacts(ctx, prdText, specID, specName, opts...)
+		if err != nil {
+			s.persistError(err)
+			return GenerateResult{}, err
+		}
+
+		// Check for write errors from the OnArtifact callback.
+		if writeErr != nil {
+			s.persistError(writeErr)
+			return GenerateResult{}, writeErr
+		}
+	}
+
+	// Record existing (pre-generated) artifacts that were skipped.
+	for name := range existing {
+		if !slices.Contains(s.GeneratedArtifacts, name) {
+			s.GeneratedArtifacts = append(s.GeneratedArtifacts, name)
+		}
+	}
+
+	// Transition to StateGenerated.
+	s.Current = StateGenerated
+
+	// Run Validate (validation errors are non-fatal).
+	validation, _ := s.Validate()
+
+	// Collect warnings from validation result.
+	var warnings []string
+	if !validation.Valid {
+		for _, e := range validation.SchemaErrors {
+			warnings = append(warnings, e)
+		}
+		for _, e := range validation.IntegrityErrors {
+			warnings = append(warnings, e)
+		}
+	}
+
+	// Persist final session state.
+	if err := s.persistSession(); err != nil {
+		return GenerateResult{}, err
+	}
+
+	return GenerateResult{
+		Artifacts:  s.GeneratedArtifacts,
+		Validation: validation,
+		Warnings:   warnings,
+	}, nil
 }
 
