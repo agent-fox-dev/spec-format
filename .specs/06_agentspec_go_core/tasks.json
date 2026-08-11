@@ -116,7 +116,7 @@
             "06-REQ-3",
             "06-REQ-4"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -135,7 +135,7 @@
           "requirement_refs": [
             "06-REQ-5"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         },
         {
@@ -156,7 +156,7 @@
           "requirement_refs": [
             "06-REQ-6"
           ],
-          "state": "pending",
+          "state": "done",
           "optional": false
         }
       ],

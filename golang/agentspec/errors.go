@@ -23,11 +23,13 @@ func (e *ConfigError) Unwrap() error   { return e.Cause }
 // CampaignError is returned for campaign directory operation failures
 // such as duplicate paths, missing campaign.yaml, or invalid spec names.
 type CampaignError struct {
-	Msg string
+	Msg   string
+	Cause error
 }
 
 func (e *CampaignError) Error() string   { return e.Msg }
 func (e *CampaignError) Category() string { return "" }
+func (e *CampaignError) Unwrap() error   { return e.Cause }
 
 // SessionError is returned for illegal state transitions or invalid
 // session state operations.
