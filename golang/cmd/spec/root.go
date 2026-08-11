@@ -17,6 +17,12 @@ func newRootCmd() *cobra.Command {
 		Short: "Spec CLI — manage agentspec specifications",
 		// TODO: implement root command logic
 	}
+
+	// Register subcommands.
+	cmd.AddCommand(newNewCmd())
+	cmd.AddCommand(newListCmd())
+	cmd.AddCommand(newRefineCmd())
+
 	return cmd
 }
 
