@@ -147,3 +147,19 @@ func AddTraceabilityEntry(t TasksV1Json, e TraceabilityEntry) (TasksV1Json, erro
 func AddDependency(t TasksV1Json, d TaskDependency) TasksV1Json {
 	panic("not implemented")
 }
+
+// ---------------------------------------------------------------------------
+// LoadDependentInterfaces — cross-spec context loading (05-REQ-10)
+// ---------------------------------------------------------------------------
+
+// LoadDependentInterfaces loads interface summaries from upstream dependency
+// specs for the given specID. It calls DiscoverSpecs, BuildDependencyGraph,
+// and LoadSpec for each upstream dependency, extracting glossary entries,
+// external API symbols, and criterion return contracts into a map[string]any
+// per upstream spec.
+//
+// Returns an empty slice on any error (never returns an error value, never
+// panics in production).
+func LoadDependentInterfaces(specID string, specRoot string) []map[string]any {
+	panic("not implemented")
+}

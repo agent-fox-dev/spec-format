@@ -64,3 +64,15 @@ func SortFindings(findings []LintFinding) []LintFinding {
 func ComputeExitCode(findings []LintFinding) int {
 	panic("not implemented")
 }
+
+// ---------------------------------------------------------------------------
+// RunLintSpecs — full lint execution (05-REQ-9)
+// ---------------------------------------------------------------------------
+
+// RunLintSpecs scans specsDir for spec folders, loads and validates each,
+// and returns a LintResult with sorted findings and computed exit code.
+// When lintAll is false, fully-implemented specs (all subtasks in state
+// 'done' or 'dropped') are skipped.
+func RunLintSpecs(specsDir string, lintAll bool) (LintResult, error) {
+	panic("not implemented")
+}
