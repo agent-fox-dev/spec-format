@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"fmt"
 	"io"
 	"os"
 )
@@ -34,5 +35,11 @@ func shouldShowBanner(quiet bool, subcmd string, args []string) bool {
 
 // printBanner writes the ASCII art banner to the given writer.
 func printBanner(w io.Writer, ver string) {
-	// TODO: implement ASCII art banner
+	fmt.Fprintf(w, `
+  ___  ___  ___  ___
+ / __|| _ \| __|| __|
+ \__ \|  _/| _| | __|
+ |___/|_|  |___||___|  spec v%s
+
+`, ver)
 }
