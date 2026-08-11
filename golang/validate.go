@@ -277,6 +277,16 @@ var edgeCaseTestIDPattern = regexp.MustCompile(`^TS-\d{2}-E\d+$`)
 // criterionIDPattern matches valid criterion IDs like "01-REQ-1.1" or "01-REQ-1.E1".
 var criterionIDPattern = regexp.MustCompile(`^\d{2}-REQ-\d+\.\d+$|^\d{2}-REQ-\d+\.E\d+$`)
 
+// backtickTermRe extracts backtick-wrapped terms from text fields.
+// Compiled at package initialization time per 04-REQ-4.2.
+var backtickTermRe = regexp.MustCompile("`([^`]+)`")
+
+// backtickNumericRe matches numeric values including negatives and decimals (e.g. -1, 3.14).
+var backtickNumericRe = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+
+// backtickQuotedRe matches terms wrapped in single or double quotes.
+var backtickQuotedRe = regexp.MustCompile(`^["'].*["']$`)
+
 // ValidateCrossFile checks dangling references, coverage gaps, glossary
 // completeness, and ID format validity across all artifacts and returns
 // a ValidationResult.
@@ -613,6 +623,173 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 								EntityID: ref,
 							})
 						}
+					}
+				}
+			}
+		}
+	}
+
+	// --- Cross-file rule 6: Glossary backtick term check ---
+	// Extract backtick-wrapped terms from criterion and correctness property
+	// fields; flag any non-excluded term not present in the glossary.
+	if s.Requirements != nil {
+		glossary := s.Requirements.Glossary
+
+		// isExcludedBacktickTerm returns true if the term should be excluded
+		// from glossary checks: numeric, single character, quoted, or > 80 chars.
+		isExcluded := func(term string) bool {
+			if len([]rune(term)) == 1 {
+				return true
+			}
+			if len([]rune(term)) > 80 {
+				return true
+			}
+			if backtickNumericRe.MatchString(term) {
+				return true
+			}
+			if backtickQuotedRe.MatchString(term) {
+				return true
+			}
+			return false
+		}
+
+		// checkFieldForBacktickTerms extracts backtick terms from a field value
+		// and appends validation errors for undefined glossary terms.
+		checkField := func(fieldValue string) {
+			matches := backtickTermRe.FindAllStringSubmatch(fieldValue, -1)
+			for _, m := range matches {
+				term := m[1]
+				if isExcluded(term) {
+					continue
+				}
+				if _, ok := glossary[term]; !ok {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "cross_file_6",
+						Message:  fmt.Sprintf("backtick term %q is not defined in glossary", term),
+						Artifact: "requirements.json",
+					})
+				}
+			}
+		}
+
+		// Check criterion fields across all requirements
+		for _, req := range s.Requirements.Requirements {
+			for _, ac := range req.AcceptanceCriteria {
+				checkField(ac.Action)
+				if ac.Trigger != nil {
+					checkField(*ac.Trigger)
+				}
+				if ac.Condition != nil {
+					checkField(*ac.Condition)
+				}
+				if ac.ErrorCondition != nil {
+					checkField(*ac.ErrorCondition)
+				}
+				if ac.State != nil {
+					checkField(*ac.State)
+				}
+				if ac.Feature != nil {
+					checkField(*ac.Feature)
+				}
+			}
+			for _, ec := range req.EdgeCases {
+				checkField(ec.Action)
+				if ec.Trigger != nil {
+					checkField(*ec.Trigger)
+				}
+				if ec.Condition != nil {
+					checkField(*ec.Condition)
+				}
+				if ec.ErrorCondition != nil {
+					checkField(*ec.ErrorCondition)
+				}
+				if ec.State != nil {
+					checkField(*ec.State)
+				}
+				if ec.Feature != nil {
+					checkField(*ec.Feature)
+				}
+			}
+		}
+
+		// Check correctness property fields (for_any, invariant)
+		for _, cp := range s.Requirements.CorrectnessProperties {
+			checkField(cp.ForAny)
+			checkField(cp.Invariant)
+		}
+	}
+
+	// --- Cross-file rule 8: Traceability deduplication ---
+	// Flag duplicate (requirement_id, test_spec_id) pairs in traceability.
+	if s.Tasks != nil && len(s.Tasks.Traceability) > 0 {
+		seen := map[string]bool{}
+		for _, te := range s.Tasks.Traceability {
+			key := te.RequirementId + "|" + te.TestSpecId
+			if seen[key] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_8",
+					Message:  fmt.Sprintf("duplicate traceability pair (%s, %s)", te.RequirementId, te.TestSpecId),
+					Artifact: "tasks.json",
+				})
+			} else {
+				seen[key] = true
+			}
+		}
+	}
+
+	// --- Cross-file rule 9: Subtask requirement_refs resolution ---
+	// Every requirement_refs entry must resolve to a known requirement ID,
+	// criterion ID, or edge case ID.
+	if s.Tasks != nil && s.Requirements != nil {
+		for _, group := range s.Tasks.TaskGroups {
+			for _, sub := range group.Subtasks {
+				for _, ref := range sub.RequirementRefs {
+					if ref != "" && !reqIDs[ref] {
+						errors = append(errors, ValidationEntry{
+							Category: "integrity",
+							Check:    "cross_file_9",
+							Message:  fmt.Sprintf("subtask %s requirement_refs contains unresolvable reference %s", sub.Id, ref),
+							Artifact: "tasks.json",
+							EntityID: ref,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// --- Cross-file rule 10: Unwanted pattern return_contract check ---
+	// Every criterion with ears_pattern='unwanted' must have a non-empty
+	// return_contract.
+	if s.Requirements != nil {
+		for _, req := range s.Requirements.Requirements {
+			for _, ac := range req.AcceptanceCriteria {
+				if ac.EarsPattern == CriterionEarsPatternUnwanted {
+					if ac.ReturnContract == nil || *ac.ReturnContract == "" {
+						errors = append(errors, ValidationEntry{
+							Category:      "integrity",
+							Check:         "cross_file_10",
+							Message:       fmt.Sprintf("criterion %s has ears_pattern 'unwanted' but missing return_contract", ac.Id),
+							Artifact:      "requirements.json",
+							RequirementID: req.Id,
+							EntityID:      ac.Id,
+						})
+					}
+				}
+			}
+			for _, ec := range req.EdgeCases {
+				if ec.EarsPattern == CriterionEarsPatternUnwanted {
+					if ec.ReturnContract == nil || *ec.ReturnContract == "" {
+						errors = append(errors, ValidationEntry{
+							Category:      "integrity",
+							Check:         "cross_file_10",
+							Message:       fmt.Sprintf("criterion %s has ears_pattern 'unwanted' but missing return_contract", ec.Id),
+							Artifact:      "requirements.json",
+							RequirementID: req.Id,
+							EntityID:      ec.Id,
+						})
 					}
 				}
 			}
