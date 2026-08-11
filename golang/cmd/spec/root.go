@@ -8,8 +8,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// version is set at build time via ldflags.
+// version is set at build time via ldflags or by calling SetVersion.
 var version = "dev"
+
+// SetVersion sets the version string reported by --version.
+// It is called from the main package to forward the build-time
+// value injected via ldflags (-X main.version=...).
+func SetVersion(v string) { version = v }
 
 // specDirDefault returns the default value for --spec-dir, honoring
 // the SPEC_DIR env var (falls back to ".specs" if unset or empty).

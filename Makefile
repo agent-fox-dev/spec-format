@@ -1,4 +1,5 @@
-.PHONY: clean test test-fast lint format check json-go install-skills uninstall-skills
+.PHONY: clean test test-fast lint format check json-go install-skills uninstall-skills \
+       build-all build-darwin-arm64 build-darwin-amd64 build-linux-arm64 build-linux-amd64
 
 GOLANG_DIR := $(CURDIR)/golang
 PYTHON_DIR := $(CURDIR)/packages/afspec
@@ -10,6 +11,28 @@ PYTHON_SCHEMAS_DIR := $(PYTHON_DIR)/afspec/schemas
 SKILLS_TEMPLATES_DIR := $(CURDIR)/skills
 CLAUDE_SKILLS_DIR := $(HOME)/.claude/skills
 
+# Build configuration
+VERSION ?= dev
+BINARY_NAME := spec
+DIST_DIR := $(CURDIR)/dist
+GO_MAIN := ./cmd/spec-cli
+LDFLAGS := -X main.version=$(VERSION)
+
+# Cross-platform static build targets
+build-all: build-darwin-arm64 build-darwin-amd64 build-linux-arm64 build-linux-amd64
+
+build-darwin-arm64:
+	cd $(GOLANG_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY_NAME)-darwin-arm64 $(GO_MAIN)
+
+build-darwin-amd64:
+	cd $(GOLANG_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY_NAME)-darwin-amd64 $(GO_MAIN)
+
+build-linux-arm64:
+	cd $(GOLANG_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY_NAME)-linux-arm64 $(GO_MAIN)
+
+build-linux-amd64:
+	cd $(GOLANG_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY_NAME)-linux-amd64 $(GO_MAIN)
+
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name '*.pyc' -delete 2>/dev/null || true
@@ -17,6 +40,7 @@ clean:
 	rm -rf .pytest_cache/ *.egg-info/ dist/ .ruff_cache/ .mypy_cache/ .hypothesis/
 	rm -rf packages/*/.pytest_cache packages/*/.mypy_cache packages/*/.ruff_cache
 	rm -rf packages/*/build packages/*/dist packages/*/*.egg-info
+	rm -rf $(DIST_DIR)
 
 test:
 	uv run pytest -q
