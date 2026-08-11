@@ -25,8 +25,10 @@ func writeDepSpecDir(t *testing.T, dir, specID, specName string, deps []string) 
 	req := fmt.Sprintf(
 		`{"spec_id":%q,"spec_name":%q,"schema_version":1,"introduction":"Test",`+
 			`"glossary":{"term_%s":"definition for %s"},`+
-			`"requirements":[{"id":"%s-REQ-1","title":"R1","user_story":"us",`+
-			`"acceptance_criteria":[{"id":"%s-REQ-1.1","text":"ac",`+
+			`"requirements":[{"id":"%s-REQ-1","title":"R1",`+
+			`"user_story":{"role":"developer","goal":"test","benefit":"verify"},`+
+			`"acceptance_criteria":[{"id":"%s-REQ-1.1",`+
+			`"action":"return bool","system":"test","ears_pattern":"event_driven",`+
 			`"return_contract":"returns bool"}],`+
 			`"edge_cases":[]}],`+
 			`"correctness_properties":[],"execution_paths":[],"error_handling":[],`+
@@ -34,7 +36,8 @@ func writeDepSpecDir(t *testing.T, dir, specID, specName string, deps []string) 
 			`"symbols":[{"name":"Func%s","import_path":"pkg_%s","signature":"func()"}]}]}`,
 		specID, specName,
 		specID, specID,
-		specID, specID,
+		specID,
+		specID,
 		specID, specID, specID)
 	mustWriteFile(t, filepath.Join(dir, "requirements.json"), req)
 

@@ -468,5 +468,106 @@ func AddDependency(t TasksV1Json, d TaskDependency) TasksV1Json {
 // Returns an empty slice on any error (never returns an error value, never
 // panics in production).
 func LoadDependentInterfaces(specID string, specRoot string) []map[string]any {
-	panic("not implemented")
+	// Discover all specs under specRoot.
+	metas, err := DiscoverSpecs(specRoot)
+	if err != nil {
+		// Graceful degradation: return empty slice without propagating.
+		return []map[string]any{}
+	}
+
+	// Build the dependency graph.
+	graph, err := BuildDependencyGraph(metas, specRoot)
+	if err != nil && graph == nil {
+		// Only bail if we got no graph at all; a partial graph with
+		// dangling-reference warnings is still usable.
+		return []map[string]any{}
+	}
+
+	// Find upstream dependencies for specID.
+	// Dependencies() returns edges where FromSpec == specID,
+	// meaning specID depends on ToSpec (ToSpec is upstream).
+	deps := graph.Dependencies(specID)
+	if len(deps) == 0 {
+		return []map[string]any{}
+	}
+
+	// Build a lookup from spec ID to directory path.
+	metaByID := make(map[string]string, len(metas))
+	for _, m := range metas {
+		metaByID[m.SpecID] = m.Dir
+	}
+
+	var result []map[string]any
+	for _, dep := range deps {
+		upstreamID := dep.ToSpec
+		dir, ok := metaByID[upstreamID]
+		if !ok {
+			// Unknown upstream spec — skip.
+			continue
+		}
+
+		spec, err := LoadSpec(dir)
+		if err != nil {
+			// Graceful degradation: skip this upstream, continue with others.
+			continue
+		}
+
+		entry := extractInterfaceSummary(spec)
+		result = append(result, entry)
+	}
+
+	if result == nil {
+		result = []map[string]any{}
+	}
+	return result
+}
+
+// extractInterfaceSummary builds a map[string]any containing the glossary
+// entries, external API symbols, and criterion return contracts from a Spec.
+func extractInterfaceSummary(spec *Spec) map[string]any {
+	entry := make(map[string]any)
+
+	// Extract glossary entries.
+	if spec.Requirements != nil && spec.Requirements.Glossary != nil {
+		glossary := make(map[string]string, len(spec.Requirements.Glossary))
+		for k, v := range spec.Requirements.Glossary {
+			glossary[k] = v
+		}
+		entry["glossary"] = glossary
+	}
+
+	// Extract external API symbols.
+	if spec.Requirements != nil && len(spec.Requirements.ExternalApis) > 0 {
+		var symbols []map[string]string
+		for _, api := range spec.Requirements.ExternalApis {
+			for _, sym := range api.Symbols {
+				symbols = append(symbols, map[string]string{
+					"name":        sym.Name,
+					"import_path": sym.ImportPath,
+					"signature":   sym.Signature,
+				})
+			}
+		}
+		entry["external_apis"] = symbols
+	}
+
+	// Extract criterion return contracts from acceptance criteria.
+	if spec.Requirements != nil {
+		var contracts []map[string]string
+		for _, req := range spec.Requirements.Requirements {
+			for _, ac := range req.AcceptanceCriteria {
+				if ac.ReturnContract != nil && *ac.ReturnContract != "" {
+					contracts = append(contracts, map[string]string{
+						"criterion_id":    ac.Id,
+						"return_contract": *ac.ReturnContract,
+					})
+				}
+			}
+		}
+		if len(contracts) > 0 {
+			entry["return_contracts"] = contracts
+		}
+	}
+
+	return entry
 }
