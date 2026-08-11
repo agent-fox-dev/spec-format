@@ -1,0 +1,1152 @@
+{
+  "$schema": null,
+  "spec_id": "07",
+  "spec_name": "agentspec_go_ai",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-07-1",
+      "requirement_id": "07-REQ-1.1",
+      "kind": "unit",
+      "description": "Verifies that ModelTier constants, ModelEntry struct, ModelRegistry, and TierDefaults are defined with the correct values and initial entries.",
+      "preconditions": [
+        "agentspec package is compiled and importable"
+      ],
+      "input": "N/A — static package-level declarations",
+      "expected": "ModelTier constants: TierSimple==\"SIMPLE\", TierStandard==\"STANDARD\", TierAdvanced==\"ADVANCED\"; ModelRegistry contains keys \"claude-haiku-4-5\" (TierSimple), \"claude-sonnet-4-6\" (TierStandard), \"claude-opus-4-6\" (TierAdvanced); TierDefaults maps TierSimple->\"claude-haiku-4-5\", TierStandard->\"claude-sonnet-4-6\", TierAdvanced->\"claude-opus-4-6\"",
+      "assertion_pseudocode": "assert TierSimple == \"SIMPLE\"; assert TierStandard == \"STANDARD\"; assert TierAdvanced == \"ADVANCED\"; assert ModelRegistry[\"claude-haiku-4-5\"].Tier == TierSimple; assert ModelRegistry[\"claude-sonnet-4-6\"].Tier == TierStandard; assert ModelRegistry[\"claude-opus-4-6\"].Tier == TierAdvanced; assert TierDefaults[TierSimple] == \"claude-haiku-4-5\"; assert TierDefaults[TierStandard] == \"claude-sonnet-4-6\"; assert TierDefaults[TierAdvanced] == \"claude-opus-4-6\""
+    },
+    {
+      "id": "TS-07-2",
+      "requirement_id": "07-REQ-1.2",
+      "kind": "unit",
+      "description": "Verifies that ResolveModel returns the correct default model ID when called with a tier constant string.",
+      "preconditions": [
+        "agentspec package is compiled; TierDefaults is populated"
+      ],
+      "input": "name = \"STANDARD\"",
+      "expected": "Returns (\"claude-sonnet-4-6\", nil)",
+      "assertion_pseudocode": "modelID, err := ResolveModel(\"STANDARD\"); assert err == nil; assert modelID == \"claude-sonnet-4-6\""
+    },
+    {
+      "id": "TS-07-3",
+      "requirement_id": "07-REQ-1.3",
+      "kind": "unit",
+      "description": "Verifies that ResolveModel returns the model ID directly when called with a known model ID key from ModelRegistry.",
+      "preconditions": [
+        "agentspec package is compiled; ModelRegistry contains \"claude-haiku-4-5\""
+      ],
+      "input": "name = \"claude-haiku-4-5\"",
+      "expected": "Returns (\"claude-haiku-4-5\", nil)",
+      "assertion_pseudocode": "modelID, err := ResolveModel(\"claude-haiku-4-5\"); assert err == nil; assert modelID == \"claude-haiku-4-5\""
+    },
+    {
+      "id": "TS-07-4",
+      "requirement_id": "07-REQ-1.4",
+      "kind": "unit",
+      "description": "Verifies that ResolveModel returns an empty string and a descriptive error for an unrecognized model name.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "name = \"gpt-4-turbo\"",
+      "expected": "Returns (\"\", error) where error message contains text indicating the name was not recognized",
+      "assertion_pseudocode": "modelID, err := ResolveModel(\"gpt-4-turbo\"); assert modelID == \"\"; assert err != nil; assert err.Error() contains \"not recognized\" or \"unknown\""
+    },
+    {
+      "id": "TS-07-5",
+      "requirement_id": "07-REQ-2.1",
+      "kind": "integration",
+      "description": "Verifies that AICall resolves the model tier, creates a platform-aware client, streams the response, and returns the complete response text on success.",
+      "preconditions": [
+        "ANTHROPIC_API_KEY is set to a valid key; CLAUDE_CODE_USE_VERTEX and CLAUDE_CODE_USE_BEDROCK are unset; network access to Anthropic API is available"
+      ],
+      "input": "AICallOptions{ModelTier: TierSimple, Messages: [{role:\"user\", content:\"Say hello\"}], System: \"You are a test assistant.\"}",
+      "expected": "Returns (non-empty responseText string, non-nil rawResponse, nil error)",
+      "assertion_pseudocode": "text, raw, err := AICall(ctx, opts); assert err == nil; assert len(text) > 0; assert raw != nil"
+    },
+    {
+      "id": "TS-07-6",
+      "requirement_id": "07-REQ-2.2",
+      "kind": "unit",
+      "description": "Verifies that AICall defaults MaxTokens to 65536 and CachePolicy to CacheDefault when not specified.",
+      "preconditions": [
+        "agentspec package is compiled; AICallOptions struct is inspectable"
+      ],
+      "input": "AICallOptions with MaxTokens=0 and CachePolicy=\"\"",
+      "expected": "After applying defaults, MaxTokens == 65536 and CachePolicy == CacheDefault",
+      "assertion_pseudocode": "opts := AICallOptions{}; applyDefaults(&opts); assert opts.MaxTokens == 65536; assert opts.CachePolicy == CacheDefault"
+    },
+    {
+      "id": "TS-07-7",
+      "requirement_id": "07-REQ-2.3",
+      "kind": "unit",
+      "description": "Verifies that AICall retries with exponential backoff delays of 2s, 30s, 60s on transient errors and succeeds on the fourth attempt.",
+      "preconditions": [
+        "Mock Anthropic client that returns rate limit error for first 3 calls and success on 4th; timer/sleep is mockable"
+      ],
+      "input": "AICallOptions{ModelTier: TierSimple, Messages: [{role:\"user\", content:\"test\"}]}",
+      "expected": "Returns (responseText, rawResponse, nil) after 4 total attempts; recorded sleep delays are [2s, 30s, 60s]",
+      "assertion_pseudocode": "mockClient.failTimes(3, rateLimitError); text, raw, err := AICall(ctx, opts); assert err == nil; assert len(text) > 0; assert mockClient.callCount == 4; assert recordedDelays == [2s, 30s, 60s]"
+    },
+    {
+      "id": "TS-07-8",
+      "requirement_id": "07-REQ-2.4",
+      "kind": "unit",
+      "description": "Verifies that AICall injects cache_control with type ephemeral on the last system message block when CacheDefault is set and system prompt exceeds the token threshold for a sonnet model.",
+      "preconditions": [
+        "agentspec package is compiled; system prompt text length > 2048*4 = 8192 characters for sonnet model"
+      ],
+      "input": "AICallOptions{ModelTier: TierStandard, CachePolicy: CacheDefault, System: string of length 9000}",
+      "expected": "The last system message block in the API request contains cache_control = {\"type\": \"ephemeral\"}",
+      "assertion_pseudocode": "capturedRequest := captureAPIRequest(AICall, ctx, opts); lastBlock := capturedRequest.System[len-1]; assert lastBlock.CacheControl == {\"type\": \"ephemeral\"}"
+    },
+    {
+      "id": "TS-07-9",
+      "requirement_id": "07-REQ-2.5",
+      "kind": "unit",
+      "description": "Verifies that AICall retries without cache_control when the API rejects the request due to injected cache_control.",
+      "preconditions": [
+        "Mock Anthropic client that returns cache_control rejection error on first call and success on second call"
+      ],
+      "input": "AICallOptions{ModelTier: TierStandard, CachePolicy: CacheDefault, System: string of length 9000}",
+      "expected": "Returns (responseText, rawResponse, nil); second API call does not include cache_control",
+      "assertion_pseudocode": "mockClient.rejectCacheControlOnce(); text, raw, err := AICall(ctx, opts); assert err == nil; assert len(text) > 0; assert mockClient.callCount == 2; assert mockClient.calls[1].System[last].CacheControl == nil"
+    },
+    {
+      "id": "TS-07-10",
+      "requirement_id": "07-REQ-2.6",
+      "kind": "unit",
+      "description": "Verifies that AICall returns an AgentError with retryable=false after all 4 retry attempts are exhausted.",
+      "preconditions": [
+        "Mock Anthropic client that always returns a 500 server error"
+      ],
+      "input": "AICallOptions{ModelTier: TierSimple, Messages: [{role:\"user\", content:\"test\"}]}",
+      "expected": "Returns (\"\", nil, AgentError) where AgentError.Retryable == false and AgentError.Category is non-empty",
+      "assertion_pseudocode": "mockClient.alwaysFail(serverError500); text, raw, err := AICall(ctx, opts); assert text == \"\"; assert raw == nil; agentErr, ok := err.(AgentError); assert ok == true; assert agentErr.Retryable == false; assert agentErr.Category != \"\"; assert mockClient.callCount == 4"
+    },
+    {
+      "id": "TS-07-11",
+      "requirement_id": "07-REQ-3.1",
+      "kind": "unit",
+      "description": "Verifies that all 10 prompt template names are embedded at compile time and accessible via the embedded filesystem.",
+      "preconditions": [
+        "agentspec package is compiled with //go:embed templates/*.md"
+      ],
+      "input": "N/A — static embedded filesystem",
+      "expected": "All 10 templates are accessible: assessment_system, assessment_user, refinement_system, refinement_user, generation_system, generation_user_base, generation_user_requirements, generation_user_test_spec, generation_user_tasks, repair_user",
+      "assertion_pseudocode": "names := [\"assessment_system\", \"assessment_user\", \"refinement_system\", \"refinement_user\", \"generation_system\", \"generation_user_base\", \"generation_user_requirements\", \"generation_user_test_spec\", \"generation_user_tasks\", \"repair_user\"]; for name in names { content, err := embeddedFS.ReadFile(\"templates/\" + name + \".md\"); assert err == nil; assert len(content) > 0 }"
+    },
+    {
+      "id": "TS-07-12",
+      "requirement_id": "07-REQ-3.2",
+      "kind": "unit",
+      "description": "Verifies that LoadPrompt reads and returns the project-local override file content with YAML frontmatter stripped.",
+      "preconditions": [
+        "Temporary directory created; file at <tmpDir>/.spec/prompts/assessment_system.md exists with YAML frontmatter and body content; file is not a symlink"
+      ],
+      "input": "name = \"assessment_system\", projectDir = tmpDir",
+      "expected": "Returns (bodyContent string without frontmatter, nil); returned string does not start with \"---\"",
+      "assertion_pseudocode": "writeFile(tmpDir + \"/.spec/prompts/assessment_system.md\", \"---\\ntitle: test\\n---\\nActual content\"); content, err := LoadPrompt(\"assessment_system\", tmpDir); assert err == nil; assert content == \"Actual content\"; assert !strings.HasPrefix(content, \"---\")"
+    },
+    {
+      "id": "TS-07-13",
+      "requirement_id": "07-REQ-3.3",
+      "kind": "unit",
+      "description": "Verifies that LoadPrompt falls back to the embedded default template when no project-local override exists.",
+      "preconditions": [
+        "Temporary directory with no .spec/prompts/ subdirectory; embedded templates are compiled in"
+      ],
+      "input": "name = \"assessment_system\", projectDir = emptyTmpDir",
+      "expected": "Returns (embeddedContent string, nil); content matches the embedded assessment_system template with frontmatter stripped",
+      "assertion_pseudocode": "content, err := LoadPrompt(\"assessment_system\", emptyTmpDir); assert err == nil; assert len(content) > 0; assert content == expectedEmbeddedContent"
+    },
+    {
+      "id": "TS-07-14",
+      "requirement_id": "07-REQ-3.4",
+      "kind": "unit",
+      "description": "Verifies that LoadPrompt returns an error without reading any file when the name contains characters outside [a-zA-Z0-9_-].",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "name = \"../etc/passwd\", projectDir = \"/tmp\"",
+      "expected": "Returns (\"\", error) where error message indicates the name is invalid; no file I/O occurs",
+      "assertion_pseudocode": "content, err := LoadPrompt(\"../etc/passwd\", \"/tmp\"); assert content == \"\"; assert err != nil; assert err.Error() contains \"invalid\" or \"name\""
+    },
+    {
+      "id": "TS-07-15",
+      "requirement_id": "07-REQ-3.5",
+      "kind": "unit",
+      "description": "Verifies that LoadPromptTemplate substitutes $variable references with values from vars and leaves unmatched references unchanged.",
+      "preconditions": [
+        "Embedded assessment_user template contains $spec_name and $prd_text variables; agentspec package is compiled"
+      ],
+      "input": "name = \"assessment_user\", projectDir = emptyTmpDir, vars = {\"spec_name\": \"my-spec\", \"prd_text\": \"PRD content\"}",
+      "expected": "Returns (substitutedContent string, nil); $spec_name replaced with \"my-spec\"; $prd_text replaced with \"PRD content\"; any unmatched $variables remain verbatim",
+      "assertion_pseudocode": "content, err := LoadPromptTemplate(\"assessment_user\", emptyTmpDir, {\"spec_name\": \"my-spec\", \"prd_text\": \"PRD content\"}); assert err == nil; assert strings.Contains(content, \"my-spec\"); assert strings.Contains(content, \"PRD content\"); assert !strings.Contains(content, \"$spec_name\"); assert !strings.Contains(content, \"$prd_text\")"
+    },
+    {
+      "id": "TS-07-16",
+      "requirement_id": "07-REQ-3.6",
+      "kind": "unit",
+      "description": "Verifies that DetectProjectLanguage returns the correct language name and tooling hints when a manifest file is present.",
+      "preconditions": [
+        "Temporary directory containing a go.mod file"
+      ],
+      "input": "projectDir = tmpDir with go.mod",
+      "expected": "Returns (\"Go\", toolHints string) where toolHints is non-empty and references Go tooling",
+      "assertion_pseudocode": "writeFile(tmpDir + \"/go.mod\", \"module example.com/test\\n\\ngo 1.21\"); lang, hints := DetectProjectLanguage(tmpDir); assert lang == \"Go\"; assert len(hints) > 0"
+    },
+    {
+      "id": "TS-07-17",
+      "requirement_id": "07-REQ-3.7",
+      "kind": "unit",
+      "description": "Verifies that DetectProjectLanguage returns empty strings when no recognized manifest files are present.",
+      "preconditions": [
+        "Temporary directory with no manifest files"
+      ],
+      "input": "projectDir = emptyTmpDir",
+      "expected": "Returns (\"\", \"\")",
+      "assertion_pseudocode": "lang, hints := DetectProjectLanguage(emptyTmpDir); assert lang == \"\"; assert hints == \"\""
+    },
+    {
+      "id": "TS-07-18",
+      "requirement_id": "07-REQ-3.8",
+      "kind": "unit",
+      "description": "Verifies that FormatSpecLandscape returns a non-empty markdown string with active and archived sections when given spec landscape entries.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "landscape = [{\"spec_id\": \"01\", \"title\": \"Spec One\", \"status\": \"active\"}, {\"spec_id\": \"02\", \"title\": \"Spec Two\", \"status\": \"archived\"}]",
+      "expected": "Returns a non-empty string containing markdown table headers and both active and archived sections",
+      "assertion_pseudocode": "result := FormatSpecLandscape(landscape); assert len(result) > 0; assert strings.Contains(result, \"active\") || strings.Contains(result, \"Active\"); assert strings.Contains(result, \"archived\") || strings.Contains(result, \"Archived\")"
+    },
+    {
+      "id": "TS-07-19",
+      "requirement_id": "07-REQ-4.1",
+      "kind": "unit",
+      "description": "Verifies that AssessmentSystemPrompt loads the assessment_system template and returns its content.",
+      "preconditions": [
+        "agentspec package is compiled with embedded templates; emptyTmpDir has no override"
+      ],
+      "input": "projectDir = emptyTmpDir",
+      "expected": "Returns (non-empty promptText string, nil) matching the embedded assessment_system template content",
+      "assertion_pseudocode": "prompt, err := AssessmentSystemPrompt(emptyTmpDir); assert err == nil; assert len(prompt) > 0"
+    },
+    {
+      "id": "TS-07-20",
+      "requirement_id": "07-REQ-4.2",
+      "kind": "unit",
+      "description": "Verifies that AssessmentUserPrompt loads and renders the assessment_user template with $spec_name, $spec_landscape_block, and $prd_text substituted.",
+      "preconditions": [
+        "agentspec package is compiled with embedded templates"
+      ],
+      "input": "prdText = \"My PRD\", specName = \"my-spec\", projectDir = emptyTmpDir, specLandscape = []",
+      "expected": "Returns (promptText string, nil) containing \"my-spec\" and \"My PRD\" with no unresolved $spec_name or $prd_text references",
+      "assertion_pseudocode": "prompt, err := AssessmentUserPrompt(\"My PRD\", \"my-spec\", emptyTmpDir, []); assert err == nil; assert strings.Contains(prompt, \"my-spec\"); assert strings.Contains(prompt, \"My PRD\")"
+    },
+    {
+      "id": "TS-07-21",
+      "requirement_id": "07-REQ-4.3",
+      "kind": "unit",
+      "description": "Verifies that RefinementUserPrompt loads and renders the refinement_user template with $prd_text, $assessment_block, $qa_block, and $spec_landscape_block substituted.",
+      "preconditions": [
+        "agentspec package is compiled with embedded templates"
+      ],
+      "input": "prdText = \"Updated PRD\", answers = {\"q1\": \"a1\"}, prevAssessment = Assessment{Score: 7}, projectDir = emptyTmpDir, specLandscape = []",
+      "expected": "Returns (promptText string, nil) containing \"Updated PRD\" with no unresolved $prd_text reference",
+      "assertion_pseudocode": "prompt, err := RefinementUserPrompt(\"Updated PRD\", {\"q1\": \"a1\"}, prevAssessment, emptyTmpDir, []); assert err == nil; assert strings.Contains(prompt, \"Updated PRD\")"
+    },
+    {
+      "id": "TS-07-22",
+      "requirement_id": "07-REQ-4.4",
+      "kind": "unit",
+      "description": "Verifies that GenerationUserPrompt loads generation_user_base and the artifact-specific template and returns a combined prompt for each valid artifact name.",
+      "preconditions": [
+        "agentspec package is compiled with embedded templates"
+      ],
+      "input": "prdText = \"PRD\", artifactName = \"requirements\", specID = \"07\", projectDir = emptyTmpDir, priorArtifacts = {}, dependentInterfaces = [], specLandscape = []",
+      "expected": "Returns (non-empty promptText string, nil) for each of requirements, test_spec, tasks",
+      "assertion_pseudocode": "for artifactName in [\"requirements\", \"test_spec\", \"tasks\"] { prompt, err := GenerationUserPrompt(\"PRD\", artifactName, \"07\", emptyTmpDir, {}, [], []); assert err == nil; assert len(prompt) > 0 }"
+    },
+    {
+      "id": "TS-07-23",
+      "requirement_id": "07-REQ-4.5",
+      "kind": "unit",
+      "description": "Verifies that RepairUserPrompt loads the repair_user template and substitutes artifact name, original content, and validation errors.",
+      "preconditions": [
+        "agentspec package is compiled with embedded templates"
+      ],
+      "input": "artifactName = \"requirements\", originalContent = {\"spec_id\": \"07\"}, errors = [\"missing field X\"], projectDir = emptyTmpDir",
+      "expected": "Returns (promptText string, nil) containing \"requirements\" and \"missing field X\"",
+      "assertion_pseudocode": "prompt, err := RepairUserPrompt(\"requirements\", {\"spec_id\": \"07\"}, [\"missing field X\"], emptyTmpDir); assert err == nil; assert strings.Contains(prompt, \"requirements\"); assert strings.Contains(prompt, \"missing field X\")"
+    },
+    {
+      "id": "TS-07-24",
+      "requirement_id": "07-REQ-5.1",
+      "kind": "unit",
+      "description": "Verifies that SpecAgent struct and NewSpecAgent constructor are defined and return a non-nil pointer with the correct modelTier.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "modelTier = \"STANDARD\"",
+      "expected": "NewSpecAgent returns a non-nil *SpecAgent with modelTier field set to \"STANDARD\"",
+      "assertion_pseudocode": "agent := NewSpecAgent(\"STANDARD\"); assert agent != nil; assert agent.modelTier == \"STANDARD\""
+    },
+    {
+      "id": "TS-07-25",
+      "requirement_id": "07-REQ-5.2",
+      "kind": "integration",
+      "description": "Verifies that AssessPRD builds prompts, calls AICall with AssessmentTools and tool_choice any, extracts the submit_assessment tool call, and returns a valid Assessment.",
+      "preconditions": [
+        "Mock AICall that returns a response with a submit_assessment tool call containing a valid Assessment JSON payload"
+      ],
+      "input": "ctx = background, prdText = \"Sample PRD\", specName = \"test-spec\", no AgentOptions",
+      "expected": "Returns (Assessment with non-zero fields, nil)",
+      "assertion_pseudocode": "mockAICall.returnToolCall(\"submit_assessment\", validAssessmentJSON); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); assert err == nil; assert assessment.Score > 0 || assessment is non-zero"
+    },
+    {
+      "id": "TS-07-26",
+      "requirement_id": "07-REQ-5.3",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD returns an AgentError with category refusal when the LLM stop reason is refusal.",
+      "preconditions": [
+        "Mock AICall that returns a response with stop_reason = \"refusal\""
+      ],
+      "input": "ctx = background, prdText = \"Sample PRD\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment{}, AgentError) where AgentError.Category == \"refusal\"",
+      "assertion_pseudocode": "mockAICall.returnStopReason(\"refusal\"); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); assert assessment == Assessment{}; agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"refusal\""
+    },
+    {
+      "id": "TS-07-27",
+      "requirement_id": "07-REQ-5.4",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD returns an AgentError with category context_window when the LLM stop reason is context_window_exceeded.",
+      "preconditions": [
+        "Mock AICall that returns a response with stop_reason = \"context_window_exceeded\""
+      ],
+      "input": "ctx = background, prdText = \"Sample PRD\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment{}, AgentError) where AgentError.Category == \"context_window\"",
+      "assertion_pseudocode": "mockAICall.returnStopReason(\"context_window_exceeded\"); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"context_window\""
+    },
+    {
+      "id": "TS-07-28",
+      "requirement_id": "07-REQ-5.5",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD returns an AgentError with category pause_turn when the LLM stop reason is pause_turn.",
+      "preconditions": [
+        "Mock AICall that returns a response with stop_reason = \"pause_turn\""
+      ],
+      "input": "ctx = background, prdText = \"Sample PRD\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment{}, AgentError) where AgentError.Category == \"pause_turn\"",
+      "assertion_pseudocode": "mockAICall.returnStopReason(\"pause_turn\"); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"pause_turn\""
+    },
+    {
+      "id": "TS-07-29",
+      "requirement_id": "07-REQ-5.6",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD wraps Anthropic SDK errors as AgentError with the appropriate category, retryable flag, and HTTP status code.",
+      "preconditions": [
+        "Mock AICall that returns an Anthropic SDK rate limit error with HTTP 429"
+      ],
+      "input": "ctx = background, prdText = \"Sample PRD\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment{}, AgentError) where AgentError.Category == \"rate_limit\", AgentError.HTTPStatus == 429, AgentError.Retryable == true",
+      "assertion_pseudocode": "mockAICall.returnSDKError(rateLimitError, 429); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"rate_limit\"; assert agentErr.HTTPStatus == 429; assert agentErr.Retryable == true"
+    },
+    {
+      "id": "TS-07-30",
+      "requirement_id": "07-REQ-6.1",
+      "kind": "integration",
+      "description": "Verifies that RefinePRD builds prompts, calls AICall with refinement tools, extracts submit_prd_update and submit_assessment, and returns updated PRD text and new Assessment.",
+      "preconditions": [
+        "Mock AICall that returns a response with both submit_prd_update and submit_assessment tool calls"
+      ],
+      "input": "ctx = background, prdText = \"Original PRD\", answers = {\"q1\": \"a1\"}, prevAssessment = Assessment{Score: 6}",
+      "expected": "Returns (\"Updated PRD text\", Assessment{Score: 8}, nil)",
+      "assertion_pseudocode": "mockAICall.returnToolCalls([{\"submit_prd_update\": {\"prd_text\": \"Updated PRD text\"}}, {\"submit_assessment\": validAssessmentJSON}]); agent := NewSpecAgent(\"STANDARD\"); updatedPRD, newAssessment, err := agent.RefinePRD(ctx, \"Original PRD\", {\"q1\": \"a1\"}, prevAssessment); assert err == nil; assert updatedPRD == \"Updated PRD text\"; assert newAssessment != Assessment{}"
+    },
+    {
+      "id": "TS-07-31",
+      "requirement_id": "07-REQ-6.2",
+      "kind": "unit",
+      "description": "Verifies that RefinePRD makes a second AICall with only the submit_assessment tool when the first response lacks a submit_assessment tool call.",
+      "preconditions": [
+        "Mock AICall: first call returns only submit_prd_update; second call returns submit_assessment"
+      ],
+      "input": "ctx = background, prdText = \"Original PRD\", answers = {\"q1\": \"a1\"}, prevAssessment = Assessment{Score: 6}",
+      "expected": "Returns (updatedPRDText, newAssessment, nil); AICall is invoked exactly twice",
+      "assertion_pseudocode": "mockAICall.firstCallReturns([{\"submit_prd_update\": {\"prd_text\": \"Updated\"}}]); mockAICall.secondCallReturns([{\"submit_assessment\": validAssessmentJSON}]); agent := NewSpecAgent(\"STANDARD\"); updatedPRD, newAssessment, err := agent.RefinePRD(ctx, \"Original PRD\", {\"q1\": \"a1\"}, prevAssessment); assert err == nil; assert updatedPRD == \"Updated\"; assert newAssessment != Assessment{}; assert mockAICall.callCount == 2"
+    },
+    {
+      "id": "TS-07-32",
+      "requirement_id": "07-REQ-6.3",
+      "kind": "unit",
+      "description": "Verifies that RefinePRD returns an AgentError with the appropriate category when the stop reason is refusal, context_window_exceeded, or pause_turn.",
+      "preconditions": [
+        "Mock AICall that returns a response with stop_reason = \"refusal\""
+      ],
+      "input": "ctx = background, prdText = \"Original PRD\", answers = {}, prevAssessment = Assessment{}",
+      "expected": "Returns (\"\", Assessment{}, AgentError) where AgentError.Category == \"refusal\"",
+      "assertion_pseudocode": "mockAICall.returnStopReason(\"refusal\"); agent := NewSpecAgent(\"STANDARD\"); updatedPRD, newAssessment, err := agent.RefinePRD(ctx, \"Original PRD\", {}, Assessment{}); assert updatedPRD == \"\"; assert newAssessment == Assessment{}; agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"refusal\""
+    },
+    {
+      "id": "TS-07-33",
+      "requirement_id": "07-REQ-7.1",
+      "kind": "integration",
+      "description": "Verifies that GenerateArtifacts generates requirements, test_spec, and tasks sequentially with temperature=0.2, validates each, and invokes the OnArtifact callback.",
+      "preconditions": [
+        "Mock AICall that returns valid tool call payloads for each artifact; afspec validation passes for all three"
+      ],
+      "input": "ctx = background, prdText = \"PRD\", specID = \"07\", specName = \"test\", WithOnArtifact(callback)",
+      "expected": "Returns (map with keys requirements, test_spec, tasks, nil); callback invoked 3 times with correct artifact names",
+      "assertion_pseudocode": "callbackInvocations := []; mockAICall.returnValidArtifacts(); agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\", WithOnArtifact(func(name, content) { callbackInvocations.append(name) })); assert err == nil; assert result[\"requirements\"] != nil; assert result[\"test_spec\"] != nil; assert result[\"tasks\"] != nil; assert callbackInvocations == [\"requirements\", \"test_spec\", \"tasks\"]"
+    },
+    {
+      "id": "TS-07-34",
+      "requirement_id": "07-REQ-7.2",
+      "kind": "unit",
+      "description": "Verifies that GenerateArtifacts enters the repair loop when validation fails and returns the repaired artifact on success within 2 attempts.",
+      "preconditions": [
+        "Mock AICall: first artifact call returns invalid payload; repair call returns valid payload; afspec validation fails on first, passes on second"
+      ],
+      "input": "ctx = background, prdText = \"PRD\", specID = \"07\", specName = \"test\"",
+      "expected": "Returns (map with requirements artifact, nil); AICall invoked twice for requirements (initial + 1 repair)",
+      "assertion_pseudocode": "mockAICall.firstRequirementsCallReturnsInvalid(); mockAICall.repairCallReturnsValid(); agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\"); assert err == nil; assert result[\"requirements\"] != nil; assert mockAICall.requirementsCallCount == 2"
+    },
+    {
+      "id": "TS-07-35",
+      "requirement_id": "07-REQ-7.3",
+      "kind": "unit",
+      "description": "Verifies that GenerateArtifacts returns an error after 2 repair attempts are exhausted and does not generate subsequent artifacts.",
+      "preconditions": [
+        "Mock AICall: all requirements calls return invalid payload; afspec validation always fails for requirements"
+      ],
+      "input": "ctx = background, prdText = \"PRD\", specID = \"07\", specName = \"test\"",
+      "expected": "Returns (nil, error) describing which artifact failed; test_spec and tasks are not generated",
+      "assertion_pseudocode": "mockAICall.alwaysReturnInvalidRequirements(); agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\"); assert result == nil; assert err != nil; assert err.Error() contains \"requirements\"; assert mockAICall.testSpecCallCount == 0; assert mockAICall.tasksCallCount == 0"
+    },
+    {
+      "id": "TS-07-36",
+      "requirement_id": "07-REQ-7.4",
+      "kind": "unit",
+      "description": "Verifies that GenerateArtifacts passes all previously generated artifacts as priorArtifacts context when building the prompt for each subsequent artifact.",
+      "preconditions": [
+        "Mock AICall that captures the prompt arguments for each artifact call; returns valid payloads"
+      ],
+      "input": "ctx = background, prdText = \"PRD\", specID = \"07\", specName = \"test\"",
+      "expected": "test_spec prompt includes requirements artifact content; tasks prompt includes both requirements and test_spec artifact content",
+      "assertion_pseudocode": "capturedPrompts := {}; mockAICall.capturePrompts(capturedPrompts); agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\"); assert err == nil; assert capturedPrompts[\"test_spec\"] contains requirementsContent; assert capturedPrompts[\"tasks\"] contains requirementsContent; assert capturedPrompts[\"tasks\"] contains testSpecContent"
+    },
+    {
+      "id": "TS-07-37",
+      "requirement_id": "07-REQ-8.1",
+      "kind": "unit",
+      "description": "Verifies that AgentOption type and all four option constructors are defined and compile correctly.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "N/A — static type declarations",
+      "expected": "WithSpecLandscape, WithDependentInterfaces, WithProjectDir, and WithOnArtifact all return AgentOption values without compile errors",
+      "assertion_pseudocode": "opt1 := WithSpecLandscape([]map[string]any{}); opt2 := WithDependentInterfaces([]map[string]any{}); opt3 := WithProjectDir(\"/tmp\"); opt4 := WithOnArtifact(func(name string, content any) {}); assert all are of type AgentOption"
+    },
+    {
+      "id": "TS-07-38",
+      "requirement_id": "07-REQ-8.2",
+      "kind": "unit",
+      "description": "Verifies that SpecAgent methods apply all provided AgentOptions before executing method logic.",
+      "preconditions": [
+        "Mock AICall that captures the projectDir used in prompt loading; returns valid assessment payload"
+      ],
+      "input": "WithProjectDir(\"/custom/project\") passed to AssessPRD",
+      "expected": "Prompt loading uses \"/custom/project\" as the projectDir",
+      "assertion_pseudocode": "capturedProjectDir := \"\"; mockLoadPrompt.captureProjectDir(&capturedProjectDir); agent := NewSpecAgent(\"STANDARD\"); agent.AssessPRD(ctx, \"PRD\", \"test\", WithProjectDir(\"/custom/project\")); assert capturedProjectDir == \"/custom/project\""
+    },
+    {
+      "id": "TS-07-39",
+      "requirement_id": "07-REQ-8.3",
+      "kind": "unit",
+      "description": "Verifies that SpecAgent methods use zero-value defaults when called with no AgentOptions.",
+      "preconditions": [
+        "Mock AICall that returns valid assessment payload"
+      ],
+      "input": "AssessPRD called with no AgentOptions",
+      "expected": "Method executes without panicking; uses empty landscape, empty interfaces, empty projectDir, nil callback",
+      "assertion_pseudocode": "agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"PRD\", \"test\"); assert err == nil || err is AgentError (not a nil pointer panic)"
+    },
+    {
+      "id": "TS-07-40",
+      "requirement_id": "07-REQ-9.1",
+      "kind": "integration",
+      "description": "Verifies that SpecSession.Assess transitions to StateAssessing, calls AssessPRD, appends to assessment history, persists state, and returns the Assessment.",
+      "preconditions": [
+        "SpecSession initialized with a valid PRD file; mock SpecAgent.AssessPRD returns a valid Assessment; state persistence is writable"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (Assessment, nil); session state file on disk contains the new assessment in history; session is in StateAssessing or a post-assess state",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnAssessment(validAssessment); assessment, err := session.Assess(ctx); assert err == nil; assert assessment == validAssessment; persistedState := loadStateFromDisk(tmpDir); assert len(persistedState.AssessmentHistory) == 1"
+    },
+    {
+      "id": "TS-07-41",
+      "requirement_id": "07-REQ-9.2",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Assess persists the error as lastError and returns it without appending to assessment history when AssessPRD fails.",
+      "preconditions": [
+        "SpecSession initialized; mock SpecAgent.AssessPRD returns an AgentError"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (Assessment{}, error); session state on disk has lastError set; assessment history is unchanged",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnError(agentErr); assessment, err := session.Assess(ctx); assert assessment == Assessment{}; assert err != nil; persistedState := loadStateFromDisk(tmpDir); assert persistedState.LastError != nil; assert len(persistedState.AssessmentHistory) == 0"
+    },
+    {
+      "id": "TS-07-42",
+      "requirement_id": "07-REQ-10.1",
+      "kind": "integration",
+      "description": "Verifies that SpecSession.Refine transitions to StateRefining, calls RefinePRD, updates the PRD file, records a QA exchange, appends new assessment, and persists state.",
+      "preconditions": [
+        "SpecSession initialized with a valid PRD file and at least one assessment in history; mock RefinePRD returns updated PRD text and new Assessment; state persistence is writable"
+      ],
+      "input": "ctx = background, answers = {\"q1\": \"a1\"}",
+      "expected": "Returns (newAssessment, nil); PRD file on disk contains updated text; session state has QA exchange with answers and UTC timestamp; assessment history has new entry",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnRefinement(\"Updated PRD\", newAssessment); newAss, err := session.Refine(ctx, {\"q1\": \"a1\"}); assert err == nil; assert newAss == newAssessment; prdContent := readFile(tmpDir + \"/prd.md\"); assert prdContent == \"Updated PRD\"; persistedState := loadStateFromDisk(tmpDir); assert len(persistedState.QAExchanges) == 1; assert persistedState.QAExchanges[0].Answers[\"q1\"] == \"a1\""
+    },
+    {
+      "id": "TS-07-43",
+      "requirement_id": "07-REQ-10.2",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Refine persists the error as lastError without updating the PRD file or recording a QA exchange when RefinePRD fails.",
+      "preconditions": [
+        "SpecSession initialized with a valid PRD file; mock RefinePRD returns an error"
+      ],
+      "input": "ctx = background, answers = {\"q1\": \"a1\"}",
+      "expected": "Returns (Assessment{}, error); PRD file on disk is unchanged; no QA exchange recorded; lastError is set in persisted state",
+      "assertion_pseudocode": "originalPRD := readFile(tmpDir + \"/prd.md\"); session := newTestSpecSession(tmpDir); mockAgent.returnError(agentErr); assessment, err := session.Refine(ctx, {\"q1\": \"a1\"}); assert assessment == Assessment{}; assert err != nil; assert readFile(tmpDir + \"/prd.md\") == originalPRD; persistedState := loadStateFromDisk(tmpDir); assert len(persistedState.QAExchanges) == 0; assert persistedState.LastError != nil"
+    },
+    {
+      "id": "TS-07-44",
+      "requirement_id": "07-REQ-11.1",
+      "kind": "integration",
+      "description": "Verifies that SpecSession.Generate transitions to StateGenerating, calls GenerateArtifacts with OnArtifact callback, writes artifacts to disk, transitions to StateGenerated, runs Validate, and returns GenerateResult.",
+      "preconditions": [
+        "SpecSession initialized with a valid PRD file; mock GenerateArtifacts returns valid artifacts; afspec MarshalJSON and Validate are available; state persistence is writable"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (GenerateResult with ArtifactList of 3 items, ValidationResult, Warnings, nil); three artifact files exist on disk; session state is StateGenerated",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnValidArtifacts(); result, err := session.Generate(ctx); assert err == nil; assert len(result.ArtifactList) == 3; assert fileExists(tmpDir + \"/requirements.json\"); assert fileExists(tmpDir + \"/test_spec.json\"); assert fileExists(tmpDir + \"/tasks.json\"); persistedState := loadStateFromDisk(tmpDir); assert persistedState.State == StateGenerated"
+    },
+    {
+      "id": "TS-07-45",
+      "requirement_id": "07-REQ-11.2",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Generate skips generation for artifacts whose files already exist and only generates missing ones.",
+      "preconditions": [
+        "SpecSession initialized; requirements.json already exists on disk; test_spec.json and tasks.json do not exist; mock GenerateArtifacts generates only missing artifacts"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (GenerateResult including all 3 artifacts, nil); GenerateArtifacts is called only for test_spec and tasks",
+      "assertion_pseudocode": "writeFile(tmpDir + \"/requirements.json\", existingRequirementsJSON); session := newTestSpecSession(tmpDir); mockAgent.captureGeneratedArtifacts(); result, err := session.Generate(ctx); assert err == nil; assert len(result.ArtifactList) == 3; assert mockAgent.generatedArtifacts does not contain \"requirements\"; assert mockAgent.generatedArtifacts contains \"test_spec\"; assert mockAgent.generatedArtifacts contains \"tasks\""
+    },
+    {
+      "id": "TS-07-46",
+      "requirement_id": "07-REQ-11.3",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Generate does not transition to StateGenerated and persists the error as lastError when GenerateArtifacts fails.",
+      "preconditions": [
+        "SpecSession initialized; mock GenerateArtifacts returns an error"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (GenerateResult{}, error); session state is not StateGenerated; lastError is set in persisted state",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnError(agentErr); result, err := session.Generate(ctx); assert result == GenerateResult{}; assert err != nil; persistedState := loadStateFromDisk(tmpDir); assert persistedState.State != StateGenerated; assert persistedState.LastError != nil"
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-07-P1",
+      "property_id": "07-PROP-1",
+      "validates": [],
+      "description": "For any valid tier constant or ModelRegistry key, ResolveModel returns a non-empty model ID and nil error.",
+      "for_any_strategy": "Sample from the union of all tier constant strings (case-insensitive variants: SIMPLE, simple, Simple, STANDARD, standard, ADVANCED, advanced) and all keys in ModelRegistry (claude-haiku-4-5, claude-sonnet-4-6, claude-opus-4-6)",
+      "invariant_check": "modelID, err := ResolveModel(name); assert err == nil; assert len(modelID) > 0"
+    },
+    {
+      "id": "TS-07-P2",
+      "property_id": "07-PROP-2",
+      "validates": [],
+      "description": "For any string that is neither a tier constant nor a ModelRegistry key, ResolveModel returns an empty string and a non-nil error.",
+      "for_any_strategy": "Generate random strings of length 1-50 using characters [a-z0-9-] that do not match any tier constant or ModelRegistry key; also include empty string and strings with special characters",
+      "invariant_check": "modelID, err := ResolveModel(name); assert modelID == \"\"; assert err != nil"
+    },
+    {
+      "id": "TS-07-P3",
+      "property_id": "07-PROP-3",
+      "validates": [],
+      "description": "AICall makes at most 4 total attempts before returning an error, regardless of the number of consecutive transient failures.",
+      "for_any_strategy": "For each error type in [rateLimitError, serverError500, serverError503, connectionError], configure a mock client that always returns that error; run AICall and count total attempts",
+      "invariant_check": "mockClient.callCount <= 4; if mockClient.alwaysFails then err != nil"
+    },
+    {
+      "id": "TS-07-P4",
+      "property_id": "07-PROP-4",
+      "validates": [],
+      "description": "cache_control is injected if and only if CachePolicy is not CacheNone and the estimated token count exceeds the model-specific threshold.",
+      "for_any_strategy": "Sample combinations of: systemPromptLength in [0, 1000, 2000, 4000, 8000, 16000, 32768], CachePolicy in [CacheNone, CacheDefault, CacheExtended], modelTier in [TierSimple, TierStandard, TierAdvanced]",
+      "invariant_check": "estimatedTokens := len(systemPrompt) / 4; threshold := modelThreshold(modelTier); shouldInject := cachePolicy != CacheNone && estimatedTokens > threshold; capturedRequest := captureAPIRequest(AICall, ctx, opts); hasCacheControl := capturedRequest.System[last].CacheControl != nil; assert hasCacheControl == shouldInject"
+    },
+    {
+      "id": "TS-07-P5",
+      "property_id": "07-PROP-5",
+      "validates": [],
+      "description": "LoadPrompt returns a non-nil error and reads no file from disk for any name containing characters outside [a-zA-Z0-9_-].",
+      "for_any_strategy": "Generate strings containing at least one character from the set [./ \\\\!@#$%^&*()+=<>?] prepended or appended to a valid name; also include pure special-character strings and path traversal patterns like \"../etc/passwd\"",
+      "invariant_check": "content, err := LoadPrompt(invalidName, tmpDir); assert err != nil; assert content == \"\"; assert mockFS.readCount == 0"
+    },
+    {
+      "id": "TS-07-P6",
+      "property_id": "07-PROP-6",
+      "validates": [],
+      "description": "LoadPromptTemplate safe substitution preserves unmatched $variable references verbatim and replaces all matched references.",
+      "for_any_strategy": "Generate template strings with 0-5 $variable references; generate vars maps that match 0 to all of those variables; sample variable names from [a-z_]{3,15}",
+      "invariant_check": "result := safeSubstitute(template, vars); for each $var in template: if var in vars then assert !strings.Contains(result, \"$\"+var) && strings.Contains(result, vars[var]); else assert strings.Contains(result, \"$\"+var)"
+    },
+    {
+      "id": "TS-07-P7",
+      "property_id": "07-PROP-7",
+      "validates": [],
+      "description": "GenerateArtifacts makes at most 2 repair attempts per artifact before returning an error when validation always fails.",
+      "for_any_strategy": "Configure mock AICall to always return an invalid payload for a given artifact; run GenerateArtifacts and count calls per artifact",
+      "invariant_check": "mockAICall.requirementsCallCount <= 3; err != nil after exhaustion (1 initial + 2 repair = 3 max calls per artifact)"
+    },
+    {
+      "id": "TS-07-P8",
+      "property_id": "07-PROP-8",
+      "validates": [],
+      "description": "SpecSession methods Assess, Refine, and Generate never call os.Exit under any error condition.",
+      "for_any_strategy": "For each method, inject errors at each possible failure point: AssessPRD error, RefinePRD error, GenerateArtifacts error, file write error, state persist error, context cancellation",
+      "invariant_check": "wrap each method call in a goroutine with os.Exit monitoring; assert process does not exit; assert method returns an error value"
+    },
+    {
+      "id": "TS-07-P9",
+      "property_id": "07-PROP-9",
+      "validates": [],
+      "description": "SpecSession.Refine never records a QA exchange or modifies the PRD file on disk when RefinePRD or the PRD file write fails.",
+      "for_any_strategy": "Inject errors at two points: (1) RefinePRD returns error, (2) PRD file write fails after RefinePRD succeeds; run Refine for each scenario",
+      "invariant_check": "prdBefore := readFile(prdPath); session.Refine(ctx, answers); prdAfter := readFile(prdPath); assert prdBefore == prdAfter; persistedState := loadStateFromDisk(tmpDir); assert len(persistedState.QAExchanges) == 0"
+    },
+    {
+      "id": "TS-07-P10",
+      "property_id": "07-PROP-10",
+      "validates": [],
+      "description": "SpecSession.Generate only calls GenerateArtifacts for artifacts whose files do not already exist on disk.",
+      "for_any_strategy": "Sample all 8 subsets of {requirements.json, test_spec.json, tasks.json} as pre-existing files; for each subset, run Generate and capture which artifacts are passed to GenerateArtifacts",
+      "invariant_check": "for each artifact in [requirements, test_spec, tasks]: if artifactFile exists on disk before Generate is called, then artifact must not appear in the set passed to GenerateArtifacts"
+    }
+  ],
+  "edge_case_tests": [
+    {
+      "id": "TS-07-E1",
+      "requirement_id": "07-REQ-1.E1",
+      "kind": "unit",
+      "description": "Verifies that ResolveModel returns an error when called with an empty string.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "name = \"\"",
+      "expected": "Returns (\"\", error) where error message indicates the model name is empty or invalid",
+      "assertion_pseudocode": "modelID, err := ResolveModel(\"\"); assert modelID == \"\"; assert err != nil; assert err.Error() contains \"empty\" or \"invalid\""
+    },
+    {
+      "id": "TS-07-E2",
+      "requirement_id": "07-REQ-1.E2",
+      "kind": "unit",
+      "description": "Verifies that ResolveModel performs case-insensitive comparison and returns the correct default model ID for mixed-case tier constants.",
+      "preconditions": [
+        "agentspec package is compiled; TierDefaults is populated"
+      ],
+      "input": "name = \"standard\" (lowercase)",
+      "expected": "Returns (\"claude-sonnet-4-6\", nil)",
+      "assertion_pseudocode": "modelID, err := ResolveModel(\"standard\"); assert err == nil; assert modelID == \"claude-sonnet-4-6\"; modelID2, err2 := ResolveModel(\"Standard\"); assert err2 == nil; assert modelID2 == \"claude-sonnet-4-6\""
+    },
+    {
+      "id": "TS-07-E3",
+      "requirement_id": "07-REQ-2.E1",
+      "kind": "unit",
+      "description": "Verifies that AICall stops streaming and returns an error wrapping the context error when the context is cancelled before the response completes.",
+      "preconditions": [
+        "Mock Anthropic client that blocks on streaming; context is cancelled after call starts"
+      ],
+      "input": "ctx = cancelledContext, AICallOptions{ModelTier: TierSimple, Messages: [{role:\"user\", content:\"test\"}]}",
+      "expected": "Returns (\"\", nil, error) where error wraps context.Canceled; no further retries are made",
+      "assertion_pseudocode": "ctx, cancel := context.WithCancel(context.Background()); go func() { time.Sleep(10ms); cancel() }(); text, raw, err := AICall(ctx, opts); assert text == \"\"; assert raw == nil; assert err != nil; assert errors.Is(err, context.Canceled); assert mockClient.callCount == 1"
+    },
+    {
+      "id": "TS-07-E4",
+      "requirement_id": "07-REQ-2.E2",
+      "kind": "unit",
+      "description": "Verifies that AICall returns an AgentError with category auth before making any API call when ANTHROPIC_API_KEY is empty and no platform override env vars are set.",
+      "preconditions": [
+        "ANTHROPIC_API_KEY is unset; CLAUDE_CODE_USE_VERTEX is unset; CLAUDE_CODE_USE_BEDROCK is unset"
+      ],
+      "input": "AICallOptions{ModelTier: TierSimple, Messages: [{role:\"user\", content:\"test\"}]}",
+      "expected": "Returns (\"\", nil, AgentError) where AgentError.Category == \"auth\"; no HTTP request is made",
+      "assertion_pseudocode": "unsetEnv(\"ANTHROPIC_API_KEY\", \"CLAUDE_CODE_USE_VERTEX\", \"CLAUDE_CODE_USE_BEDROCK\"); text, raw, err := AICall(ctx, opts); assert text == \"\"; assert raw == nil; agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"auth\"; assert mockHTTPClient.requestCount == 0"
+    },
+    {
+      "id": "TS-07-E5",
+      "requirement_id": "07-REQ-2.E3",
+      "kind": "unit",
+      "description": "Verifies that AICall returns an error describing the missing field when the streaming API returns success but the response body lacks the expected text content field.",
+      "preconditions": [
+        "Mock Anthropic client that returns a success response with an empty/missing content field"
+      ],
+      "input": "AICallOptions{ModelTier: TierSimple, Messages: [{role:\"user\", content:\"test\"}]}",
+      "expected": "Returns (\"\", rawResponse, error) where error message describes the missing text content field",
+      "assertion_pseudocode": "mockClient.returnEmptyContent(); text, raw, err := AICall(ctx, opts); assert text == \"\"; assert raw != nil; assert err != nil; assert err.Error() contains \"content\" or \"missing\""
+    },
+    {
+      "id": "TS-07-E6",
+      "requirement_id": "07-REQ-2.E4",
+      "kind": "unit",
+      "description": "Verifies that AICall never calls os.Exit or panics under any error condition.",
+      "preconditions": [
+        "Mock Anthropic client that returns various error types including nil response, malformed JSON, and network errors"
+      ],
+      "input": "Various error-inducing AICallOptions",
+      "expected": "All error paths return an error value to the caller; no panic or os.Exit is triggered",
+      "assertion_pseudocode": "for errorScenario in [nilResponse, malformedJSON, networkError, authError] { assert doesNotPanic(func() { text, raw, err := AICall(ctx, errorScenario.opts); assert err != nil }) }"
+    },
+    {
+      "id": "TS-07-E7",
+      "requirement_id": "07-REQ-3.E1",
+      "kind": "unit",
+      "description": "Verifies that LoadPrompt ignores a symlink at the override path and falls back to the embedded default template.",
+      "preconditions": [
+        "Temporary directory; <tmpDir>/.spec/prompts/assessment_system.md exists as a symlink to another file"
+      ],
+      "input": "name = \"assessment_system\", projectDir = tmpDir",
+      "expected": "Returns (embeddedContent string, nil) matching the embedded assessment_system template; symlink is not followed",
+      "assertion_pseudocode": "createSymlink(tmpDir + \"/.spec/prompts/assessment_system.md\", \"/etc/passwd\"); content, err := LoadPrompt(\"assessment_system\", tmpDir); assert err == nil; assert content == expectedEmbeddedContent; assert !strings.Contains(content, \"root:\")"
+    },
+    {
+      "id": "TS-07-E8",
+      "requirement_id": "07-REQ-3.E2",
+      "kind": "unit",
+      "description": "Verifies that LoadPrompt returns an error without reading any file when called with an empty name string.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "name = \"\", projectDir = \"/tmp\"",
+      "expected": "Returns (\"\", error) where error message indicates the name is invalid or empty",
+      "assertion_pseudocode": "content, err := LoadPrompt(\"\", \"/tmp\"); assert content == \"\"; assert err != nil; assert err.Error() contains \"invalid\" or \"empty\""
+    },
+    {
+      "id": "TS-07-E9",
+      "requirement_id": "07-REQ-3.E3",
+      "kind": "unit",
+      "description": "Verifies that LoadPrompt returns the full file content unchanged when the template file has no YAML frontmatter.",
+      "preconditions": [
+        "Temporary directory; <tmpDir>/.spec/prompts/assessment_system.md exists with content that does not start with ---"
+      ],
+      "input": "name = \"assessment_system\", projectDir = tmpDir; file content = \"No frontmatter here.\"",
+      "expected": "Returns (\"No frontmatter here.\", nil) — content is returned verbatim",
+      "assertion_pseudocode": "writeFile(tmpDir + \"/.spec/prompts/assessment_system.md\", \"No frontmatter here.\"); content, err := LoadPrompt(\"assessment_system\", tmpDir); assert err == nil; assert content == \"No frontmatter here.\""
+    },
+    {
+      "id": "TS-07-E10",
+      "requirement_id": "07-REQ-3.E4",
+      "kind": "unit",
+      "description": "Verifies that LoadPromptTemplate leaves unmatched $variable references in the output unchanged (safe substitute behavior).",
+      "preconditions": [
+        "agentspec package is compiled; template content contains $unmatched_var"
+      ],
+      "input": "Template content = \"Hello $name, your score is $unmatched_var.\", vars = {\"name\": \"Alice\"}",
+      "expected": "Returns (\"Hello Alice, your score is $unmatched_var.\", nil) — $unmatched_var is preserved verbatim",
+      "assertion_pseudocode": "mockTemplate := \"Hello $name, your score is $unmatched_var.\"; result := safeSubstitute(mockTemplate, {\"name\": \"Alice\"}); assert result == \"Hello Alice, your score is $unmatched_var.\""
+    },
+    {
+      "id": "TS-07-E11",
+      "requirement_id": "07-REQ-3.E5",
+      "kind": "unit",
+      "description": "Verifies that FormatSpecLandscape returns an empty string or minimal placeholder when called with an empty slice.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "landscape = []",
+      "expected": "Returns an empty string or a minimal placeholder string (not a panic or error)",
+      "assertion_pseudocode": "result := FormatSpecLandscape([]); assert result == \"\" || len(result) > 0 && result is a valid string (no panic)"
+    },
+    {
+      "id": "TS-07-E12",
+      "requirement_id": "07-REQ-4.E1",
+      "kind": "unit",
+      "description": "Verifies that GenerationUserPrompt returns an error indicating the artifact name is not supported when called with an unrecognized artifactName.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "artifactName = \"unknown_artifact\", prdText = \"PRD\", specID = \"07\", projectDir = emptyTmpDir",
+      "expected": "Returns (\"\", error) where error message indicates the artifact name is not supported",
+      "assertion_pseudocode": "prompt, err := GenerationUserPrompt(\"PRD\", \"unknown_artifact\", \"07\", emptyTmpDir, {}, [], []); assert prompt == \"\"; assert err != nil; assert err.Error() contains \"unknown_artifact\" or \"not supported\""
+    },
+    {
+      "id": "TS-07-E13",
+      "requirement_id": "07-REQ-4.E2",
+      "kind": "unit",
+      "description": "Verifies that any prompt builder function propagates a template load failure error to the caller without panicking.",
+      "preconditions": [
+        "Mock LoadPrompt that returns an error; agentspec package is compiled"
+      ],
+      "input": "AssessmentSystemPrompt called when LoadPrompt is mocked to fail",
+      "expected": "Returns (\"\", error) propagating the LoadPrompt error; no panic occurs",
+      "assertion_pseudocode": "mockLoadPrompt.returnError(errors.New(\"template load failed\")); prompt, err := AssessmentSystemPrompt(emptyTmpDir); assert prompt == \"\"; assert err != nil; assert err.Error() contains \"template load failed\""
+    },
+    {
+      "id": "TS-07-E14",
+      "requirement_id": "07-REQ-5.E1",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD returns an AgentError with category internal when the LLM response contains no submit_assessment tool call.",
+      "preconditions": [
+        "Mock AICall that returns a response with no tool calls"
+      ],
+      "input": "ctx = background, prdText = \"Sample PRD\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment{}, AgentError) where AgentError.Category == \"internal\" and error message describes missing tool call",
+      "assertion_pseudocode": "mockAICall.returnNoToolCalls(); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); assert assessment == Assessment{}; agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"internal\"; assert agentErr.Error() contains \"submit_assessment\" or \"missing\""
+    },
+    {
+      "id": "TS-07-E15",
+      "requirement_id": "07-REQ-5.E2",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD returns an AgentError with category internal when the tool call payload cannot be parsed into a valid Assessment struct.",
+      "preconditions": [
+        "Mock AICall that returns a submit_assessment tool call with malformed JSON payload"
+      ],
+      "input": "ctx = background, prdText = \"Sample PRD\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment{}, AgentError) where AgentError.Category == \"internal\" and error message contains parse error details",
+      "assertion_pseudocode": "mockAICall.returnToolCall(\"submit_assessment\", \"{invalid json}\"); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); assert assessment == Assessment{}; agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"internal\""
+    },
+    {
+      "id": "TS-07-E16",
+      "requirement_id": "07-REQ-5.E3",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD returns immediately with the context error wrapped as an AgentError when the context is cancelled.",
+      "preconditions": [
+        "Mock AICall that blocks until context is cancelled"
+      ],
+      "input": "ctx = pre-cancelled context, prdText = \"Sample PRD\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment{}, AgentError) where the error wraps context.Canceled",
+      "assertion_pseudocode": "ctx, cancel := context.WithCancel(context.Background()); cancel(); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"Sample PRD\", \"test-spec\"); assert assessment == Assessment{}; assert err != nil; assert errors.Is(err, context.Canceled)"
+    },
+    {
+      "id": "TS-07-E17",
+      "requirement_id": "07-REQ-5.E4",
+      "kind": "unit",
+      "description": "Verifies that AssessPRD proceeds with the API call when called with an empty prdText and the LLM response determines the outcome.",
+      "preconditions": [
+        "Mock AICall that returns a valid submit_assessment tool call regardless of prdText"
+      ],
+      "input": "ctx = background, prdText = \"\", specName = \"test-spec\"",
+      "expected": "Returns (Assessment, nil) or (Assessment{}, error) depending on LLM response; no panic occurs",
+      "assertion_pseudocode": "mockAICall.returnToolCall(\"submit_assessment\", validAssessmentJSON); agent := NewSpecAgent(\"STANDARD\"); assessment, err := agent.AssessPRD(ctx, \"\", \"test-spec\"); assert (err == nil && assessment != Assessment{}) || err != nil"
+    },
+    {
+      "id": "TS-07-E18",
+      "requirement_id": "07-REQ-6.E1",
+      "kind": "unit",
+      "description": "Verifies that RefinePRD returns the error from the second assessment call without returning partial results when the fallback assessment call fails.",
+      "preconditions": [
+        "Mock AICall: first call returns only submit_prd_update; second call returns an error"
+      ],
+      "input": "ctx = background, prdText = \"Original PRD\", answers = {}, prevAssessment = Assessment{}",
+      "expected": "Returns (\"\", Assessment{}, error) — no partial results returned",
+      "assertion_pseudocode": "mockAICall.firstCallReturns([{\"submit_prd_update\": {\"prd_text\": \"Updated\"}}]); mockAICall.secondCallReturnsError(agentErr); agent := NewSpecAgent(\"STANDARD\"); updatedPRD, newAssessment, err := agent.RefinePRD(ctx, \"Original PRD\", {}, Assessment{}); assert updatedPRD == \"\"; assert newAssessment == Assessment{}; assert err != nil"
+    },
+    {
+      "id": "TS-07-E19",
+      "requirement_id": "07-REQ-6.E2",
+      "kind": "unit",
+      "description": "Verifies that RefinePRD returns immediately with the context error when the context is cancelled during either API call.",
+      "preconditions": [
+        "Mock AICall that blocks until context is cancelled"
+      ],
+      "input": "ctx = pre-cancelled context, prdText = \"Original PRD\", answers = {}, prevAssessment = Assessment{}",
+      "expected": "Returns (\"\", Assessment{}, AgentError) where the error wraps context.Canceled",
+      "assertion_pseudocode": "ctx, cancel := context.WithCancel(context.Background()); cancel(); agent := NewSpecAgent(\"STANDARD\"); updatedPRD, newAssessment, err := agent.RefinePRD(ctx, \"Original PRD\", {}, Assessment{}); assert updatedPRD == \"\"; assert newAssessment == Assessment{}; assert errors.Is(err, context.Canceled)"
+    },
+    {
+      "id": "TS-07-E20",
+      "requirement_id": "07-REQ-6.E3",
+      "kind": "unit",
+      "description": "Verifies that RefinePRD returns an AgentError with category internal when neither submit_prd_update nor submit_assessment tool calls are present in the response.",
+      "preconditions": [
+        "Mock AICall that returns a response with no tool calls"
+      ],
+      "input": "ctx = background, prdText = \"Original PRD\", answers = {}, prevAssessment = Assessment{}",
+      "expected": "Returns (\"\", Assessment{}, AgentError) where AgentError.Category == \"internal\"",
+      "assertion_pseudocode": "mockAICall.returnNoToolCalls(); agent := NewSpecAgent(\"STANDARD\"); updatedPRD, newAssessment, err := agent.RefinePRD(ctx, \"Original PRD\", {}, Assessment{}); assert updatedPRD == \"\"; assert newAssessment == Assessment{}; agentErr, ok := err.(AgentError); assert ok; assert agentErr.Category == \"internal\""
+    },
+    {
+      "id": "TS-07-E21",
+      "requirement_id": "07-REQ-7.E1",
+      "kind": "unit",
+      "description": "Verifies that GenerateArtifacts returns immediately with the context error when the context is cancelled during artifact generation.",
+      "preconditions": [
+        "Mock AICall that blocks until context is cancelled"
+      ],
+      "input": "ctx = pre-cancelled context, prdText = \"PRD\", specID = \"07\", specName = \"test\"",
+      "expected": "Returns (nil, error) where error wraps context.Canceled",
+      "assertion_pseudocode": "ctx, cancel := context.WithCancel(context.Background()); cancel(); agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\"); assert result == nil; assert errors.Is(err, context.Canceled)"
+    },
+    {
+      "id": "TS-07-E22",
+      "requirement_id": "07-REQ-7.E2",
+      "kind": "unit",
+      "description": "Verifies that GenerateArtifacts recovers from a panicking OnArtifact callback and returns an error describing the callback failure.",
+      "preconditions": [
+        "Mock AICall that returns valid artifact payloads; OnArtifact callback that panics"
+      ],
+      "input": "ctx = background, prdText = \"PRD\", specID = \"07\", specName = \"test\", WithOnArtifact(panicCallback)",
+      "expected": "Returns (nil, error) describing the callback failure; no unhandled panic propagates to the caller",
+      "assertion_pseudocode": "panicCallback := func(name string, content any) { panic(\"callback panic\") }; agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\", WithOnArtifact(panicCallback)); assert result == nil; assert err != nil; assert err.Error() contains \"callback\" or \"panic\""
+    },
+    {
+      "id": "TS-07-E23",
+      "requirement_id": "07-REQ-7.E3",
+      "kind": "unit",
+      "description": "Verifies that GenerateArtifacts treats a JSON unmarshal failure as a validation error and enters the repair loop.",
+      "preconditions": [
+        "Mock AICall: first requirements call returns malformed JSON payload; repair call returns valid payload; afspec validation passes on repair"
+      ],
+      "input": "ctx = background, prdText = \"PRD\", specID = \"07\", specName = \"test\"",
+      "expected": "Returns (map with requirements artifact, nil) after repair; AICall invoked twice for requirements",
+      "assertion_pseudocode": "mockAICall.firstRequirementsCallReturnsMalformedJSON(); mockAICall.repairCallReturnsValid(); agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\"); assert err == nil; assert result[\"requirements\"] != nil; assert mockAICall.requirementsCallCount == 2"
+    },
+    {
+      "id": "TS-07-E24",
+      "requirement_id": "07-REQ-7.E4",
+      "kind": "unit",
+      "description": "Verifies that GenerateArtifacts caps the repair loop at exactly 2 attempts per artifact regardless of the nature of the validation error.",
+      "preconditions": [
+        "Mock AICall that always returns invalid artifact payloads; afspec validation always fails"
+      ],
+      "input": "ctx = background, prdText = \"PRD\", specID = \"07\", specName = \"test\"",
+      "expected": "Returns (nil, error) after exactly 3 total calls for the first artifact (1 initial + 2 repairs); no more than 3 calls are made for requirements",
+      "assertion_pseudocode": "mockAICall.alwaysReturnInvalid(); agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\"); assert result == nil; assert err != nil; assert mockAICall.requirementsCallCount == 3"
+    },
+    {
+      "id": "TS-07-E25",
+      "requirement_id": "07-REQ-8.E1",
+      "kind": "unit",
+      "description": "Verifies that WithOnArtifact stores nil and skips the callback invocation during artifact generation without panicking.",
+      "preconditions": [
+        "Mock AICall that returns valid artifact payloads; afspec validation passes"
+      ],
+      "input": "WithOnArtifact(nil) passed to GenerateArtifacts",
+      "expected": "Returns (map with all 3 artifacts, nil); no panic occurs during artifact generation",
+      "assertion_pseudocode": "agent := NewSpecAgent(\"STANDARD\"); result, err := agent.GenerateArtifacts(ctx, \"PRD\", \"07\", \"test\", WithOnArtifact(nil)); assert err == nil; assert result != nil"
+    },
+    {
+      "id": "TS-07-E26",
+      "requirement_id": "07-REQ-9.E1",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Assess returns the persist error to the caller while the in-memory assessment history still contains the new entry.",
+      "preconditions": [
+        "SpecSession initialized; mock AssessPRD returns valid Assessment; state persistence fails with a write error"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (Assessment{}, error) where error is the persist error; in-memory session.assessmentHistory has 1 entry",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnAssessment(validAssessment); mockPersist.failWith(writeError); assessment, err := session.Assess(ctx); assert assessment == Assessment{}; assert err == writeError; assert len(session.assessmentHistory) == 1"
+    },
+    {
+      "id": "TS-07-E27",
+      "requirement_id": "07-REQ-9.E2",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Assess persists the context error as lastError and returns it when the context is cancelled before AssessPRD completes.",
+      "preconditions": [
+        "SpecSession initialized; mock AssessPRD blocks until context is cancelled"
+      ],
+      "input": "ctx = pre-cancelled context",
+      "expected": "Returns (Assessment{}, error) where error wraps context.Canceled; persisted state has lastError set",
+      "assertion_pseudocode": "ctx, cancel := context.WithCancel(context.Background()); cancel(); session := newTestSpecSession(tmpDir); assessment, err := session.Assess(ctx); assert assessment == Assessment{}; assert errors.Is(err, context.Canceled); persistedState := loadStateFromDisk(tmpDir); assert persistedState.LastError != nil"
+    },
+    {
+      "id": "TS-07-E28",
+      "requirement_id": "07-REQ-10.E1",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Refine returns the write error when the PRD file write fails after RefinePRD succeeds, without recording a QA exchange.",
+      "preconditions": [
+        "SpecSession initialized; mock RefinePRD returns updated PRD and new Assessment; PRD file write is mocked to fail"
+      ],
+      "input": "ctx = background, answers = {\"q1\": \"a1\"}",
+      "expected": "Returns (Assessment{}, error) where error is the write error; no QA exchange recorded; session state not updated with new assessment",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnRefinement(\"Updated PRD\", newAssessment); mockFileWrite.failWith(writeError); assessment, err := session.Refine(ctx, {\"q1\": \"a1\"}); assert assessment == Assessment{}; assert err == writeError; persistedState := loadStateFromDisk(tmpDir); assert len(persistedState.QAExchanges) == 0"
+    },
+    {
+      "id": "TS-07-E29",
+      "requirement_id": "07-REQ-10.E2",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Refine proceeds with the refinement call using an empty answers map without panicking.",
+      "preconditions": [
+        "SpecSession initialized with a valid PRD file and at least one assessment; mock RefinePRD returns valid results for empty answers"
+      ],
+      "input": "ctx = background, answers = {}",
+      "expected": "Returns (Assessment, nil) or (Assessment{}, error) depending on LLM response; no panic occurs",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnRefinement(\"Updated PRD\", newAssessment); assessment, err := session.Refine(ctx, {}); assert (err == nil && assessment != Assessment{}) || err != nil"
+    },
+    {
+      "id": "TS-07-E30",
+      "requirement_id": "07-REQ-10.E3",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Refine persists the context error as lastError and returns it without modifying the PRD file or recording a QA exchange.",
+      "preconditions": [
+        "SpecSession initialized; mock RefinePRD blocks until context is cancelled"
+      ],
+      "input": "ctx = pre-cancelled context, answers = {\"q1\": \"a1\"}",
+      "expected": "Returns (Assessment{}, error) where error wraps context.Canceled; PRD file unchanged; no QA exchange recorded",
+      "assertion_pseudocode": "originalPRD := readFile(tmpDir + \"/prd.md\"); ctx, cancel := context.WithCancel(context.Background()); cancel(); session := newTestSpecSession(tmpDir); assessment, err := session.Refine(ctx, {\"q1\": \"a1\"}); assert assessment == Assessment{}; assert errors.Is(err, context.Canceled); assert readFile(tmpDir + \"/prd.md\") == originalPRD; persistedState := loadStateFromDisk(tmpDir); assert len(persistedState.QAExchanges) == 0"
+    },
+    {
+      "id": "TS-07-E31",
+      "requirement_id": "07-REQ-11.E1",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Generate returns the write error from the OnArtifact callback and halts generation of subsequent artifacts.",
+      "preconditions": [
+        "SpecSession initialized; mock GenerateArtifacts invokes OnArtifact callback; first OnArtifact call fails with a write error"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (GenerateResult{}, error) where error is the write error; subsequent artifacts are not generated",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockFileWrite.failOnFirstCall(writeError); result, err := session.Generate(ctx); assert result == GenerateResult{}; assert err == writeError; assert mockAgent.generatedArtifacts does not contain \"test_spec\""
+    },
+    {
+      "id": "TS-07-E32",
+      "requirement_id": "07-REQ-11.E2",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Generate stops generation, does not transition to StateGenerated, persists the context error as lastError, and returns it when the context is cancelled.",
+      "preconditions": [
+        "SpecSession initialized; mock GenerateArtifacts blocks until context is cancelled"
+      ],
+      "input": "ctx = pre-cancelled context",
+      "expected": "Returns (GenerateResult{}, error) where error wraps context.Canceled; session state is not StateGenerated; lastError is set",
+      "assertion_pseudocode": "ctx, cancel := context.WithCancel(context.Background()); cancel(); session := newTestSpecSession(tmpDir); result, err := session.Generate(ctx); assert result == GenerateResult{}; assert errors.Is(err, context.Canceled); persistedState := loadStateFromDisk(tmpDir); assert persistedState.State != StateGenerated; assert persistedState.LastError != nil"
+    },
+    {
+      "id": "TS-07-E33",
+      "requirement_id": "07-REQ-11.E3",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Generate returns GenerateResult with validation errors without treating them as a fatal error.",
+      "preconditions": [
+        "SpecSession initialized; mock GenerateArtifacts returns valid artifacts; mock Validate returns validation errors"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (GenerateResult{ArtifactList with 3 items, ValidationResult with errors, Warnings}, nil) — nil error despite validation errors",
+      "assertion_pseudocode": "session := newTestSpecSession(tmpDir); mockAgent.returnValidArtifacts(); mockValidate.returnErrors([validationError1]); result, err := session.Generate(ctx); assert err == nil; assert len(result.ArtifactList) == 3; assert len(result.ValidationResult.Errors) > 0"
+    },
+    {
+      "id": "TS-07-E34",
+      "requirement_id": "07-REQ-11.E4",
+      "kind": "unit",
+      "description": "Verifies that SpecSession.Generate skips all generation, transitions to StateGenerated, runs Validate, and returns GenerateResult when all three artifact files already exist.",
+      "preconditions": [
+        "SpecSession initialized; requirements.json, test_spec.json, and tasks.json all exist on disk; mock Validate returns no errors"
+      ],
+      "input": "ctx = background",
+      "expected": "Returns (GenerateResult with 3 artifacts, nil); GenerateArtifacts is not called; session state is StateGenerated",
+      "assertion_pseudocode": "writeFile(tmpDir + \"/requirements.json\", existingJSON); writeFile(tmpDir + \"/test_spec.json\", existingJSON); writeFile(tmpDir + \"/tasks.json\", existingJSON); session := newTestSpecSession(tmpDir); result, err := session.Generate(ctx); assert err == nil; assert len(result.ArtifactList) == 3; assert mockAgent.generateArtifactsCallCount == 0; persistedState := loadStateFromDisk(tmpDir); assert persistedState.State == StateGenerated"
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "TS-07-SMOKE-1",
+      "execution_path_id": "07-PATH-1",
+      "description": "End-to-end smoke test covering the full spec authoring lifecycle: assess, refine, and generate all three artifacts through the SpecSession state machine.",
+      "trigger": "Create a SpecSession with a sample PRD file; call Assess(ctx), then Refine(ctx, answers), then Generate(ctx) in sequence",
+      "real_components": [
+        "SpecSession (agentspec_go_core)",
+        "SpecAgent (agentspec_go_ai)",
+        "AICall (agentspec_go_ai)",
+        "LoadPrompt (agentspec_go_ai)",
+        "AssessmentSystemPrompt (agentspec_go_ai)",
+        "AssessmentUserPrompt (agentspec_go_ai)",
+        "RefinementSystemPrompt (agentspec_go_ai)",
+        "RefinementUserPrompt (agentspec_go_ai)",
+        "GenerationUserPrompt (agentspec_go_ai)",
+        "RepairUserPrompt (agentspec_go_ai)",
+        "afspec MarshalJSON",
+        "afspec Validate"
+      ],
+      "mockable": [
+        "Anthropic API HTTP endpoint",
+        "filesystem (state persistence, PRD file, artifact files)"
+      ],
+      "expected_effects": [
+        "Assess returns a non-zero Assessment with nil error",
+        "Session state file on disk contains assessment history entry after Assess",
+        "Refine returns a new Assessment with nil error; PRD file on disk is updated; QA exchange is recorded in session state",
+        "Generate returns GenerateResult with 3 artifacts and nil error; requirements.json, test_spec.json, tasks.json exist on disk; session state is StateGenerated"
+      ]
+    },
+    {
+      "id": "TS-07-SMOKE-2",
+      "execution_path_id": "07-PATH-2",
+      "description": "Smoke test for AICall with Vertex AI platform detection and prompt caching injection for a sonnet model with a long system prompt.",
+      "trigger": "Set CLAUDE_CODE_USE_VERTEX env var; call AICall with TierStandard, CacheDefault, and a system prompt of length > 8192 characters",
+      "real_components": [
+        "AICall (agentspec_go_ai)",
+        "ResolveModel (agentspec_go_ai)"
+      ],
+      "mockable": [
+        "Vertex AI Anthropic HTTP endpoint"
+      ],
+      "expected_effects": [
+        "ResolveModel resolves TierStandard to claude-sonnet-4-6",
+        "HTTP request is sent to Vertex AI endpoint (not direct Anthropic API)",
+        "Request includes cache_control {\"type\": \"ephemeral\"} on the last system message block",
+        "AICall returns (non-empty responseText, non-nil rawResponse, nil)"
+      ]
+    },
+    {
+      "id": "TS-07-SMOKE-3",
+      "execution_path_id": "07-PATH-3",
+      "description": "Smoke test for the artifact generation repair loop: requirements validation fails on first attempt and succeeds after one repair call.",
+      "trigger": "Call GenerateArtifacts with a mock AICall that returns an invalid requirements payload on the first call and a valid payload on the repair call",
+      "real_components": [
+        "SpecAgent (agentspec_go_ai)",
+        "AICall (agentspec_go_ai)",
+        "GenerationUserPrompt (agentspec_go_ai)",
+        "RepairUserPrompt (agentspec_go_ai)",
+        "afspec schema validation",
+        "afspec cross-file validation"
+      ],
+      "mockable": [
+        "Anthropic API HTTP endpoint",
+        "filesystem (artifact file writes)"
+      ],
+      "expected_effects": [
+        "AICall is invoked twice for requirements (initial + 1 repair)",
+        "RepairUserPrompt is called with the validation errors and original content",
+        "GenerateArtifacts returns a map containing the repaired requirements artifact",
+        "OnArtifact callback is invoked once with the repaired requirements content"
+      ]
+    },
+    {
+      "id": "TS-07-SMOKE-4",
+      "execution_path_id": "07-PATH-4",
+      "description": "Smoke test for LoadPrompt with a project-local override file: the custom prompt is loaded instead of the embedded default.",
+      "trigger": "Create a temporary project directory with a custom assessment_system.md at <tmpDir>/.spec/prompts/assessment_system.md; call AssessmentSystemPrompt(tmpDir)",
+      "real_components": [
+        "AssessmentSystemPrompt (agentspec_go_ai)",
+        "LoadPrompt (agentspec_go_ai)"
+      ],
+      "mockable": [
+        "filesystem (read of override file)"
+      ],
+      "expected_effects": [
+        "LoadPrompt validates the name against [a-zA-Z0-9_-]+",
+        "LoadPrompt detects the non-symlink override file at <tmpDir>/.spec/prompts/assessment_system.md",
+        "YAML frontmatter is stripped from the override file content",
+        "AssessmentSystemPrompt returns the custom prompt body content, not the embedded default"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}

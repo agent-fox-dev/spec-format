@@ -1,0 +1,1454 @@
+{
+  "$schema": null,
+  "spec_id": "05",
+  "spec_name": "afspec_go_mutation_lint",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "go test ./... -run 'TestMutate|TestLint|TestLoadDependent|TestNextID|TestDiscover|TestSort|TestCompute|TestRun' -count=1 -v",
+    "all_tests": "go test ./... -count=1",
+    "linter": "go vet ./..."
+  },
+  "dependencies": [],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write tests: Requirements-level and Criterion-level mutation functions",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write tests for AddRequirement, GetRequirement, RemoveRequirement",
+          "details": [
+            "Create golang/afspec/mutate_requirements_test.go",
+            "Test AddRequirement: happy path appends requirement and returns new copy without modifying original",
+            "Test AddRequirement: duplicate ID returns error",
+            "Test GetRequirement: found returns pointer and true; not found returns nil and false",
+            "Test RemoveRequirement: removes by ID and returns true; missing ID returns false and unchanged copy"
+          ],
+          "test_spec_refs": [
+            "TS-05-1",
+            "TS-05-2",
+            "TS-05-3",
+            "TS-05-36",
+            "TS-05-37"
+          ],
+          "requirement_refs": [
+            "05-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write tests for SetGlossaryEntry, RemoveGlossaryEntry",
+          "details": [
+            "Test SetGlossaryEntry: inserts new term into empty glossary",
+            "Test SetGlossaryEntry: overwrites existing term without error",
+            "Test SetGlossaryEntry: original struct is not modified",
+            "Test RemoveGlossaryEntry: removes existing term and returns true",
+            "Test RemoveGlossaryEntry: missing term returns false and unchanged copy"
+          ],
+          "test_spec_refs": [
+            "TS-05-4",
+            "TS-05-5",
+            "TS-05-38"
+          ],
+          "requirement_refs": [
+            "05-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write tests for AddCorrectnessProperty, AddExecutionPath, AddErrorHandling",
+          "details": [
+            "Test AddCorrectnessProperty: happy path and duplicate ID error",
+            "Test AddExecutionPath: happy path and duplicate ID error",
+            "Test AddErrorHandling: happy path and duplicate ID error",
+            "Verify immutable-copy pattern: original RequirementsV1Json unchanged after each add"
+          ],
+          "test_spec_refs": [
+            "TS-05-6",
+            "TS-05-7",
+            "TS-05-39",
+            "TS-05-40"
+          ],
+          "requirement_refs": [
+            "05-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.4",
+          "title": "Write tests for AddCriterion, AddEdgeCase, GetCriterion",
+          "details": [
+            "Create golang/afspec/mutate_criterion_test.go",
+            "Test AddCriterion: appends to acceptance_criteria; duplicate ID returns error",
+            "Test AddEdgeCase: appends to edge_cases; duplicate ID returns error",
+            "Test GetCriterion: searches both acceptance_criteria and edge_cases; returns pointer+true or nil+false",
+            "Verify original Requirement is not modified by any add"
+          ],
+          "test_spec_refs": [
+            "TS-05-8",
+            "TS-05-9",
+            "TS-05-10",
+            "TS-05-41",
+            "TS-05-42",
+            "TS-05-43"
+          ],
+          "requirement_refs": [
+            "05-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.5",
+          "title": "Write tests for TestSpec mutation functions",
+          "details": [
+            "Create golang/afspec/mutate_testspec_test.go",
+            "Test AddTestCase, AddPropertyTest, AddEdgeCaseTest, AddSmokeTest: happy path appends and returns new copy",
+            "Test each: duplicate ID returns error",
+            "Test each: original TestSpecV1Json is not modified",
+            "Cover edge cases: adding to empty collection, adding when collection already has items"
+          ],
+          "test_spec_refs": [
+            "TS-05-11",
+            "TS-05-12",
+            "TS-05-13",
+            "TS-05-14",
+            "TS-05-44",
+            "TS-05-45"
+          ],
+          "requirement_refs": [
+            "05-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.6",
+          "title": "Write tests for Tasks mutation functions",
+          "details": [
+            "Create golang/afspec/mutate_tasks_test.go",
+            "Test AddTaskGroup: happy path and duplicate ID error",
+            "Test AddSubtask: happy path and duplicate ID error",
+            "Test AddTraceabilityEntry: happy path; duplicate (requirement_id, test_spec_id) pair returns error",
+            "Test AddDependency: appends dependency unconditionally",
+            "Verify immutable-copy pattern for all four functions"
+          ],
+          "test_spec_refs": [
+            "TS-05-15",
+            "TS-05-16",
+            "TS-05-17",
+            "TS-05-18",
+            "TS-05-46",
+            "TS-05-47",
+            "TS-05-48"
+          ],
+          "requirement_refs": [
+            "05-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All test files compile without errors: go build ./...",
+          "All written tests fail with 'not implemented' or similar (red phase confirmed): go test ./... -count=1",
+          "go vet ./... reports no issues on test files",
+          "Test coverage targets: 05-REQ-1 (TS-05-1 through TS-05-7, TS-05-36 through TS-05-40), 05-REQ-2 (TS-05-8 through TS-05-10, TS-05-41 through TS-05-43), 05-REQ-3 (TS-05-11 through TS-05-14, TS-05-44 through TS-05-45), 05-REQ-4 (TS-05-15 through TS-05-18, TS-05-46 through TS-05-48)"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write tests: Sequential ID generation helpers",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write tests for NextRequirementID, NextCriterionID, NextEdgeCaseID",
+          "details": [
+            "Create golang/afspec/nextid_test.go",
+            "Test NextRequirementID: empty collection returns '{spec_id}-REQ-1'",
+            "Test NextRequirementID: non-contiguous IDs (e.g. REQ-1, REQ-3) returns REQ-4 (max+1)",
+            "Test NextCriterionID: empty acceptance_criteria returns '{req_id}.1'",
+            "Test NextCriterionID: existing criteria with gaps returns max+1",
+            "Test NextEdgeCaseID: empty edge_cases returns '{req_id}.E1'; non-contiguous returns max+1"
+          ],
+          "test_spec_refs": [
+            "TS-05-19",
+            "TS-05-20",
+            "TS-05-49"
+          ],
+          "requirement_refs": [
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for NextCorrectnessPropertyID, NextExecutionPathID, NextErrorHandlingID",
+          "details": [
+            "Test NextCorrectnessPropertyID: empty returns '{spec_id}-PROP-1'; non-contiguous returns max+1",
+            "Test NextExecutionPathID: empty returns '{spec_id}-PATH-1'; non-contiguous returns max+1",
+            "Test NextErrorHandlingID: empty returns '{spec_id}-ERR-1'; non-contiguous returns max+1",
+            "Verify regex extraction handles IDs with multi-digit suffixes correctly"
+          ],
+          "test_spec_refs": [
+            "TS-05-21",
+            "TS-05-50"
+          ],
+          "requirement_refs": [
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for NextTestCaseID, NextPropertyTestID, NextEdgeCaseTestID, NextSmokeTestID",
+          "details": [
+            "Test NextTestCaseID: empty returns 'TS-{spec_id}-1'; non-contiguous returns max+1",
+            "Test NextPropertyTestID: empty returns 'TS-{spec_id}-P1'; non-contiguous returns max+1",
+            "Test NextEdgeCaseTestID: empty returns 'TS-{spec_id}-E1'; non-contiguous returns max+1",
+            "Test NextSmokeTestID: empty returns 'TS-{spec_id}-SMOKE-1'; non-contiguous returns max+1",
+            "Verify SMOKE suffix parsing does not conflict with plain numeric or E-prefixed IDs"
+          ],
+          "test_spec_refs": [
+            "TS-05-22",
+            "TS-05-23",
+            "TS-05-51"
+          ],
+          "requirement_refs": [
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All NextID test files compile: go build ./...",
+          "Tests are in red phase (functions not yet implemented): go test ./... -run TestNext -count=1",
+          "go vet ./... reports no issues",
+          "Tests cover 05-REQ-5 acceptance criteria: TS-05-19 through TS-05-23, TS-05-49 through TS-05-51"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Write tests: Lint module data structures, DiscoverLintSpecs, SortFindings, ComputeExitCode",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write tests for LintFinding, LintSpecInfo, LintResult struct construction",
+          "details": [
+            "Create golang/afspec/lint_test.go",
+            "Test LintFinding: all fields (SpecName, File, Rule, Severity, Message, Line) are settable and readable",
+            "Test LintSpecInfo: Name, Prefix, Path, HasTasks, HasPRD fields",
+            "Test LintResult: Findings slice and ExitCode field",
+            "Verify Severity accepts only 'error', 'warning', 'hint' values (document expected behavior)"
+          ],
+          "test_spec_refs": [
+            "TS-05-24",
+            "TS-05-25",
+            "TS-05-26",
+            "TS-05-52"
+          ],
+          "requirement_refs": [
+            "05-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write tests for DiscoverLintSpecs",
+          "details": [
+            "Test DiscoverLintSpecs: directory with multiple spec folders returns LintSpecInfo for each containing requirements.json",
+            "Test DiscoverLintSpecs: filterSpec non-empty restricts results to matching spec name",
+            "Test DiscoverLintSpecs: directory does not exist returns error",
+            "Test DiscoverLintSpecs: directory exists but contains no specs returns error",
+            "Test DiscoverLintSpecs: LintSpecInfo.HasTasks is true only when tasks.json present; HasPRD true only when prd.md present"
+          ],
+          "test_spec_refs": [
+            "TS-05-27",
+            "TS-05-28",
+            "TS-05-53",
+            "TS-05-54",
+            "TS-05-55"
+          ],
+          "requirement_refs": [
+            "05-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Write tests for SortFindings and ComputeExitCode",
+          "details": [
+            "Test SortFindings: sorts by spec name ascending, then file ascending, then severity (error < warning < hint)",
+            "Test SortFindings: empty slice returns empty slice without panic",
+            "Test SortFindings: single-element slice returns unchanged",
+            "Test ComputeExitCode: returns 1 when any finding has severity 'error'",
+            "Test ComputeExitCode: returns 0 when all findings are 'warning' or 'hint'",
+            "Test ComputeExitCode: returns 0 for empty findings slice"
+          ],
+          "test_spec_refs": [
+            "TS-05-29",
+            "TS-05-30",
+            "TS-05-31",
+            "TS-05-56",
+            "TS-05-57"
+          ],
+          "requirement_refs": [
+            "05-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "All lint test files compile: go build ./...",
+          "Tests are in red phase: go test ./... -run 'TestLint|TestDiscover|TestSort|TestCompute' -count=1",
+          "go vet ./... reports no issues",
+          "Tests cover 05-REQ-6 (TS-05-24 through TS-05-26, TS-05-52), 05-REQ-7 (TS-05-27 through TS-05-28, TS-05-53 through TS-05-55), 05-REQ-8 (TS-05-29 through TS-05-31, TS-05-56 through TS-05-57)"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "tests",
+      "title": "Write tests: RunLintSpecs and LoadDependentInterfaces",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Write tests for RunLintSpecs",
+          "details": [
+            "Test RunLintSpecs: lintAll=false skips specs where all subtasks are done or dropped",
+            "Test RunLintSpecs: lintAll=true includes fully-implemented specs",
+            "Test RunLintSpecs: findings are sorted and exit code computed correctly",
+            "Test RunLintSpecs: returns error when specsDir does not exist",
+            "Test RunLintSpecs: returns error when no specs discovered",
+            "Use t.TempDir() to create fixture spec directories with controlled requirements.json and tasks.json content"
+          ],
+          "test_spec_refs": [
+            "TS-05-32",
+            "TS-05-33",
+            "TS-05-34",
+            "TS-05-58",
+            "TS-05-59",
+            "TS-05-60"
+          ],
+          "requirement_refs": [
+            "05-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Write tests for LoadDependentInterfaces",
+          "details": [
+            "Test LoadDependentInterfaces: returns non-empty slice with glossary entries from upstream spec",
+            "Test LoadDependentInterfaces: returns empty slice when specRoot does not exist (graceful degradation)",
+            "Test LoadDependentInterfaces: returns empty slice when specID has no upstream dependencies",
+            "Test LoadDependentInterfaces: extracts external API symbols and interface-defining criterion return contracts",
+            "Use t.TempDir() with fixture spec directories containing requirements.json with glossary and tasks.json with dependencies"
+          ],
+          "test_spec_refs": [
+            "TS-05-35",
+            "TS-05-61",
+            "TS-05-62",
+            "TS-05-63"
+          ],
+          "requirement_refs": [
+            "05-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "All RunLintSpecs and LoadDependentInterfaces test files compile: go build ./...",
+          "Tests are in red phase: go test ./... -run 'TestRunLint|TestLoadDependent' -count=1",
+          "go vet ./... reports no issues",
+          "Tests cover 05-REQ-9 (TS-05-32 through TS-05-34, TS-05-58 through TS-05-60) and 05-REQ-10 (TS-05-35, TS-05-61 through TS-05-63)"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement Requirements-level mutation functions",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Create mutate_requirements.go with AddRequirement, GetRequirement, RemoveRequirement",
+          "details": [
+            "Create golang/afspec/mutate_requirements.go",
+            "Implement AddRequirement(req RequirementsV1Json, r Requirement) (RequirementsV1Json, error): deep-copy requirements slice, check for duplicate ID, append and return new struct",
+            "Implement GetRequirement(req RequirementsV1Json, id string) (*Requirement, bool): linear scan, return pointer to found item",
+            "Implement RemoveRequirement(req RequirementsV1Json, id string) (RequirementsV1Json, bool): filter slice, return new copy and existence bool",
+            "All functions must not modify the input RequirementsV1Json"
+          ],
+          "test_spec_refs": [
+            "TS-05-1",
+            "TS-05-2",
+            "TS-05-3",
+            "TS-05-36",
+            "TS-05-37"
+          ],
+          "requirement_refs": [
+            "05-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Implement SetGlossaryEntry and RemoveGlossaryEntry",
+          "details": [
+            "Implement SetGlossaryEntry(req RequirementsV1Json, term, definition string) RequirementsV1Json: copy glossary map, insert or overwrite term, return new struct",
+            "Implement RemoveGlossaryEntry(req RequirementsV1Json, term string) (RequirementsV1Json, bool): copy glossary map, delete term if present, return new struct and bool",
+            "Handle nil glossary map gracefully (initialize on first insert)"
+          ],
+          "test_spec_refs": [
+            "TS-05-4",
+            "TS-05-5",
+            "TS-05-38"
+          ],
+          "requirement_refs": [
+            "05-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Implement AddCorrectnessProperty, AddExecutionPath, AddErrorHandling",
+          "details": [
+            "Implement AddCorrectnessProperty(req RequirementsV1Json, p CorrectnessProperty) (RequirementsV1Json, error): duplicate ID check on correctness_properties slice",
+            "Implement AddExecutionPath(req RequirementsV1Json, p ExecutionPath) (RequirementsV1Json, error): duplicate ID check on execution_paths slice",
+            "Implement AddErrorHandling(req RequirementsV1Json, e ErrorHandlingEntry) (RequirementsV1Json, error): duplicate ID check on error_handling slice",
+            "Each returns a new RequirementsV1Json copy; original must not be modified"
+          ],
+          "test_spec_refs": [
+            "TS-05-6",
+            "TS-05-7",
+            "TS-05-39",
+            "TS-05-40"
+          ],
+          "requirement_refs": [
+            "05-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "All requirements mutation tests pass: go test ./... -run 'TestAdd|TestGet|TestRemove|TestSet' -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "go vet ./... reports no issues",
+          "05-REQ-1 acceptance criteria met: TS-05-1 through TS-05-7, TS-05-36 through TS-05-40 all green"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement Criterion-level and TestSpec mutation functions",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Implement AddCriterion, AddEdgeCase, GetCriterion",
+          "details": [
+            "Create golang/afspec/mutate_criterion.go",
+            "Implement AddCriterion(r Requirement, c Criterion) (Requirement, error): copy acceptance_criteria slice, check duplicate ID across both acceptance_criteria and edge_cases, append",
+            "Implement AddEdgeCase(r Requirement, c Criterion) (Requirement, error): copy edge_cases slice, check duplicate ID across both slices, append",
+            "Implement GetCriterion(r Requirement, id string) (*Criterion, bool): search acceptance_criteria first, then edge_cases",
+            "Original Requirement must not be modified"
+          ],
+          "test_spec_refs": [
+            "TS-05-8",
+            "TS-05-9",
+            "TS-05-10",
+            "TS-05-41",
+            "TS-05-42",
+            "TS-05-43"
+          ],
+          "requirement_refs": [
+            "05-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement AddTestCase, AddPropertyTest, AddEdgeCaseTest, AddSmokeTest",
+          "details": [
+            "Create golang/afspec/mutate_testspec.go",
+            "Implement AddTestCase(ts TestSpecV1Json, tc TestCase) (TestSpecV1Json, error): copy test_cases slice, duplicate ID check, append",
+            "Implement AddPropertyTest(ts TestSpecV1Json, pt PropertyTest) (TestSpecV1Json, error): copy property_tests slice, duplicate ID check, append",
+            "Implement AddEdgeCaseTest(ts TestSpecV1Json, et EdgeCaseTest) (TestSpecV1Json, error): copy edge_case_tests slice, duplicate ID check, append",
+            "Implement AddSmokeTest(ts TestSpecV1Json, st SmokeTest) (TestSpecV1Json, error): copy smoke_tests slice, duplicate ID check, append",
+            "All functions return new TestSpecV1Json; original must not be modified"
+          ],
+          "test_spec_refs": [
+            "TS-05-11",
+            "TS-05-12",
+            "TS-05-13",
+            "TS-05-14",
+            "TS-05-44",
+            "TS-05-45"
+          ],
+          "requirement_refs": [
+            "05-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "Criterion and TestSpec mutation tests pass: go test ./... -run 'TestAddCriterion|TestAddEdgeCase|TestGetCriterion|TestAddTestCase|TestAddPropertyTest|TestAddEdgeCaseTest|TestAddSmokeTest' -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "go vet ./... reports no issues",
+          "05-REQ-2 criteria met (TS-05-8 through TS-05-10, TS-05-41 through TS-05-43) and 05-REQ-3 criteria met (TS-05-11 through TS-05-14, TS-05-44 through TS-05-45)"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement Tasks mutation functions",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Implement AddTaskGroup, AddSubtask, AddTraceabilityEntry, AddDependency",
+          "details": [
+            "Create golang/afspec/mutate_tasks.go",
+            "Implement AddTaskGroup(t TasksV1Json, g TaskGroup) (TasksV1Json, error): copy task_groups slice, check duplicate group ID, append",
+            "Implement AddSubtask(g TaskGroup, s Subtask) (TaskGroup, error): copy subtasks slice, check duplicate subtask ID, append",
+            "Implement AddTraceabilityEntry(t TasksV1Json, e TraceabilityEntry) (TasksV1Json, error): copy traceability slice, check duplicate (requirement_id, test_spec_id) pair, append",
+            "Implement AddDependency(t TasksV1Json, d TaskDependency) TasksV1Json: copy dependencies slice, append unconditionally",
+            "All functions return new copies; originals must not be modified"
+          ],
+          "test_spec_refs": [
+            "TS-05-15",
+            "TS-05-16",
+            "TS-05-17",
+            "TS-05-18",
+            "TS-05-46",
+            "TS-05-47",
+            "TS-05-48"
+          ],
+          "requirement_refs": [
+            "05-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "Tasks mutation tests pass: go test ./... -run 'TestAddTaskGroup|TestAddSubtask|TestAddTraceability|TestAddDependency' -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "go vet ./... reports no issues",
+          "05-REQ-4 acceptance criteria met: TS-05-15 through TS-05-18, TS-05-46 through TS-05-48 all green"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "standard",
+      "title": "Implement Sequential ID generation helpers",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Implement package-level compiled regex patterns and ID extraction utility",
+          "details": [
+            "Create golang/afspec/nextid.go",
+            "Declare package-level compiled *regexp.Regexp variables for each ID format pattern (e.g. reqIDPattern, criterionIDPattern, edgeCaseIDPattern, propIDPattern, pathIDPattern, errIDPattern, testCaseIDPattern, propTestIDPattern, edgeCaseTestIDPattern, smokeTestIDPattern)",
+            "Implement internal helper extractMaxSuffix(ids []string, re *regexp.Regexp) int that returns the maximum numeric suffix found, or 0 if none",
+            "Ensure SMOKE pattern is matched before plain numeric pattern to avoid mis-parsing"
+          ],
+          "test_spec_refs": [
+            "TS-05-19",
+            "TS-05-20",
+            "TS-05-21",
+            "TS-05-22",
+            "TS-05-23",
+            "TS-05-49"
+          ],
+          "requirement_refs": [
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Implement NextRequirementID, NextCriterionID, NextEdgeCaseID",
+          "details": [
+            "Implement NextRequirementID(req RequirementsV1Json) string: extract IDs from requirements slice, use reqIDPattern, return fmt.Sprintf('%s-REQ-%d', req.SpecID, max+1)",
+            "Implement NextCriterionID(r Requirement) string: extract IDs from acceptance_criteria, use criterionIDPattern, return fmt.Sprintf('%s.%d', r.ID, max+1)",
+            "Implement NextEdgeCaseID(r Requirement) string: extract IDs from edge_cases, use edgeCaseIDPattern, return fmt.Sprintf('%s.E%d', r.ID, max+1)"
+          ],
+          "test_spec_refs": [
+            "TS-05-19",
+            "TS-05-49",
+            "TS-05-50"
+          ],
+          "requirement_refs": [
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Implement NextCorrectnessPropertyID, NextExecutionPathID, NextErrorHandlingID",
+          "details": [
+            "Implement NextCorrectnessPropertyID(req RequirementsV1Json) string: scan correctness_properties IDs, return fmt.Sprintf('%s-PROP-%d', req.SpecID, max+1)",
+            "Implement NextExecutionPathID(req RequirementsV1Json) string: scan execution_paths IDs, return fmt.Sprintf('%s-PATH-%d', req.SpecID, max+1)",
+            "Implement NextErrorHandlingID(req RequirementsV1Json) string: scan error_handling IDs, return fmt.Sprintf('%s-ERR-%d', req.SpecID, max+1)"
+          ],
+          "test_spec_refs": [
+            "TS-05-21",
+            "TS-05-50",
+            "TS-05-51"
+          ],
+          "requirement_refs": [
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.4",
+          "title": "Implement NextTestCaseID, NextPropertyTestID, NextEdgeCaseTestID, NextSmokeTestID",
+          "details": [
+            "Implement NextTestCaseID(ts TestSpecV1Json) string: scan test_cases IDs, return fmt.Sprintf('TS-%s-%d', ts.SpecID, max+1)",
+            "Implement NextPropertyTestID(ts TestSpecV1Json) string: scan property_tests IDs, return fmt.Sprintf('TS-%s-P%d', ts.SpecID, max+1)",
+            "Implement NextEdgeCaseTestID(ts TestSpecV1Json) string: scan edge_case_tests IDs, return fmt.Sprintf('TS-%s-E%d', ts.SpecID, max+1)",
+            "Implement NextSmokeTestID(ts TestSpecV1Json) string: scan smoke_tests IDs, return fmt.Sprintf('TS-%s-SMOKE-%d', ts.SpecID, max+1)"
+          ],
+          "test_spec_refs": [
+            "TS-05-22",
+            "TS-05-23",
+            "TS-05-51"
+          ],
+          "requirement_refs": [
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "All NextID tests pass: go test ./... -run 'TestNext' -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "go vet ./... reports no issues",
+          "05-REQ-5 acceptance criteria met: TS-05-19 through TS-05-23, TS-05-49 through TS-05-51 all green"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "checkpoint",
+      "title": "Checkpoint: Mutation and ID generation complete",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Run full test suite and verify all mutation and ID generation tests pass",
+          "details": [
+            "Run go test ./... -count=1 -v and confirm all tests in mutate_requirements_test.go, mutate_criterion_test.go, mutate_testspec_test.go, mutate_tasks_test.go, nextid_test.go pass",
+            "Confirm no regressions in existing afspec tests (LoadSpec, Validate, TransitionSubtask, etc.)",
+            "Run go vet ./... and confirm zero issues"
+          ],
+          "test_spec_refs": [
+            "TS-05-1",
+            "TS-05-2",
+            "TS-05-3",
+            "TS-05-4",
+            "TS-05-5",
+            "TS-05-6",
+            "TS-05-7",
+            "TS-05-8",
+            "TS-05-9",
+            "TS-05-10",
+            "TS-05-11",
+            "TS-05-12",
+            "TS-05-13",
+            "TS-05-14",
+            "TS-05-15"
+          ],
+          "requirement_refs": [
+            "05-REQ-1",
+            "05-REQ-2",
+            "05-REQ-3",
+            "05-REQ-4",
+            "05-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Audit immutable-copy pattern compliance across all mutation functions",
+          "details": [
+            "Review each mutation function to confirm no in-place modification of input structs",
+            "Verify slice copies use append([]T(nil), original...) or copy() idiom, not direct assignment",
+            "Verify map copies use explicit key-by-key copy for glossary map",
+            "Document any deviations found and fix before proceeding"
+          ],
+          "test_spec_refs": [
+            "TS-05-36",
+            "TS-05-37",
+            "TS-05-38",
+            "TS-05-39",
+            "TS-05-40",
+            "TS-05-41",
+            "TS-05-42",
+            "TS-05-43",
+            "TS-05-44",
+            "TS-05-45",
+            "TS-05-46",
+            "TS-05-47",
+            "TS-05-48"
+          ],
+          "requirement_refs": [
+            "05-REQ-1",
+            "05-REQ-2",
+            "05-REQ-3",
+            "05-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "go test ./... -count=1 exits with code 0 — all mutation and ID generation tests green",
+          "go vet ./... exits with code 0",
+          "No panic('not implemented') or bare stub returns remain in mutate_*.go or nextid.go: grep -r 'panic(\"not implemented\")' golang/afspec/",
+          "Immutable-copy audit complete with zero violations documented"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "standard",
+      "title": "Implement Lint module data structures and DiscoverLintSpecs",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Define LintFinding, LintSpecInfo, LintResult structs",
+          "details": [
+            "Create golang/afspec/lint.go",
+            "Define LintFinding struct: SpecName string, File string, Rule string, Severity string, Message string, Line int (0 = no line)",
+            "Define LintSpecInfo struct: Name string, Prefix int, Path string, HasTasks bool, HasPRD bool",
+            "Define LintResult struct: Findings []LintFinding, ExitCode int",
+            "Add Severity constants: SeverityError = 'error', SeverityWarning = 'warning', SeverityHint = 'hint'"
+          ],
+          "test_spec_refs": [
+            "TS-05-24",
+            "TS-05-25",
+            "TS-05-26",
+            "TS-05-52"
+          ],
+          "requirement_refs": [
+            "05-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Implement DiscoverLintSpecs",
+          "details": [
+            "Implement DiscoverLintSpecs(specsDir string, filterSpec string) ([]LintSpecInfo, error)",
+            "Use os.ReadDir to list specsDir; return error if directory does not exist",
+            "For each entry: call IsSpecDirName; if valid, check for requirements.json presence; skip entries without requirements.json",
+            "Call ParseSpecDirName to extract Prefix and Name; set HasTasks = tasks.json exists, HasPRD = prd.md exists",
+            "If filterSpec non-empty, filter results to matching Name; return error if no specs found after filtering",
+            "Return error if no specs discovered at all"
+          ],
+          "test_spec_refs": [
+            "TS-05-27",
+            "TS-05-28",
+            "TS-05-53",
+            "TS-05-54",
+            "TS-05-55"
+          ],
+          "requirement_refs": [
+            "05-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "LintFinding, LintSpecInfo, LintResult struct tests pass: go test ./... -run 'TestLint' -count=1 -v",
+          "DiscoverLintSpecs tests pass: go test ./... -run 'TestDiscover' -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "go vet ./... reports no issues",
+          "05-REQ-6 criteria met (TS-05-24 through TS-05-26, TS-05-52) and 05-REQ-7 criteria met (TS-05-27 through TS-05-28, TS-05-53 through TS-05-55)"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "kind": "standard",
+      "title": "Implement SortFindings, ComputeExitCode, and RunLintSpecs",
+      "subtasks": [
+        {
+          "id": "11.1",
+          "title": "Implement SortFindings and ComputeExitCode",
+          "details": [
+            "Implement SortFindings(findings []LintFinding) []LintFinding: copy input slice, sort by SpecName asc, then File asc, then Severity (error=0, warning=1, hint=2)",
+            "Use sort.Slice with a comparator that implements the three-level sort",
+            "Implement ComputeExitCode(findings []LintFinding) int: return 1 if any finding.Severity == SeverityError, else return 0",
+            "Both functions must not modify the input slice"
+          ],
+          "test_spec_refs": [
+            "TS-05-29",
+            "TS-05-30",
+            "TS-05-31",
+            "TS-05-56",
+            "TS-05-57"
+          ],
+          "requirement_refs": [
+            "05-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.2",
+          "title": "Implement RunLintSpecs",
+          "details": [
+            "Implement RunLintSpecs(specsDir string, lintAll bool) (LintResult, error)",
+            "Call DiscoverLintSpecs(specsDir, '') to get all specs; propagate error",
+            "For each LintSpecInfo: if lintAll=false, call LoadSpec and check if all subtasks in all groups have state 'done' or 'dropped'; skip if fully implemented",
+            "For each remaining spec: call LoadSpec then (*Spec).Validate() to get ValidationResult; convert ValidationEntry items to LintFinding with appropriate severity mapping",
+            "Collect all findings, call SortFindings, call ComputeExitCode, return LintResult"
+          ],
+          "test_spec_refs": [
+            "TS-05-32",
+            "TS-05-33",
+            "TS-05-34",
+            "TS-05-58",
+            "TS-05-59",
+            "TS-05-60"
+          ],
+          "requirement_refs": [
+            "05-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "11.V",
+        "checks": [
+          "SortFindings and ComputeExitCode tests pass: go test ./... -run 'TestSort|TestCompute' -count=1 -v",
+          "RunLintSpecs tests pass: go test ./... -run 'TestRunLint' -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "go vet ./... reports no issues",
+          "05-REQ-8 criteria met (TS-05-29 through TS-05-31, TS-05-56 through TS-05-57) and 05-REQ-9 criteria met (TS-05-32 through TS-05-34, TS-05-58 through TS-05-60)"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "kind": "standard",
+      "title": "Implement LoadDependentInterfaces",
+      "subtasks": [
+        {
+          "id": "12.1",
+          "title": "Implement LoadDependentInterfaces with graceful degradation",
+          "details": [
+            "Create golang/afspec/dependent_interfaces.go",
+            "Implement LoadDependentInterfaces(specID string, specRoot string) []map[string]any",
+            "Call DiscoverSpecs(specRoot) to get []SpecMeta; on error return empty slice",
+            "Call BuildDependencyGraph(metas, specRoot) to get *DependencyGraph; on error return empty slice",
+            "Traverse upstream dependencies for the given specID; for each upstream spec call LoadSpec",
+            "Extract glossary entries, external API symbols, and interface-defining criterion return contracts into map[string]any entries",
+            "Return empty slice on any per-spec error (graceful degradation — never propagate errors)"
+          ],
+          "test_spec_refs": [
+            "TS-05-35",
+            "TS-05-61",
+            "TS-05-62",
+            "TS-05-63"
+          ],
+          "requirement_refs": [
+            "05-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "12.V",
+        "checks": [
+          "LoadDependentInterfaces tests pass: go test ./... -run 'TestLoadDependent' -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "go vet ./... reports no issues",
+          "05-REQ-10 acceptance criteria met: TS-05-35, TS-05-61 through TS-05-63 all green",
+          "No panic or error propagation in LoadDependentInterfaces — confirmed by test with invalid specRoot returning empty slice"
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "kind": "wiring_verification",
+      "title": "Wiring verification: end-to-end integration and stub audit",
+      "subtasks": [
+        {
+          "id": "13.1",
+          "title": "Trace execution paths: verify all function call chains are wired with no stubs remaining",
+          "details": [
+            "Verify RunLintSpecs → DiscoverLintSpecs → IsSpecDirName/ParseSpecDirName call chain is fully wired",
+            "Verify RunLintSpecs → LoadSpec → (*Spec).Validate() call chain produces LintFindings correctly",
+            "Verify LoadDependentInterfaces → DiscoverSpecs → BuildDependencyGraph → LoadSpec chain is wired",
+            "Verify all NextID functions call extractMaxSuffix with the correct compiled regex pattern",
+            "Confirm no function returns a zero-value or nil stub result in non-error paths"
+          ],
+          "test_spec_refs": [
+            "TS-05-27",
+            "TS-05-32",
+            "TS-05-35"
+          ],
+          "requirement_refs": [
+            "05-REQ-7",
+            "05-REQ-9",
+            "05-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.2",
+          "title": "Stub and dead-code audit across all new Go files",
+          "details": [
+            "Search for panic(\"not implemented\") in all new files: grep -r 'panic(\"not implemented\")' golang/afspec/mutate_*.go golang/afspec/nextid.go golang/afspec/lint.go golang/afspec/dependent_interfaces.go",
+            "Search for bare TODO comments: grep -r '// TODO' golang/afspec/mutate_*.go golang/afspec/nextid.go golang/afspec/lint.go golang/afspec/dependent_interfaces.go",
+            "Search for bare return nil in non-trivial paths that should return data",
+            "Confirm zero stub markers remain before marking wiring complete"
+          ],
+          "test_spec_refs": [
+            "TS-05-1",
+            "TS-05-8",
+            "TS-05-11",
+            "TS-05-15",
+            "TS-05-19",
+            "TS-05-24",
+            "TS-05-27",
+            "TS-05-29",
+            "TS-05-32",
+            "TS-05-35"
+          ],
+          "requirement_refs": [
+            "05-REQ-1",
+            "05-REQ-2",
+            "05-REQ-3",
+            "05-REQ-4",
+            "05-REQ-5",
+            "05-REQ-6",
+            "05-REQ-7",
+            "05-REQ-8",
+            "05-REQ-9",
+            "05-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.3",
+          "title": "Verify return value propagation across all mutation and lint functions",
+          "details": [
+            "Confirm AddRequirement, AddCriterion, AddTestCase, AddTaskGroup callers (in tests and agentspec) receive and use the returned new copy — not the original",
+            "Confirm RunLintSpecs callers receive LintResult.ExitCode and use it for process exit",
+            "Confirm LoadDependentInterfaces callers receive the []map[string]any slice and pass it to downstream context builders",
+            "Confirm NextID callers use the returned string as the ID for the next entity being created"
+          ],
+          "test_spec_refs": [
+            "TS-05-1",
+            "TS-05-15",
+            "TS-05-32",
+            "TS-05-35"
+          ],
+          "requirement_refs": [
+            "05-REQ-1",
+            "05-REQ-4",
+            "05-REQ-9",
+            "05-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.4",
+          "title": "Run full test suite and confirm all spec tests pass",
+          "details": [
+            "Run go test ./... -count=1 -v and confirm all 63 spec test cases pass",
+            "Run go vet ./... and confirm zero issues",
+            "Confirm test coverage includes all requirement IDs: 05-REQ-1 through 05-REQ-10",
+            "Confirm no regressions in existing afspec tests (LoadSpec, Validate, TransitionSubtask, CompleteSubtaskStates, BuildDependencyGraph, DiscoverSpecs)"
+          ],
+          "test_spec_refs": [
+            "TS-05-1",
+            "TS-05-2",
+            "TS-05-3",
+            "TS-05-4",
+            "TS-05-5",
+            "TS-05-6",
+            "TS-05-7",
+            "TS-05-8",
+            "TS-05-9",
+            "TS-05-10",
+            "TS-05-11",
+            "TS-05-12",
+            "TS-05-13",
+            "TS-05-14",
+            "TS-05-15",
+            "TS-05-SMOKE-1",
+            "TS-05-SMOKE-2",
+            "TS-05-SMOKE-3"
+          ],
+          "requirement_refs": [
+            "05-REQ-1",
+            "05-REQ-2",
+            "05-REQ-3",
+            "05-REQ-4",
+            "05-REQ-5",
+            "05-REQ-6",
+            "05-REQ-7",
+            "05-REQ-8",
+            "05-REQ-9",
+            "05-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "13.V",
+        "checks": [
+          "go test ./... -count=1 exits with code 0 — all 63 spec tests green",
+          "go vet ./... exits with code 0 — zero linter issues",
+          "Stub audit complete: grep -r 'panic(\"not implemented\")' golang/afspec/ returns no results",
+          "All execution path call chains verified as fully wired (no intermediate stubs)",
+          "Return value propagation confirmed for all mutation functions, RunLintSpecs, and LoadDependentInterfaces",
+          "05-REQ-1 through 05-REQ-10 acceptance criteria all met per traceability matrix"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-1",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-2",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-3",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-4",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-5",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-6",
+      "task_id": "5.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-7",
+      "task_id": "5.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-36",
+      "task_id": "1.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-37",
+      "task_id": "1.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-38",
+      "task_id": "1.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-39",
+      "task_id": "1.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-1.1",
+      "test_spec_id": "TS-05-40",
+      "task_id": "1.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-2.1",
+      "test_spec_id": "TS-05-8",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-2.1",
+      "test_spec_id": "TS-05-9",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-2.1",
+      "test_spec_id": "TS-05-10",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-2.1",
+      "test_spec_id": "TS-05-41",
+      "task_id": "1.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-2.1",
+      "test_spec_id": "TS-05-42",
+      "task_id": "1.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-2.1",
+      "test_spec_id": "TS-05-43",
+      "task_id": "1.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-3.1",
+      "test_spec_id": "TS-05-11",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-3.1",
+      "test_spec_id": "TS-05-12",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-3.1",
+      "test_spec_id": "TS-05-13",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-3.1",
+      "test_spec_id": "TS-05-14",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-3.1",
+      "test_spec_id": "TS-05-44",
+      "task_id": "1.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-3.1",
+      "test_spec_id": "TS-05-45",
+      "task_id": "1.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-4.1",
+      "test_spec_id": "TS-05-15",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-4.1",
+      "test_spec_id": "TS-05-16",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-4.1",
+      "test_spec_id": "TS-05-17",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-4.1",
+      "test_spec_id": "TS-05-18",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-4.1",
+      "test_spec_id": "TS-05-46",
+      "task_id": "1.6",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-4.1",
+      "test_spec_id": "TS-05-47",
+      "task_id": "1.6",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-4.1",
+      "test_spec_id": "TS-05-48",
+      "task_id": "1.6",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-19",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-20",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-21",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-22",
+      "task_id": "8.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-23",
+      "task_id": "8.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-49",
+      "task_id": "2.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-50",
+      "task_id": "2.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-5.1",
+      "test_spec_id": "TS-05-51",
+      "task_id": "2.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-6.1",
+      "test_spec_id": "TS-05-24",
+      "task_id": "10.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-6.1",
+      "test_spec_id": "TS-05-25",
+      "task_id": "10.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-6.1",
+      "test_spec_id": "TS-05-26",
+      "task_id": "10.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-6.1",
+      "test_spec_id": "TS-05-52",
+      "task_id": "3.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-7.1",
+      "test_spec_id": "TS-05-27",
+      "task_id": "10.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-7.1",
+      "test_spec_id": "TS-05-28",
+      "task_id": "10.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-7.1",
+      "test_spec_id": "TS-05-53",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-7.1",
+      "test_spec_id": "TS-05-54",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-7.1",
+      "test_spec_id": "TS-05-55",
+      "task_id": "3.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-8.1",
+      "test_spec_id": "TS-05-29",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-8.1",
+      "test_spec_id": "TS-05-30",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-8.1",
+      "test_spec_id": "TS-05-31",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-8.1",
+      "test_spec_id": "TS-05-56",
+      "task_id": "3.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-8.1",
+      "test_spec_id": "TS-05-57",
+      "task_id": "3.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-9.1",
+      "test_spec_id": "TS-05-32",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-9.1",
+      "test_spec_id": "TS-05-33",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-9.1",
+      "test_spec_id": "TS-05-34",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-9.1",
+      "test_spec_id": "TS-05-58",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-9.1",
+      "test_spec_id": "TS-05-59",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-9.1",
+      "test_spec_id": "TS-05-60",
+      "task_id": "4.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-10.1",
+      "test_spec_id": "TS-05-35",
+      "task_id": "12.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-10.1",
+      "test_spec_id": "TS-05-61",
+      "task_id": "4.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-10.1",
+      "test_spec_id": "TS-05-62",
+      "task_id": "4.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "05-REQ-10.1",
+      "test_spec_id": "TS-05-63",
+      "task_id": "4.2",
+      "test_path": null
+    }
+  ]
+}

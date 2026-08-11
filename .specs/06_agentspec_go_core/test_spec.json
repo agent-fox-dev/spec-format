@@ -1,0 +1,1246 @@
+{
+  "$schema": null,
+  "spec_id": "06",
+  "spec_name": "agentspec_go_core",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-06-1",
+      "requirement_id": "06-REQ-1.1",
+      "kind": "unit",
+      "description": "Verify that any agentspec error satisfies the AgentSpecError interface and is matchable via errors.As, returning a non-empty Category() string.",
+      "preconditions": [
+        "agentspec package is compiled and importable",
+        "a concrete agentspec error value (e.g. ConfigError) is available"
+      ],
+      "input": "err := &ConfigError{msg: \"test\"}",
+      "expected": "errors.As(err, &target) returns true; target.Category() returns a non-empty string",
+      "assertion_pseudocode": "var target AgentSpecError\nerr := newConfigError(\"test\")\nassert errors.As(err, &target) == true\nassert len(target.Category()) > 0"
+    },
+    {
+      "id": "TS-06-2",
+      "requirement_id": "06-REQ-1.2",
+      "kind": "unit",
+      "description": "Verify that ConfigError.Category() returns exactly the string \"config\" and satisfies the AgentSpecError interface.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "err := newConfigError(\"invalid toml\")",
+      "expected": "errors.As(err, &target) is true; target.Category() == \"config\"",
+      "assertion_pseudocode": "var target AgentSpecError\nerr := newConfigError(\"invalid toml\")\nassert errors.As(err, &target) == true\nassert target.Category() == \"config\""
+    },
+    {
+      "id": "TS-06-3",
+      "requirement_id": "06-REQ-1.3",
+      "kind": "unit",
+      "description": "Verify that CampaignError.Category() returns exactly the string \"campaign\" and satisfies the AgentSpecError interface.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "err := newCampaignError(\"duplicate path\")",
+      "expected": "errors.As(err, &target) is true; target.Category() == \"campaign\"",
+      "assertion_pseudocode": "var target AgentSpecError\nerr := newCampaignError(\"duplicate path\")\nassert errors.As(err, &target) == true\nassert target.Category() == \"campaign\""
+    },
+    {
+      "id": "TS-06-4",
+      "requirement_id": "06-REQ-1.4",
+      "kind": "unit",
+      "description": "Verify that SessionError.Category() returns exactly the string \"state\" and satisfies the AgentSpecError interface.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "err := newSessionError(\"illegal transition\")",
+      "expected": "errors.As(err, &target) is true; target.Category() == \"state\"",
+      "assertion_pseudocode": "var target AgentSpecError\nerr := newSessionError(\"illegal transition\")\nassert errors.As(err, &target) == true\nassert target.Category() == \"state\""
+    },
+    {
+      "id": "TS-06-5",
+      "requirement_id": "06-REQ-1.5",
+      "kind": "unit",
+      "description": "Verify that AgentError carries Detail, ErrorCategory, Retryable, HTTPStatus fields, implements Unwrap() returning the original error, and satisfies AgentSpecError.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "wrapped := errors.New(\"original\"); err := &AgentError{Detail: \"rate limited\", ErrorCategory: \"rate_limit\", Retryable: true, HTTPStatus: ptr(429), cause: wrapped}",
+      "expected": "errors.As(err, &target) is true; errors.Unwrap(err) == wrapped; err.Detail == \"rate limited\"; err.ErrorCategory == \"rate_limit\"; err.Retryable == true; *err.HTTPStatus == 429",
+      "assertion_pseudocode": "wrapped := errors.New(\"original\")\nerr := newAgentError(\"rate limited\", \"rate_limit\", true, ptr(429), wrapped)\nvar target AgentSpecError\nassert errors.As(err, &target) == true\nassert errors.Unwrap(err) == wrapped\nassert err.Detail == \"rate limited\"\nassert err.ErrorCategory == \"rate_limit\"\nassert err.Retryable == true\nassert *err.HTTPStatus == 429"
+    },
+    {
+      "id": "TS-06-6",
+      "requirement_id": "06-REQ-2.1",
+      "kind": "unit",
+      "description": "Verify that LoadConfig reads the first config.toml found in .specs/ relative to cwd, parses [model] and [provider] sections, and silently ignores unknown sections.",
+      "preconditions": [
+        "a temporary directory is created as the working directory",
+        ".specs/ subdirectory exists in the temp dir",
+        ".specs/config.toml contains [model] model=\"FAST\", [provider] auth_method=\"vertex\", vertex_project=\"proj\", vertex_region=\"us-east1\", and an unknown [theme] section"
+      ],
+      "input": "LoadConfig() called with cwd set to the temp directory",
+      "expected": "returns (AgentSpecConfig{Model: \"FAST\", AuthMethod: \"vertex\", VertexProject: \"proj\", VertexRegion: \"us-east1\"}, nil); no error for unknown [theme] section",
+      "assertion_pseudocode": "cfg, err := LoadConfig()\nassert err == nil\nassert cfg.Model == \"FAST\"\nassert cfg.AuthMethod == \"vertex\"\nassert cfg.VertexProject == \"proj\"\nassert cfg.VertexRegion == \"us-east1\""
+    },
+    {
+      "id": "TS-06-7",
+      "requirement_id": "06-REQ-2.2",
+      "kind": "unit",
+      "description": "Verify that LoadConfig returns AgentSpecConfig with Model set to \"STANDARD\" and other fields empty when no config.toml exists in either search location.",
+      "preconditions": [
+        "a temporary directory is created as the working directory",
+        "no .specs/config.toml exists in the temp dir",
+        "no ~/.specs/config.toml exists (or home dir is redirected to a temp location)"
+      ],
+      "input": "LoadConfig() called with no config files present",
+      "expected": "returns (AgentSpecConfig{Model: \"STANDARD\", AuthMethod: \"\", VertexProject: \"\", VertexRegion: \"\"}, nil)",
+      "assertion_pseudocode": "cfg, err := LoadConfig()\nassert err == nil\nassert cfg.Model == \"STANDARD\"\nassert cfg.AuthMethod == \"\"\nassert cfg.VertexProject == \"\"\nassert cfg.VertexRegion == \"\""
+    },
+    {
+      "id": "TS-06-8",
+      "requirement_id": "06-REQ-2.3",
+      "kind": "unit",
+      "description": "Verify that when AF_SPEC_MODEL is set to a non-empty value, LoadConfig overrides the Model field from the config file with the environment variable value.",
+      "preconditions": [
+        "a temporary directory is created as the working directory",
+        ".specs/config.toml exists with [model] model=\"STANDARD\"",
+        "AF_SPEC_MODEL environment variable is set to \"FAST\""
+      ],
+      "input": "LoadConfig() called with AF_SPEC_MODEL=\"FAST\" and config.toml specifying model=\"STANDARD\"",
+      "expected": "returns (AgentSpecConfig{Model: \"FAST\"}, nil); Model is \"FAST\" not \"STANDARD\"",
+      "assertion_pseudocode": "os.Setenv(\"AF_SPEC_MODEL\", \"FAST\")\ndefer os.Unsetenv(\"AF_SPEC_MODEL\")\ncfg, err := LoadConfig()\nassert err == nil\nassert cfg.Model == \"FAST\""
+    },
+    {
+      "id": "TS-06-9",
+      "requirement_id": "06-REQ-2.4",
+      "kind": "unit",
+      "description": "Verify that LoadConfig returns a ConfigError when the config.toml file is a symlink (resolved path differs from original path).",
+      "preconditions": [
+        "a temporary directory is created as the working directory",
+        ".specs/ subdirectory exists",
+        "a real config.toml exists at another path",
+        ".specs/config.toml is a symlink pointing to the real file"
+      ],
+      "input": "LoadConfig() called when .specs/config.toml is a symlink",
+      "expected": "returns (AgentSpecConfig{}, ConfigError); errors.As(err, &ConfigError{}) is true; error message describes symlink rejection",
+      "assertion_pseudocode": "cfg, err := LoadConfig()\nassert cfg == AgentSpecConfig{}\nvar ce *ConfigError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"config\"\nassert strings.Contains(ce.Error(), \"symlink\") OR strings.Contains(ce.Error(), \"resolved path\")"
+    },
+    {
+      "id": "TS-06-10",
+      "requirement_id": "06-REQ-2.5",
+      "kind": "unit",
+      "description": "Verify that LoadConfig returns a ConfigError wrapping the parse error when config.toml contains invalid TOML syntax.",
+      "preconditions": [
+        "a temporary directory is created as the working directory",
+        ".specs/config.toml exists with content \"[model\\nmodel = @@invalid@@\""
+      ],
+      "input": "LoadConfig() called when .specs/config.toml has invalid TOML",
+      "expected": "returns (AgentSpecConfig{}, ConfigError); errors.As(err, &ConfigError{}) is true; ConfigError wraps the TOML parse error",
+      "assertion_pseudocode": "cfg, err := LoadConfig()\nassert cfg == AgentSpecConfig{}\nvar ce *ConfigError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"config\"\nassert errors.Unwrap(ce) != nil"
+    },
+    {
+      "id": "TS-06-11",
+      "requirement_id": "06-REQ-3.1",
+      "kind": "unit",
+      "description": "Verify that CreateCampaign writes campaign.yaml atomically with correct fields and returns a valid Campaign when the parent directory exists and campaign.yaml is absent.",
+      "preconditions": [
+        "a temporary parent directory exists",
+        "no campaign.yaml exists at the target path"
+      ],
+      "input": "CreateCampaign(tmpDir+\"/mycampaign\", \"My Campaign\", \"A test campaign\")",
+      "expected": "returns (*Campaign, nil); campaign.yaml exists at tmpDir+\"/mycampaign/campaign.yaml\" with name, description, created_at, updated_at fields; Campaign.Path == tmpDir+\"/mycampaign\"; Campaign.Metadata.Name == \"My Campaign\"",
+      "assertion_pseudocode": "campaign, err := CreateCampaign(tmpDir+\"/mycampaign\", \"My Campaign\", \"A test campaign\")\nassert err == nil\nassert campaign != nil\nassert campaign.Path == tmpDir+\"/mycampaign\"\nassert campaign.Metadata.Name == \"My Campaign\"\nassert campaign.Metadata.Description == \"A test campaign\"\nassert fileExists(tmpDir+\"/mycampaign/campaign.yaml\")\nyamlContent := readFile(tmpDir+\"/mycampaign/campaign.yaml\")\nassert yamlContent contains \"name: My Campaign\"\nassert yamlContent contains \"created_at:\""
+    },
+    {
+      "id": "TS-06-12",
+      "requirement_id": "06-REQ-3.2",
+      "kind": "unit",
+      "description": "Verify that CreateCampaign returns a CampaignError without modifying the existing campaign.yaml when one already exists at the given path.",
+      "preconditions": [
+        "a temporary directory exists",
+        "campaign.yaml already exists at the target path with known content"
+      ],
+      "input": "CreateCampaign(existingCampaignDir, \"New Name\", \"New Desc\")",
+      "expected": "returns (nil, CampaignError); existing campaign.yaml content is unchanged; errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "originalContent := readFile(existingCampaignDir+\"/campaign.yaml\")\ncampaign, err := CreateCampaign(existingCampaignDir, \"New Name\", \"New Desc\")\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\"\nassert readFile(existingCampaignDir+\"/campaign.yaml\") == originalContent"
+    },
+    {
+      "id": "TS-06-13",
+      "requirement_id": "06-REQ-3.3",
+      "kind": "unit",
+      "description": "Verify that CreateCampaign returns a CampaignError when the parent directory of the given path does not exist.",
+      "preconditions": [
+        "no directory exists at /tmp/nonexistent_parent/"
+      ],
+      "input": "CreateCampaign(\"/tmp/nonexistent_parent/mycampaign\", \"Name\", \"Desc\")",
+      "expected": "returns (nil, CampaignError); errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "campaign, err := CreateCampaign(\"/tmp/nonexistent_parent/mycampaign\", \"Name\", \"Desc\")\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\""
+    },
+    {
+      "id": "TS-06-14",
+      "requirement_id": "06-REQ-4.1",
+      "kind": "unit",
+      "description": "Verify that OpenCampaign reads and parses campaign.yaml and returns a Campaign with populated Path and Metadata fields.",
+      "preconditions": [
+        "a temporary directory exists",
+        "campaign.yaml exists at the path with valid YAML: name, description, created_at, updated_at"
+      ],
+      "input": "OpenCampaign(tmpDir) where tmpDir/campaign.yaml has name=\"Test\", description=\"Desc\", created_at=\"2026-01-01T00:00:00Z\", updated_at=\"2026-01-01T00:00:00Z\"",
+      "expected": "returns (*Campaign, nil); campaign.Path == tmpDir; campaign.Metadata.Name == \"Test\"; campaign.Metadata.Description == \"Desc\"",
+      "assertion_pseudocode": "campaign, err := OpenCampaign(tmpDir)\nassert err == nil\nassert campaign != nil\nassert campaign.Path == tmpDir\nassert campaign.Metadata.Name == \"Test\"\nassert campaign.Metadata.Description == \"Desc\"\nassert campaign.Metadata.CreatedAt == \"2026-01-01T00:00:00Z\""
+    },
+    {
+      "id": "TS-06-15",
+      "requirement_id": "06-REQ-4.2",
+      "kind": "unit",
+      "description": "Verify that OpenCampaign returns a CampaignError when campaign.yaml does not exist at the given path.",
+      "preconditions": [
+        "a temporary directory exists with no campaign.yaml"
+      ],
+      "input": "OpenCampaign(emptyTmpDir)",
+      "expected": "returns (nil, CampaignError); errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "campaign, err := OpenCampaign(emptyTmpDir)\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\""
+    },
+    {
+      "id": "TS-06-16",
+      "requirement_id": "06-REQ-4.3",
+      "kind": "unit",
+      "description": "Verify that OpenCampaign returns a CampaignError wrapping the parse error when campaign.yaml contains malformed YAML.",
+      "preconditions": [
+        "a temporary directory exists",
+        "campaign.yaml exists with content \"name: [invalid: yaml: ::::\""
+      ],
+      "input": "OpenCampaign(tmpDir) where campaign.yaml has malformed YAML",
+      "expected": "returns (nil, CampaignError); errors.As(err, &CampaignError{}) is true; errors.Unwrap(ce) != nil",
+      "assertion_pseudocode": "campaign, err := OpenCampaign(tmpDir)\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\"\nassert errors.Unwrap(ce) != nil"
+    },
+    {
+      "id": "TS-06-17",
+      "requirement_id": "06-REQ-5.1",
+      "kind": "unit",
+      "description": "Verify that Campaign.Specs returns subdirectory names matching {NN}_{snake_case} sorted by numeric prefix, excluding archive/.",
+      "preconditions": [
+        "a campaign directory exists",
+        "subdirectories 03_gamma, 01_alpha, 02_beta, archive/ exist in the campaign directory",
+        "campaign.yaml exists"
+      ],
+      "input": "campaign.Specs() called on the campaign",
+      "expected": "returns ([\"01_alpha\", \"02_beta\", \"03_gamma\"], nil); archive/ is excluded; order is ascending by numeric prefix",
+      "assertion_pseudocode": "specs, err := campaign.Specs()\nassert err == nil\nassert len(specs) == 3\nassert specs[0] == \"01_alpha\"\nassert specs[1] == \"02_beta\"\nassert specs[2] == \"03_gamma\"\nassert \"archive\" not in specs"
+    },
+    {
+      "id": "TS-06-18",
+      "requirement_id": "06-REQ-5.2",
+      "kind": "unit",
+      "description": "Verify that Campaign.Specs returns an empty slice when the campaign directory contains no matching subdirectories.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "no subdirectories matching {NN}_{snake_case} exist"
+      ],
+      "input": "campaign.Specs() called on an empty campaign",
+      "expected": "returns ([]string{}, nil)",
+      "assertion_pseudocode": "specs, err := campaign.Specs()\nassert err == nil\nassert len(specs) == 0"
+    },
+    {
+      "id": "TS-06-19",
+      "requirement_id": "06-REQ-6.1",
+      "kind": "unit",
+      "description": "Verify that Campaign.NewSpec creates the spec directory, writes prd.md with correct YAML frontmatter and PRD body, and returns a SpecSession in StateInit.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "a temporary PRD file exists with content \"# My PRD\\nSome content.\"",
+        "no existing spec directories in the campaign"
+      ],
+      "input": "campaign.NewSpec(\"my_spec\", prdPath, \"standard\", \"docs/prds/my.md\")",
+      "expected": "returns (*SpecSession, nil); spec directory 01_my_spec exists; prd.md exists with spec_id, spec_name, title, status: draft, created_at, updated_at, owner: \"\", source, schema_version: 1 in frontmatter; _session.json exists; session.State() == StateInit",
+      "assertion_pseudocode": "session, err := campaign.NewSpec(\"my_spec\", prdPath, \"standard\", \"docs/prds/my.md\")\nassert err == nil\nassert session != nil\nassert session.State() == StateInit\nassert dirExists(campaignDir+\"/01_my_spec\")\nassert fileExists(campaignDir+\"/01_my_spec/prd.md\")\nassert fileExists(campaignDir+\"/01_my_spec/_session.json\")\nprdContent := readFile(campaignDir+\"/01_my_spec/prd.md\")\nassert prdContent contains \"spec_id:\"\nassert prdContent contains \"status: draft\"\nassert prdContent contains \"schema_version: 1\"\nassert prdContent contains \"source: docs/prds/my.md\"\nassert prdContent contains \"# My PRD\""
+    },
+    {
+      "id": "TS-06-20",
+      "requirement_id": "06-REQ-6.2",
+      "kind": "unit",
+      "description": "Verify that Campaign.NewSpec returns a CampaignError without creating any directories or files when specName does not match [a-z][a-z0-9_]*.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "a temporary PRD file exists"
+      ],
+      "input": "campaign.NewSpec(\"Invalid-Name\", prdPath, \"standard\", \"source\")",
+      "expected": "returns (nil, CampaignError); no new directories or files are created; errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "beforeDirs := listDir(campaignDir)\nsession, err := campaign.NewSpec(\"Invalid-Name\", prdPath, \"standard\", \"source\")\nassert session == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\"\nassert listDir(campaignDir) == beforeDirs"
+    },
+    {
+      "id": "TS-06-21",
+      "requirement_id": "06-REQ-6.3",
+      "kind": "unit",
+      "description": "Verify that Campaign.NewSpec returns a CampaignError without creating the spec directory when prdPath does not exist or is not readable.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "prdPath points to a non-existent file"
+      ],
+      "input": "campaign.NewSpec(\"valid_name\", \"/nonexistent/prd.md\", \"standard\", \"source\")",
+      "expected": "returns (nil, CampaignError); no spec directory is created; errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "session, err := campaign.NewSpec(\"valid_name\", \"/nonexistent/prd.md\", \"standard\", \"source\")\nassert session == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\"\nassert NOT dirExists(campaignDir+\"/01_valid_name\")"
+    },
+    {
+      "id": "TS-06-22",
+      "requirement_id": "06-REQ-7.1",
+      "kind": "unit",
+      "description": "Verify that CreateSession initializes a SpecSession in StateInit with empty history and persists it to _session.json atomically.",
+      "preconditions": [
+        "a temporary spec directory exists",
+        "no _session.json exists in the spec directory"
+      ],
+      "input": "CreateSession(specDir, \"standard\", \"docs/prds/test.md\")",
+      "expected": "returns (*SpecSession, nil); _session.json exists in specDir; JSON contains state=\"init\"; assessment_history=[], qa_exchanges=[], generated_artifacts=[]",
+      "assertion_pseudocode": "session, err := CreateSession(specDir, \"standard\", \"docs/prds/test.md\")\nassert err == nil\nassert session != nil\nassert session.State() == StateInit\nassert fileExists(specDir+\"/_session.json\")\njsonContent := parseJSON(readFile(specDir+\"/_session.json\"))\nassert jsonContent[\"state\"] == \"init\"\nassert len(jsonContent[\"assessment_history\"]) == 0\nassert len(jsonContent[\"qa_exchanges\"]) == 0\nassert len(jsonContent[\"generated_artifacts\"]) == 0"
+    },
+    {
+      "id": "TS-06-23",
+      "requirement_id": "06-REQ-7.2",
+      "kind": "unit",
+      "description": "Verify that ResumeSession reads _session.json and reconstructs the SpecSession with all persisted fields.",
+      "preconditions": [
+        "a temporary spec directory exists",
+        "_session.json exists with state=\"assessing\", mode=\"standard\", prd_path=\"prd.md\", assessment_history=[{quality:\"ready\",summary:\"ok\",gaps:[],questions:[]}], qa_exchanges=[], generated_artifacts=[], last_error=null"
+      ],
+      "input": "ResumeSession(specDir)",
+      "expected": "returns (*SpecSession, nil); session.State() == StateAssessing; session mode, prd_path, and assessment_history match the persisted JSON",
+      "assertion_pseudocode": "session, err := ResumeSession(specDir)\nassert err == nil\nassert session != nil\nassert session.State() == StateAssessing\nassert session.SpecDir() == specDir\nassert session.Assessment() != nil\nassert session.Assessment().Quality == \"ready\""
+    },
+    {
+      "id": "TS-06-24",
+      "requirement_id": "06-REQ-7.3",
+      "kind": "unit",
+      "description": "Verify that ResumeSession returns a SessionError when _session.json does not exist in the spec directory.",
+      "preconditions": [
+        "a temporary spec directory exists",
+        "no _session.json file exists in the directory"
+      ],
+      "input": "ResumeSession(specDir)",
+      "expected": "returns (nil, SessionError); errors.As(err, &SessionError{}) is true; Category() == \"state\"",
+      "assertion_pseudocode": "session, err := ResumeSession(specDir)\nassert session == nil\nvar se *SessionError\nassert errors.As(err, &se) == true\nassert se.Category() == \"state\""
+    },
+    {
+      "id": "TS-06-25",
+      "requirement_id": "06-REQ-7.4",
+      "kind": "unit",
+      "description": "Verify that ResumeSession returns a SessionError wrapping the parse error when _session.json contains malformed JSON.",
+      "preconditions": [
+        "a temporary spec directory exists",
+        "_session.json exists with content \"{invalid json\""
+      ],
+      "input": "ResumeSession(specDir)",
+      "expected": "returns (nil, SessionError); errors.As(err, &SessionError{}) is true; errors.Unwrap(se) != nil",
+      "assertion_pseudocode": "session, err := ResumeSession(specDir)\nassert session == nil\nvar se *SessionError\nassert errors.As(err, &se) == true\nassert se.Category() == \"state\"\nassert errors.Unwrap(se) != nil"
+    },
+    {
+      "id": "TS-06-26",
+      "requirement_id": "06-REQ-8.1",
+      "kind": "unit",
+      "description": "Verify that SpecSession.AcceptPRD transitions state to StatePRDAccepted and persists the new state to _session.json when called from StateAssessing.",
+      "preconditions": [
+        "a SpecSession exists in StateAssessing with _session.json on disk"
+      ],
+      "input": "session.AcceptPRD() called when session.State() == StateAssessing",
+      "expected": "returns nil; session.State() == StatePRDAccepted; _session.json contains state=\"prd_accepted\"",
+      "assertion_pseudocode": "err := session.AcceptPRD()\nassert err == nil\nassert session.State() == StatePRDAccepted\njsonContent := parseJSON(readFile(specDir+\"/_session.json\"))\nassert jsonContent[\"state\"] == \"prd_accepted\""
+    },
+    {
+      "id": "TS-06-27",
+      "requirement_id": "06-REQ-8.2",
+      "kind": "unit",
+      "description": "Verify that SpecSession.AcceptPRD returns a SessionError without modifying state or _session.json when called from an invalid state (e.g. StateInit).",
+      "preconditions": [
+        "a SpecSession exists in StateInit with _session.json on disk"
+      ],
+      "input": "session.AcceptPRD() called when session.State() == StateInit",
+      "expected": "returns SessionError; session.State() remains StateInit; _session.json still contains state=\"init\"; errors.As(err, &SessionError{}) is true",
+      "assertion_pseudocode": "err := session.AcceptPRD()\nvar se *SessionError\nassert errors.As(err, &se) == true\nassert se.Category() == \"state\"\nassert session.State() == StateInit\njsonContent := parseJSON(readFile(specDir+\"/_session.json\"))\nassert jsonContent[\"state\"] == \"init\""
+    },
+    {
+      "id": "TS-06-28",
+      "requirement_id": "06-REQ-8.3",
+      "kind": "unit",
+      "description": "Verify that SpecSession.State() returns the current SessionState of the session at any point in time.",
+      "preconditions": [
+        "a SpecSession exists in StateInit"
+      ],
+      "input": "session.State() called immediately after CreateSession",
+      "expected": "returns StateInit",
+      "assertion_pseudocode": "session, _ := CreateSession(specDir, \"standard\", \"prd.md\")\nassert session.State() == StateInit"
+    },
+    {
+      "id": "TS-06-29",
+      "requirement_id": "06-REQ-8.4",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Assessment() returns a pointer to the most recent Assessment when assessmentHistory is non-empty.",
+      "preconditions": [
+        "a SpecSession exists with assessmentHistory containing two entries: first with Quality=\"needs_refinement\", second with Quality=\"ready\""
+      ],
+      "input": "session.Assessment() called",
+      "expected": "returns *Assessment pointing to the last entry; Assessment.Quality == \"ready\"",
+      "assertion_pseudocode": "a := session.Assessment()\nassert a != nil\nassert a.Quality == \"ready\""
+    },
+    {
+      "id": "TS-06-30",
+      "requirement_id": "06-REQ-8.5",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Assessment() returns nil when assessmentHistory is empty.",
+      "preconditions": [
+        "a SpecSession exists in StateInit with empty assessmentHistory"
+      ],
+      "input": "session.Assessment() called on a fresh session",
+      "expected": "returns nil",
+      "assertion_pseudocode": "session, _ := CreateSession(specDir, \"standard\", \"prd.md\")\nassert session.Assessment() == nil"
+    },
+    {
+      "id": "TS-06-31",
+      "requirement_id": "06-REQ-9.1",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Validate() calls LoadSpec, runs Validate(), categorizes errors, and returns SessionValidationResult with Valid=true when no errors are found.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing valid artifact files loadable by LoadSpec",
+        "afspec.LoadSpec and afspec.Validate are available"
+      ],
+      "input": "session.Validate() called on a session with valid artifacts",
+      "expected": "returns (SessionValidationResult{Valid: true, SchemaErrors: [], IntegrityErrors: []}, nil)",
+      "assertion_pseudocode": "result, err := session.Validate()\nassert err == nil\nassert result.Valid == true\nassert len(result.SchemaErrors) == 0\nassert len(result.IntegrityErrors) == 0"
+    },
+    {
+      "id": "TS-06-32",
+      "requirement_id": "06-REQ-9.2",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Validate() falls back to loading individual JSON artifact files and returns Valid=false when LoadSpec fails due to missing artifacts.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing only some artifact files (e.g. requirements.json but not test_spec.json)",
+        "afspec.LoadSpec is expected to fail"
+      ],
+      "input": "session.Validate() called when LoadSpec fails due to missing artifacts",
+      "expected": "returns (SessionValidationResult{Valid: false, ...}, nil); no error returned from Validate itself",
+      "assertion_pseudocode": "result, err := session.Validate()\nassert err == nil\nassert result.Valid == false\nassert len(result.SchemaErrors) > 0 OR len(result.IntegrityErrors) > 0"
+    },
+    {
+      "id": "TS-06-33",
+      "requirement_id": "06-REQ-10.1",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Render(true) loads the spec via LoadSpec and returns the combined rendered string.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing valid artifact files",
+        "afspec.LoadSpec and RenderCombined are available"
+      ],
+      "input": "session.Render(true)",
+      "expected": "returns (string, nil) where the string is non-empty and contains rendered spec content",
+      "assertion_pseudocode": "result, err := session.Render(true)\nassert err == nil\nresultStr, ok := result.(string)\nassert ok == true\nassert len(resultStr) > 0"
+    },
+    {
+      "id": "TS-06-34",
+      "requirement_id": "06-REQ-10.2",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Render(false) loads the spec via LoadSpec and returns a map of artifact name to rendered string.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing valid artifact files",
+        "afspec.LoadSpec and RenderIndividual are available"
+      ],
+      "input": "session.Render(false)",
+      "expected": "returns (map[string]string, nil) keyed by artifact name with non-empty values",
+      "assertion_pseudocode": "result, err := session.Render(false)\nassert err == nil\nresultMap, ok := result.(map[string]string)\nassert ok == true\nassert len(resultMap) > 0"
+    },
+    {
+      "id": "TS-06-35",
+      "requirement_id": "06-REQ-10.3",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Render falls back to rendering only available artifact files and returns a partial result when LoadSpec fails due to missing artifacts.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing only some artifact files",
+        "afspec.LoadSpec is expected to fail"
+      ],
+      "input": "session.Render(false) when some artifacts are missing",
+      "expected": "returns (partial map[string]string, nil) containing only the artifacts that could be loaded; no error returned",
+      "assertion_pseudocode": "result, err := session.Render(false)\nassert err == nil\nresultMap, ok := result.(map[string]string)\nassert ok == true"
+    },
+    {
+      "id": "TS-06-36",
+      "requirement_id": "06-REQ-11.1",
+      "kind": "unit",
+      "description": "Verify that AssessmentTools() returns a slice with exactly one entry for submit_assessment with the correct input schema fields.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "AssessmentTools() called with no arguments",
+      "expected": "returns []map[string]any with len==1; entry[\"name\"]==\"submit_assessment\"; input schema has quality (enum), summary (string), gaps (array), questions (array of objects)",
+      "assertion_pseudocode": "tools := AssessmentTools()\nassert len(tools) == 1\nassert tools[0][\"name\"] == \"submit_assessment\"\nschema := tools[0][\"input_schema\"]\nassert schema[\"properties\"][\"quality\"][\"enum\"] contains \"ready\", \"needs_refinement\", \"incomplete\"\nassert schema[\"properties\"][\"summary\"][\"type\"] == \"string\"\nassert schema[\"properties\"][\"gaps\"][\"type\"] == \"array\"\nassert schema[\"properties\"][\"questions\"][\"type\"] == \"array\""
+    },
+    {
+      "id": "TS-06-37",
+      "requirement_id": "06-REQ-12.1",
+      "kind": "unit",
+      "description": "Verify that RefinementTools() returns a slice with exactly two entries: submit_prd_update at index 0 and submit_assessment at index 1.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "RefinementTools() called with no arguments",
+      "expected": "returns []map[string]any with len==2; [0][\"name\"]==\"submit_prd_update\"; [1][\"name\"]==\"submit_assessment\"; submit_prd_update schema has updated_prd (string)",
+      "assertion_pseudocode": "tools := RefinementTools()\nassert len(tools) == 2\nassert tools[0][\"name\"] == \"submit_prd_update\"\nassert tools[1][\"name\"] == \"submit_assessment\"\nschema0 := tools[0][\"input_schema\"]\nassert schema0[\"properties\"][\"updated_prd\"][\"type\"] == \"string\""
+    },
+    {
+      "id": "TS-06-38",
+      "requirement_id": "06-REQ-13.1",
+      "kind": "unit",
+      "description": "Verify that ArtifactTool(\"requirements\") returns a tool definition with a fully inlined, cleaned schema embedded as the content property of submit_requirements.",
+      "preconditions": [
+        "agentspec package is compiled",
+        "afspec.Schemas() returns a map containing a \"requirements\" entry with a JSON Schema"
+      ],
+      "input": "ArtifactTool(\"requirements\")",
+      "expected": "returns []map[string]any with len==1; [0][\"name\"]==\"submit_requirements\"; content schema has no $ref, $defs, title, default, or $schema keys; description fields are preserved",
+      "assertion_pseudocode": "tools := ArtifactTool(\"requirements\")\nassert len(tools) == 1\nassert tools[0][\"name\"] == \"submit_requirements\"\ncontentSchema := tools[0][\"input_schema\"][\"properties\"][\"content\"]\nassert NOT containsKey(contentSchema, \"$ref\") at any depth\nassert NOT containsKey(contentSchema, \"$defs\") at any depth\nassert NOT containsKey(contentSchema, \"title\") at any depth\nassert NOT containsKey(contentSchema, \"default\") at any depth\nassert NOT containsKey(contentSchema, \"$schema\")"
+    },
+    {
+      "id": "TS-06-39",
+      "requirement_id": "06-REQ-13.2",
+      "kind": "unit",
+      "description": "Verify that ArtifactTool returns an empty slice without panicking when called with an artifactName not in {requirements, test_spec, tasks}.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "ArtifactTool(\"unknown_artifact\")",
+      "expected": "returns []map[string]any{}; no panic",
+      "assertion_pseudocode": "tools := ArtifactTool(\"unknown_artifact\")\nassert len(tools) == 0"
+    },
+    {
+      "id": "TS-06-40",
+      "requirement_id": "06-REQ-14.1",
+      "kind": "unit",
+      "description": "Verify that InlineRefs recursively replaces all $ref entries with their $defs definitions and removes the $defs key from the result.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "schema := map[string]any{\"$defs\": {\"Foo\": {\"type\": \"string\"}}, \"properties\": {\"bar\": {\"$ref\": \"#/$defs/Foo\"}}}",
+      "expected": "returns map[string]any with no $ref or $defs keys; properties.bar.type == \"string\"",
+      "assertion_pseudocode": "schema := map{\"$defs\": {\"Foo\": {\"type\": \"string\"}}, \"properties\": {\"bar\": {\"$ref\": \"#/$defs/Foo\"}}}\nresult := InlineRefs(schema)\nassert NOT containsKey(result, \"$defs\")\nassert NOT containsKey(result, \"$ref\") at any depth\nassert result[\"properties\"][\"bar\"][\"type\"] == \"string\""
+    },
+    {
+      "id": "TS-06-41",
+      "requirement_id": "06-REQ-14.2",
+      "kind": "unit",
+      "description": "Verify that InlineRefs returns the schema unchanged (except removing $defs if present) when there are no $ref entries.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "schema := map[string]any{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}}}",
+      "expected": "returns map[string]any identical to input; no $defs key present",
+      "assertion_pseudocode": "schema := map{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}}}\nresult := InlineRefs(schema)\nassert result[\"type\"] == \"object\"\nassert result[\"properties\"][\"name\"][\"type\"] == \"string\"\nassert NOT containsKey(result, \"$defs\")"
+    },
+    {
+      "id": "TS-06-42",
+      "requirement_id": "06-REQ-15.1",
+      "kind": "unit",
+      "description": "Verify that CleanSchema recursively removes all title, default, and top-level $schema fields while preserving all description fields.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "schema := map[string]any{\"$schema\": \"http://json-schema.org/draft-07/schema\", \"title\": \"Root\", \"description\": \"Root desc\", \"properties\": {\"foo\": {\"title\": \"Foo\", \"description\": \"Foo desc\", \"default\": \"bar\", \"type\": \"string\"}}}",
+      "expected": "returns map without $schema, title at any level, default at any level; description fields at all levels are preserved",
+      "assertion_pseudocode": "result := CleanSchema(schema)\nassert NOT containsKey(result, \"$schema\")\nassert NOT containsKey(result, \"title\")\nassert NOT containsKey(result[\"properties\"][\"foo\"], \"title\")\nassert NOT containsKey(result[\"properties\"][\"foo\"], \"default\")\nassert result[\"description\"] == \"Root desc\"\nassert result[\"properties\"][\"foo\"][\"description\"] == \"Foo desc\""
+    },
+    {
+      "id": "TS-06-43",
+      "requirement_id": "06-REQ-15.2",
+      "kind": "unit",
+      "description": "Verify that CleanSchema returns the schema unchanged when it has no title, default, or $schema fields.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "schema := map[string]any{\"type\": \"object\", \"description\": \"A clean schema\", \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"An integer\"}}}",
+      "expected": "returns map[string]any identical to input",
+      "assertion_pseudocode": "schema := map{\"type\": \"object\", \"description\": \"A clean schema\", \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"An integer\"}}}\nresult := CleanSchema(schema)\nassert result[\"type\"] == \"object\"\nassert result[\"description\"] == \"A clean schema\"\nassert result[\"properties\"][\"x\"][\"type\"] == \"integer\"\nassert result[\"properties\"][\"x\"][\"description\"] == \"An integer\""
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-06-P1",
+      "property_id": "06-PROP-1",
+      "validates": [
+        "06-REQ-1.1",
+        "06-REQ-1.2",
+        "06-REQ-1.3",
+        "06-REQ-1.4",
+        "06-REQ-1.5"
+      ],
+      "description": "For any error value returned by any agentspec function, errors.As to AgentSpecError succeeds and Category() returns a non-empty string.",
+      "for_any_strategy": "Sample errors from all agentspec error constructors: newConfigError, newCampaignError, newSessionError, newAgentError with varied parameters; also wrap them with fmt.Errorf(\"%w\", err)",
+      "invariant_check": "for each sampled err: assert errors.As(err, &target) == true; assert len(target.Category()) > 0"
+    },
+    {
+      "id": "TS-06-P2",
+      "property_id": "06-PROP-2",
+      "validates": [
+        "06-REQ-2.3"
+      ],
+      "description": "For any call to LoadConfig when AF_SPEC_MODEL is set to a non-empty string, the returned AgentSpecConfig.Model always equals the AF_SPEC_MODEL value regardless of config file contents.",
+      "for_any_strategy": "Generate random non-empty strings for AF_SPEC_MODEL (alphanumeric, 1-50 chars); vary config.toml presence (absent, present with different model values, present with invalid model key); run LoadConfig in a temp directory for each combination",
+      "invariant_check": "cfg, err := LoadConfig(); assert err == nil OR errors.As(err, &ConfigError{}); if err == nil { assert cfg.Model == os.Getenv(\"AF_SPEC_MODEL\") }"
+    },
+    {
+      "id": "TS-06-P3",
+      "property_id": "06-PROP-3",
+      "validates": [
+        "06-REQ-2.1",
+        "06-REQ-2.E1"
+      ],
+      "description": "For any call to LoadConfig when both .specs/config.toml and ~/.specs/config.toml exist, the returned config is populated solely from the local file.",
+      "for_any_strategy": "Generate random model strings for local and global config files (ensuring they differ); create both files in temp directories; call LoadConfig with cwd set to the temp directory",
+      "invariant_check": "cfg, err := LoadConfig(); assert err == nil; assert cfg.Model == localModelValue; assert cfg.Model != globalModelValue"
+    },
+    {
+      "id": "TS-06-P4",
+      "property_id": "06-PROP-4",
+      "validates": [
+        "06-REQ-3.1",
+        "06-REQ-3.E1",
+        "06-REQ-7.1",
+        "06-REQ-7.E1"
+      ],
+      "description": "For any file write operation in agentspec, the target path either contains complete new content or pre-existing content after the operation completes or fails; no partial file is observable.",
+      "for_any_strategy": "Inject filesystem faults at random points during atomic writes (before rename, during write, after write but before rename) for campaign.yaml, prd.md, and _session.json; use a fault-injection wrapper around os.Rename and os.WriteFile",
+      "invariant_check": "after each write attempt (success or failure): content := readFile(targetPath); assert isCompleteValidContent(content) OR content == preExistingContent; assert noTempFilesMatchingPattern(dir, \"*.tmp*\")"
+    },
+    {
+      "id": "TS-06-P5",
+      "property_id": "06-PROP-5",
+      "validates": [
+        "06-REQ-8.1",
+        "06-REQ-8.E1"
+      ],
+      "description": "For any successful state transition on a SpecSession, _session.json reflects the new state; if the write fails, the in-memory state is reverted to match the pre-transition state.",
+      "for_any_strategy": "Create sessions in StateAssessing or StateRefining; call AcceptPRD with and without injected write failures; sample both success and failure scenarios",
+      "invariant_check": "if AcceptPRD returns nil: assert session.State() == StatePRDAccepted AND parseJSON(readFile(\"_session.json\"))[\"state\"] == \"prd_accepted\"; if AcceptPRD returns error: assert session.State() == preTransitionState AND parseJSON(readFile(\"_session.json\"))[\"state\"] == preTransitionStateStr"
+    },
+    {
+      "id": "TS-06-P6",
+      "property_id": "06-PROP-6",
+      "validates": [
+        "06-REQ-8.1",
+        "06-REQ-8.2"
+      ],
+      "description": "AcceptPRD returns nil if and only if the pre-call state was StateAssessing or StateRefining; otherwise it returns a SessionError and the state is unchanged.",
+      "for_any_strategy": "Sample all SessionState values (StateInit, StateAssessing, StateRefining, StatePRDAccepted, StateGenerating, StateGenerated) by constructing sessions with each state via direct JSON manipulation of _session.json; call AcceptPRD on each",
+      "invariant_check": "if preState in {StateAssessing, StateRefining}: assert AcceptPRD() == nil AND session.State() == StatePRDAccepted; else: assert errors.As(AcceptPRD(), &SessionError{}) == true AND session.State() == preState"
+    },
+    {
+      "id": "TS-06-P7",
+      "property_id": "06-PROP-7",
+      "validates": [
+        "06-REQ-14.1",
+        "06-REQ-14.2"
+      ],
+      "description": "For any call to InlineRefs with any schema map where all referenced definitions exist in $defs, the returned map contains no $ref or $defs keys at any nesting level.",
+      "for_any_strategy": "Generate random JSON Schema maps with varying depths (1-5 levels), random numbers of $defs entries (0-10), and random $ref references pointing to existing $defs; also generate schemas with no $refs",
+      "invariant_check": "result := InlineRefs(schema); assert NOT deepContainsKey(result, \"$ref\"); assert NOT containsKey(result, \"$defs\")"
+    },
+    {
+      "id": "TS-06-P8",
+      "property_id": "06-PROP-8",
+      "validates": [
+        "06-REQ-15.1",
+        "06-REQ-15.2"
+      ],
+      "description": "For any call to CleanSchema with any schema map containing description fields, every description field present in the input is present in the output at the same nesting path.",
+      "for_any_strategy": "Generate random JSON Schema maps with description fields at varying nesting depths (1-5 levels), mixed with title, default, and $schema fields; record all description field paths before calling CleanSchema",
+      "invariant_check": "descPaths := collectDescriptionPaths(schema); result := CleanSchema(schema); for each path in descPaths: assert getAtPath(result, path) == getAtPath(schema, path)"
+    },
+    {
+      "id": "TS-06-P9",
+      "property_id": "06-PROP-9",
+      "validates": [
+        "06-REQ-6.1",
+        "06-REQ-6.E2"
+      ],
+      "description": "For any sequence of calls to Campaign.NewSpec on the same campaign, each new spec directory's numeric prefix is strictly greater than the maximum prefix among all existing active and archived spec directories.",
+      "for_any_strategy": "Create a campaign; call NewSpec N times (N sampled from 1-10) with random valid spec names; after each call, scan both active and archive directories to collect all numeric prefixes",
+      "invariant_check": "after each NewSpec call: allPrefixes := collectAllPrefixes(campaignDir, archiveDir); newPrefix := prefixOf(newSpecDir); assert newPrefix == max(allPrefixes excluding newPrefix) + 1"
+    },
+    {
+      "id": "TS-06-P10",
+      "property_id": "06-PROP-10",
+      "validates": [
+        "06-REQ-7.1",
+        "06-REQ-7.2"
+      ],
+      "description": "For any SpecSession created by CreateSession, ResumeSession returns a SpecSession with identical state, mode, prd_path, assessment_history, qa_exchanges, generated_artifacts, and last_error fields.",
+      "for_any_strategy": "Generate random valid SpecSession parameters: specDir (temp dir), mode (sampled from [\"standard\", \"fast\"]), source (random path string); call CreateSession then immediately ResumeSession; also test after simulated process restart by re-reading from disk",
+      "invariant_check": "original, _ := CreateSession(specDir, mode, source); resumed, _ := ResumeSession(specDir); assert resumed.State() == original.State(); assert resumed.mode == original.mode; assert resumed.prdPath == original.prdPath; assert deepEqual(resumed.assessmentHistory, original.assessmentHistory); assert deepEqual(resumed.qaExchanges, original.qaExchanges); assert deepEqual(resumed.generatedArtifacts, original.generatedArtifacts)"
+    }
+  ],
+  "edge_case_tests": [
+    {
+      "id": "TS-06-E1",
+      "requirement_id": "06-REQ-1.E1",
+      "kind": "unit",
+      "description": "Verify that AgentError with no HTTPStatus has a nil/zero HTTPStatus field and omits http_status from JSON serialization.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "AgentError{Detail: \"internal error\", ErrorCategory: \"internal\", Retryable: false, HTTPStatus: nil}",
+      "expected": "HTTPStatus is nil; JSON marshaling of the error omits the http_status key",
+      "assertion_pseudocode": "err := newAgentError(\"internal error\", \"internal\", false, nil, nil)\nassert err.HTTPStatus == nil\njsonBytes := marshalJSON(err)\nassert NOT strings.Contains(string(jsonBytes), \"http_status\")"
+    },
+    {
+      "id": "TS-06-E2",
+      "requirement_id": "06-REQ-1.E2",
+      "kind": "unit",
+      "description": "Verify that AgentError accepts an out-of-range ErrorCategory without panicking and stores the provided string.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "AgentError{ErrorCategory: \"totally_unknown_category\"}",
+      "expected": "no panic; err.ErrorCategory == \"totally_unknown_category\"",
+      "assertion_pseudocode": "err := newAgentError(\"msg\", \"totally_unknown_category\", false, nil, nil)\nassert err != nil\nassert err.ErrorCategory == \"totally_unknown_category\""
+    },
+    {
+      "id": "TS-06-E3",
+      "requirement_id": "06-REQ-2.E1",
+      "kind": "unit",
+      "description": "Verify that LoadConfig uses only the local .specs/config.toml and ignores the global ~/.specs/config.toml when both exist.",
+      "preconditions": [
+        "a temporary directory is used as cwd",
+        ".specs/config.toml exists with model=\"LOCAL_MODEL\"",
+        "~/.specs/config.toml exists with model=\"GLOBAL_MODEL\" (or a temp home dir is set)"
+      ],
+      "input": "LoadConfig() called when both config files exist",
+      "expected": "returns AgentSpecConfig{Model: \"LOCAL_MODEL\"}; global file is not read",
+      "assertion_pseudocode": "cfg, err := LoadConfig()\nassert err == nil\nassert cfg.Model == \"LOCAL_MODEL\""
+    },
+    {
+      "id": "TS-06-E4",
+      "requirement_id": "06-REQ-2.E2",
+      "kind": "unit",
+      "description": "Verify that LoadConfig silently ignores unknown sections like [spec_tool] or [theme] and returns no error.",
+      "preconditions": [
+        "a temporary directory is used as cwd",
+        ".specs/config.toml contains [model] model=\"STANDARD\", [spec_tool] some_key=\"val\", [theme] color=\"blue\""
+      ],
+      "input": "LoadConfig() called with config.toml containing unknown sections",
+      "expected": "returns (AgentSpecConfig{Model: \"STANDARD\"}, nil); no error",
+      "assertion_pseudocode": "cfg, err := LoadConfig()\nassert err == nil\nassert cfg.Model == \"STANDARD\""
+    },
+    {
+      "id": "TS-06-E5",
+      "requirement_id": "06-REQ-2.E3",
+      "kind": "unit",
+      "description": "Verify that LoadConfig treats AF_SPEC_MODEL set to an empty string as unset and falls back to the config file value or default.",
+      "preconditions": [
+        "a temporary directory is used as cwd",
+        ".specs/config.toml exists with model=\"FAST\"",
+        "AF_SPEC_MODEL is set to \"\""
+      ],
+      "input": "LoadConfig() called with AF_SPEC_MODEL=\"\"",
+      "expected": "returns AgentSpecConfig{Model: \"FAST\"}; empty env var is treated as unset",
+      "assertion_pseudocode": "os.Setenv(\"AF_SPEC_MODEL\", \"\")\ndefer os.Unsetenv(\"AF_SPEC_MODEL\")\ncfg, err := LoadConfig()\nassert err == nil\nassert cfg.Model == \"FAST\""
+    },
+    {
+      "id": "TS-06-E6",
+      "requirement_id": "06-REQ-2.E4",
+      "kind": "unit",
+      "description": "Verify that LoadConfig returns a ConfigError wrapping the OS error when config.toml exists but is not readable due to filesystem permissions.",
+      "preconditions": [
+        "a temporary directory is used as cwd",
+        ".specs/config.toml exists with permissions 000 (not readable)"
+      ],
+      "input": "LoadConfig() called when config.toml is unreadable",
+      "expected": "returns (AgentSpecConfig{}, ConfigError); errors.As(err, &ConfigError{}) is true",
+      "assertion_pseudocode": "os.Chmod(\".specs/config.toml\", 0000)\ndefer os.Chmod(\".specs/config.toml\", 0644)\ncfg, err := LoadConfig()\nassert cfg == AgentSpecConfig{}\nvar ce *ConfigError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"config\""
+    },
+    {
+      "id": "TS-06-E7",
+      "requirement_id": "06-REQ-3.E1",
+      "kind": "unit",
+      "description": "Verify that CreateCampaign cleans up the temporary file and returns a CampaignError when the atomic rename fails, leaving no partial campaign.yaml.",
+      "preconditions": [
+        "a temporary directory exists",
+        "filesystem is configured to fail rename operations (e.g. via mock or read-only target)"
+      ],
+      "input": "CreateCampaign(readOnlyDir, \"Name\", \"Desc\") where rename will fail",
+      "expected": "returns (nil, CampaignError); no partial campaign.yaml exists at the target path; no temp file remains",
+      "assertion_pseudocode": "campaign, err := CreateCampaign(readOnlyDir, \"Name\", \"Desc\")\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert NOT fileExists(readOnlyDir+\"/campaign.yaml\")\nassert noTempFilesIn(readOnlyDir)"
+    },
+    {
+      "id": "TS-06-E8",
+      "requirement_id": "06-REQ-3.E2",
+      "kind": "unit",
+      "description": "Verify that CreateCampaign returns a CampaignError when name or description is an empty string.",
+      "preconditions": [
+        "a temporary parent directory exists"
+      ],
+      "input": "CreateCampaign(tmpDir+\"/camp\", \"\", \"Desc\")",
+      "expected": "returns (nil, CampaignError); errors.As(err, &CampaignError{}) is true; error describes missing name field",
+      "assertion_pseudocode": "campaign, err := CreateCampaign(tmpDir+\"/camp\", \"\", \"Desc\")\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\""
+    },
+    {
+      "id": "TS-06-E9",
+      "requirement_id": "06-REQ-3.E3",
+      "kind": "unit",
+      "description": "Verify that concurrent CreateCampaign calls for the same path result in exactly one success and one CampaignError, with the final campaign.yaml being a complete valid file.",
+      "preconditions": [
+        "a temporary parent directory exists",
+        "no campaign.yaml exists at the target path"
+      ],
+      "input": "two goroutines simultaneously call CreateCampaign(samePath, \"Name\", \"Desc\")",
+      "expected": "exactly one goroutine receives (*Campaign, nil); the other receives (nil, CampaignError); campaign.yaml is a complete, valid YAML file",
+      "assertion_pseudocode": "results := runConcurrently(2, func() { return CreateCampaign(samePath, \"Name\", \"Desc\") })\nsuccessCount := count(results where err == nil)\nassert successCount == 1\nassert count(results where err != nil) == 1\nyamlContent := readFile(samePath+\"/campaign.yaml\")\nassert isValidYAML(yamlContent)\nassert yamlContent contains \"name: Name\""
+    },
+    {
+      "id": "TS-06-E10",
+      "requirement_id": "06-REQ-4.E1",
+      "kind": "unit",
+      "description": "Verify that OpenCampaign returns a CampaignError when campaign.yaml is readable but missing required fields such as name or created_at.",
+      "preconditions": [
+        "a temporary directory exists",
+        "campaign.yaml exists with content \"description: only desc\" (missing name and created_at)"
+      ],
+      "input": "OpenCampaign(tmpDir) where campaign.yaml is missing required fields",
+      "expected": "returns (nil, CampaignError); errors.As(err, &CampaignError{}) is true; error describes missing fields",
+      "assertion_pseudocode": "campaign, err := OpenCampaign(tmpDir)\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\""
+    },
+    {
+      "id": "TS-06-E11",
+      "requirement_id": "06-REQ-4.E2",
+      "kind": "unit",
+      "description": "Verify that OpenCampaign returns a CampaignError without attempting filesystem access when path is an empty string.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "OpenCampaign(\"\")",
+      "expected": "returns (nil, CampaignError); errors.As(err, &CampaignError{}) is true; no filesystem access attempted",
+      "assertion_pseudocode": "campaign, err := OpenCampaign(\"\")\nassert campaign == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\""
+    },
+    {
+      "id": "TS-06-E12",
+      "requirement_id": "06-REQ-5.E1",
+      "kind": "unit",
+      "description": "Verify that Campaign.Specs returns a CampaignError wrapping the OS error when the campaign directory is not readable.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "the campaign directory has permissions 000 (not readable)"
+      ],
+      "input": "campaign.Specs() called on an unreadable campaign directory",
+      "expected": "returns (nil, CampaignError); errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "os.Chmod(campaignDir, 0000)\ndefer os.Chmod(campaignDir, 0755)\nspecs, err := campaign.Specs()\nassert specs == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert ce.Category() == \"campaign\""
+    },
+    {
+      "id": "TS-06-E13",
+      "requirement_id": "06-REQ-5.E2",
+      "kind": "unit",
+      "description": "Verify that Campaign.Specs silently skips non-matching entries and returns only valid spec directory names.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "subdirectories include 01_valid, random_dir, .hidden, 02_also_valid"
+      ],
+      "input": "campaign.Specs() called when non-matching directories exist",
+      "expected": "returns ([\"01_valid\", \"02_also_valid\"], nil); random_dir and .hidden are excluded",
+      "assertion_pseudocode": "specs, err := campaign.Specs()\nassert err == nil\nassert len(specs) == 2\nassert specs[0] == \"01_valid\"\nassert specs[1] == \"02_also_valid\"\nassert \"random_dir\" not in specs\nassert \".hidden\" not in specs"
+    },
+    {
+      "id": "TS-06-E14",
+      "requirement_id": "06-REQ-5.E3",
+      "kind": "unit",
+      "description": "Verify that Campaign.Specs excludes archive/ from the returned list but includes all active spec directories.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "subdirectories include 01_alpha, 02_beta, archive/"
+      ],
+      "input": "campaign.Specs() called when archive/ exists alongside active specs",
+      "expected": "returns ([\"01_alpha\", \"02_beta\"], nil); archive/ is not in the result",
+      "assertion_pseudocode": "specs, err := campaign.Specs()\nassert err == nil\nassert \"archive\" not in specs\nassert \"01_alpha\" in specs\nassert \"02_beta\" in specs"
+    },
+    {
+      "id": "TS-06-E15",
+      "requirement_id": "06-REQ-6.E1",
+      "kind": "unit",
+      "description": "Verify that Campaign.NewSpec returns the error from CreateSession when CreateSession fails after spec directory and prd.md have been written.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "a valid PRD file exists",
+        "CreateSession is mocked to fail"
+      ],
+      "input": "campaign.NewSpec(\"my_spec\", prdPath, \"standard\", \"source\") when CreateSession fails",
+      "expected": "returns (nil, error); spec directory and prd.md remain on disk for manual recovery",
+      "assertion_pseudocode": "session, err := campaign.NewSpec(\"my_spec\", prdPath, \"standard\", \"source\")\nassert session == nil\nassert err != nil\nassert dirExists(campaignDir+\"/01_my_spec\")\nassert fileExists(campaignDir+\"/01_my_spec/prd.md\")"
+    },
+    {
+      "id": "TS-06-E16",
+      "requirement_id": "06-REQ-6.E2",
+      "kind": "unit",
+      "description": "Verify that Campaign.NewSpec includes archived spec prefixes when computing the next numeric prefix, ensuring the new spec's prefix is strictly greater than all existing prefixes.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "active specs: 01_alpha, 02_beta",
+        "archive/ contains 05_old_spec",
+        "a valid PRD file exists"
+      ],
+      "input": "campaign.NewSpec(\"new_spec\", prdPath, \"standard\", \"source\") when archive has higher prefix",
+      "expected": "returns (*SpecSession, nil); new spec directory is named 06_new_spec (prefix 6 = max(1,2,5)+1)",
+      "assertion_pseudocode": "session, err := campaign.NewSpec(\"new_spec\", prdPath, \"standard\", \"source\")\nassert err == nil\nassert session != nil\nassert dirExists(campaignDir+\"/06_new_spec\")"
+    },
+    {
+      "id": "TS-06-E17",
+      "requirement_id": "06-REQ-6.E3",
+      "kind": "unit",
+      "description": "Verify that Campaign.NewSpec returns a CampaignError without creating any directories or files when specName is an empty string.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml",
+        "a valid PRD file exists"
+      ],
+      "input": "campaign.NewSpec(\"\", prdPath, \"standard\", \"source\")",
+      "expected": "returns (nil, CampaignError); no new directories or files are created; errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "beforeDirs := listDir(campaignDir)\nsession, err := campaign.NewSpec(\"\", prdPath, \"standard\", \"source\")\nassert session == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert listDir(campaignDir) == beforeDirs"
+    },
+    {
+      "id": "TS-06-E18",
+      "requirement_id": "06-REQ-6.E4",
+      "kind": "unit",
+      "description": "Verify that Campaign.NewSpec returns a CampaignError without leaving partial state when the spec directory cannot be created due to filesystem permissions.",
+      "preconditions": [
+        "a campaign directory exists with campaign.yaml but has permissions that prevent subdirectory creation",
+        "a valid PRD file exists"
+      ],
+      "input": "campaign.NewSpec(\"my_spec\", prdPath, \"standard\", \"source\") when mkdir fails",
+      "expected": "returns (nil, CampaignError); no partial spec directory exists; errors.As(err, &CampaignError{}) is true",
+      "assertion_pseudocode": "os.Chmod(campaignDir, 0555)\ndefer os.Chmod(campaignDir, 0755)\nsession, err := campaign.NewSpec(\"my_spec\", prdPath, \"standard\", \"source\")\nassert session == nil\nvar ce *CampaignError\nassert errors.As(err, &ce) == true\nassert NOT dirExists(campaignDir+\"/01_my_spec\")"
+    },
+    {
+      "id": "TS-06-E19",
+      "requirement_id": "06-REQ-7.E1",
+      "kind": "unit",
+      "description": "Verify that CreateSession cleans up the temporary file and returns an error when the atomic write of _session.json fails, leaving no partial file.",
+      "preconditions": [
+        "a temporary spec directory exists",
+        "filesystem is configured to fail the rename/write operation"
+      ],
+      "input": "CreateSession(specDir, \"standard\", \"prd.md\") when atomic write fails",
+      "expected": "returns (nil, error); no _session.json exists at specDir; no temp file remains",
+      "assertion_pseudocode": "session, err := CreateSession(specDir, \"standard\", \"prd.md\")\nassert session == nil\nassert err != nil\nassert NOT fileExists(specDir+\"/_session.json\")\nassert noTempFilesIn(specDir)"
+    },
+    {
+      "id": "TS-06-E20",
+      "requirement_id": "06-REQ-7.E2",
+      "kind": "unit",
+      "description": "Verify that ResumeSession returns a SessionError describing the unrecognized state when _session.json contains a state value not in the defined SessionState constants.",
+      "preconditions": [
+        "a temporary spec directory exists",
+        "_session.json exists with state=\"totally_unknown_state\""
+      ],
+      "input": "ResumeSession(specDir) when _session.json has an unknown state value",
+      "expected": "returns (nil, SessionError); errors.As(err, &SessionError{}) is true; error message references the unrecognized state",
+      "assertion_pseudocode": "session, err := ResumeSession(specDir)\nassert session == nil\nvar se *SessionError\nassert errors.As(err, &se) == true\nassert se.Category() == \"state\"\nassert strings.Contains(se.Error(), \"totally_unknown_state\") OR strings.Contains(se.Error(), \"unrecognized\")"
+    },
+    {
+      "id": "TS-06-E21",
+      "requirement_id": "06-REQ-7.E3",
+      "kind": "unit",
+      "description": "Verify that CreateSession returns an error without creating any files when specDir is an empty string or does not exist.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "CreateSession(\"\", \"standard\", \"prd.md\")",
+      "expected": "returns (nil, error); no files are created",
+      "assertion_pseudocode": "session, err := CreateSession(\"\", \"standard\", \"prd.md\")\nassert session == nil\nassert err != nil"
+    },
+    {
+      "id": "TS-06-E22",
+      "requirement_id": "06-REQ-8.E1",
+      "kind": "unit",
+      "description": "Verify that SpecSession.AcceptPRD reverts in-memory state to pre-transition value and returns an error when atomic persistence of the state transition fails.",
+      "preconditions": [
+        "a SpecSession exists in StateAssessing",
+        "filesystem is configured to fail the _session.json write during AcceptPRD"
+      ],
+      "input": "session.AcceptPRD() when the atomic _session.json write fails",
+      "expected": "returns error; session.State() remains StateAssessing; _session.json still contains state=\"assessing\"",
+      "assertion_pseudocode": "err := session.AcceptPRD()\nassert err != nil\nassert session.State() == StateAssessing\njsonContent := parseJSON(readFile(specDir+\"/_session.json\"))\nassert jsonContent[\"state\"] == \"assessing\""
+    },
+    {
+      "id": "TS-06-E23",
+      "requirement_id": "06-REQ-8.E2",
+      "kind": "unit",
+      "description": "Verify that SpecSession.PendingQuestions() returns an empty slice when the latest Assessment has no questions.",
+      "preconditions": [
+        "a SpecSession exists with assessmentHistory containing one entry with Questions=[]"
+      ],
+      "input": "session.PendingQuestions() called when latest assessment has no questions",
+      "expected": "returns []map[string]any{} (empty slice)",
+      "assertion_pseudocode": "questions := session.PendingQuestions()\nassert len(questions) == 0"
+    },
+    {
+      "id": "TS-06-E24",
+      "requirement_id": "06-REQ-8.E3",
+      "kind": "unit",
+      "description": "Verify that SpecSession.PendingQuestions() returns an empty slice when assessmentHistory is empty.",
+      "preconditions": [
+        "a SpecSession exists in StateInit with empty assessmentHistory"
+      ],
+      "input": "session.PendingQuestions() called on a fresh session",
+      "expected": "returns []map[string]any{} (empty slice)",
+      "assertion_pseudocode": "session, _ := CreateSession(specDir, \"standard\", \"prd.md\")\nquestions := session.PendingQuestions()\nassert len(questions) == 0"
+    },
+    {
+      "id": "TS-06-E25",
+      "requirement_id": "06-REQ-9.E1",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Validate() returns SessionValidationResult with Valid=false and an IntegrityErrors entry when no artifact files exist in the spec directory.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing no artifact JSON files"
+      ],
+      "input": "session.Validate() called when no artifacts exist",
+      "expected": "returns (SessionValidationResult{Valid: false, IntegrityErrors: [\"no artifacts found\" or similar]}, nil)",
+      "assertion_pseudocode": "result, err := session.Validate()\nassert err == nil\nassert result.Valid == false\nassert len(result.IntegrityErrors) > 0"
+    },
+    {
+      "id": "TS-06-E26",
+      "requirement_id": "06-REQ-9.E2",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Validate() records a parse failure as a SchemaError and continues validating remaining artifacts when one artifact file contains invalid JSON.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing requirements.json with invalid JSON and a valid test_spec.json"
+      ],
+      "input": "session.Validate() called when one artifact has invalid JSON",
+      "expected": "returns (SessionValidationResult{Valid: false, SchemaErrors: [...]}, nil); SchemaErrors contains an entry for the invalid artifact; validation continues for remaining artifacts",
+      "assertion_pseudocode": "result, err := session.Validate()\nassert err == nil\nassert result.Valid == false\nassert len(result.SchemaErrors) > 0"
+    },
+    {
+      "id": "TS-06-E27",
+      "requirement_id": "06-REQ-10.E1",
+      "kind": "unit",
+      "description": "Verify that SpecSession.Render returns an empty string for combined mode or an empty map for individual mode when no artifact files are present.",
+      "preconditions": [
+        "a SpecSession exists with a specDir containing no artifact files"
+      ],
+      "input": "session.Render(true) and session.Render(false) called when no artifacts exist",
+      "expected": "Render(true) returns (\"\", nil); Render(false) returns (map[string]string{}, nil)",
+      "assertion_pseudocode": "resultCombined, err1 := session.Render(true)\nassert err1 == nil\nassert resultCombined == \"\"\nresultIndividual, err2 := session.Render(false)\nassert err2 == nil\nresultMap, ok := resultIndividual.(map[string]string)\nassert ok == true\nassert len(resultMap) == 0"
+    },
+    {
+      "id": "TS-06-E28",
+      "requirement_id": "06-REQ-11.E1",
+      "kind": "unit",
+      "description": "Verify that AssessmentTools() returns a new distinct slice on every call so that callers cannot mutate the shared definition.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "AssessmentTools() called twice",
+      "expected": "the two returned slices are distinct values (different pointers); mutating one does not affect the other",
+      "assertion_pseudocode": "tools1 := AssessmentTools()\ntools2 := AssessmentTools()\nassert &tools1 != &tools2\ntools1[0][\"name\"] = \"mutated\"\nassert tools2[0][\"name\"] == \"submit_assessment\""
+    },
+    {
+      "id": "TS-06-E29",
+      "requirement_id": "06-REQ-12.E1",
+      "kind": "unit",
+      "description": "Verify that RefinementTools() returns a new distinct slice on every call so that callers cannot mutate the shared definition.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "RefinementTools() called twice",
+      "expected": "the two returned slices are distinct values; mutating one does not affect the other",
+      "assertion_pseudocode": "tools1 := RefinementTools()\ntools2 := RefinementTools()\nassert &tools1 != &tools2\ntools1[0][\"name\"] = \"mutated\"\nassert tools2[0][\"name\"] == \"submit_prd_update\""
+    },
+    {
+      "id": "TS-06-E30",
+      "requirement_id": "06-REQ-13.E1",
+      "kind": "unit",
+      "description": "Verify that ArtifactTool returns an empty slice without panicking when Schemas() does not contain an entry for the requested artifactName.",
+      "preconditions": [
+        "agentspec package is compiled",
+        "afspec.Schemas() is mocked to return a map without the requested key"
+      ],
+      "input": "ArtifactTool(\"missing_schema\")",
+      "expected": "returns []map[string]any{}; no panic",
+      "assertion_pseudocode": "tools := ArtifactTool(\"missing_schema\")\nassert len(tools) == 0"
+    },
+    {
+      "id": "TS-06-E31",
+      "requirement_id": "06-REQ-13.E2",
+      "kind": "unit",
+      "description": "Verify that InlineRefs handles a circular $ref chain by breaking the cycle rather than looping infinitely, returning a finite schema.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "schema with circular $ref: {\"$defs\": {\"A\": {\"$ref\": \"#/$defs/B\"}, \"B\": {\"$ref\": \"#/$defs/A\"}}, \"$ref\": \"#/$defs/A\"}",
+      "expected": "returns []map[string]any with a finite schema; no infinite loop or stack overflow; function terminates",
+      "assertion_pseudocode": "schema := map{\"$defs\": {\"A\": {\"$ref\": \"#/$defs/B\"}, \"B\": {\"$ref\": \"#/$defs/A\"}}, \"$ref\": \"#/$defs/A\"}\nresult := ArtifactTool(\"circular_test\") // or call InlineRefs directly\nassert terminatesWithin(5, seconds)\nassert result != nil"
+    },
+    {
+      "id": "TS-06-E32",
+      "requirement_id": "06-REQ-14.E1",
+      "kind": "unit",
+      "description": "Verify that InlineRefs leaves an unresolvable $ref in place and continues processing the rest of the schema.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "schema := map{\"$defs\": {\"Foo\": {\"type\": \"string\"}}, \"properties\": {\"bar\": {\"$ref\": \"#/$defs/NonExistent\"}, \"baz\": {\"$ref\": \"#/$defs/Foo\"}}}",
+      "expected": "returns map where properties.bar still has $ref=\"#/$defs/NonExistent\" (unresolvable preserved); properties.baz is inlined to {\"type\": \"string\"}",
+      "assertion_pseudocode": "result := InlineRefs(schema)\nassert result[\"properties\"][\"bar\"][\"$ref\"] == \"#/$defs/NonExistent\"\nassert result[\"properties\"][\"baz\"][\"type\"] == \"string\""
+    },
+    {
+      "id": "TS-06-E33",
+      "requirement_id": "06-REQ-14.E2",
+      "kind": "unit",
+      "description": "Verify that InlineRefs returns an empty map without panicking when the input schema map is nil or empty.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "InlineRefs(nil) and InlineRefs(map[string]any{})",
+      "expected": "both calls return map[string]any{}; no panic",
+      "assertion_pseudocode": "result1 := InlineRefs(nil)\nassert result1 != nil\nassert len(result1) == 0\nresult2 := InlineRefs(map{})\nassert len(result2) == 0"
+    },
+    {
+      "id": "TS-06-E34",
+      "requirement_id": "06-REQ-15.E1",
+      "kind": "unit",
+      "description": "Verify that CleanSchema returns an empty map without panicking when the input schema map is nil or empty.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "CleanSchema(nil) and CleanSchema(map[string]any{})",
+      "expected": "both calls return map[string]any{}; no panic",
+      "assertion_pseudocode": "result1 := CleanSchema(nil)\nassert result1 != nil\nassert len(result1) == 0\nresult2 := CleanSchema(map{})\nassert len(result2) == 0"
+    },
+    {
+      "id": "TS-06-E35",
+      "requirement_id": "06-REQ-15.E2",
+      "kind": "unit",
+      "description": "Verify that CleanSchema recursively strips title and default fields from all nested objects in properties and items arrays.",
+      "preconditions": [
+        "agentspec package is compiled"
+      ],
+      "input": "schema with nested structure: {\"title\": \"Root\", \"properties\": {\"items\": {\"type\": \"array\", \"title\": \"Items\", \"items\": {\"title\": \"Item\", \"default\": \"x\", \"type\": \"string\"}}}}",
+      "expected": "returns map with no title or default keys at any nesting depth; type fields are preserved",
+      "assertion_pseudocode": "schema := map{\"title\": \"Root\", \"properties\": {\"items\": {\"type\": \"array\", \"title\": \"Items\", \"items\": {\"title\": \"Item\", \"default\": \"x\", \"type\": \"string\"}}}}\nresult := CleanSchema(schema)\nassert NOT containsKey(result, \"title\")\nassert NOT containsKey(result[\"properties\"][\"items\"], \"title\")\nassert NOT containsKey(result[\"properties\"][\"items\"][\"items\"], \"title\")\nassert NOT containsKey(result[\"properties\"][\"items\"][\"items\"], \"default\")\nassert result[\"properties\"][\"items\"][\"items\"][\"type\"] == \"string\""
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "TS-06-SMOKE-1",
+      "execution_path_id": "06-PATH-1",
+      "description": "End-to-end smoke test: create a campaign directory and provision the first spec, verifying all files are written correctly and the session is initialized.",
+      "trigger": "Call CreateCampaign with a new path, then call Campaign.NewSpec with a valid spec name, PRD file, mode, and source",
+      "real_components": [
+        "CreateCampaign",
+        "Campaign.NewSpec",
+        "CreateSession"
+      ],
+      "mockable": [
+        "filesystem (temp directory)"
+      ],
+      "expected_effects": [
+        "campaign.yaml exists at the campaign path with correct name, description, created_at, updated_at fields",
+        "spec directory named 01_{specName} exists inside the campaign directory",
+        "prd.md exists in the spec directory with YAML frontmatter containing spec_id, spec_name, title, status: draft, schema_version: 1, source, and the PRD body content",
+        "_session.json exists in the spec directory with state=\"init\" and empty assessment_history, qa_exchanges, generated_artifacts",
+        "returned SpecSession has State() == StateInit and SpecDir() pointing to the spec directory"
+      ]
+    },
+    {
+      "id": "TS-06-SMOKE-2",
+      "execution_path_id": "06-PATH-2",
+      "description": "End-to-end smoke test: load configuration with AF_SPEC_MODEL environment variable set, verifying the env var overrides the config file value.",
+      "trigger": "Set AF_SPEC_MODEL=\"FAST\", create .specs/config.toml with model=\"STANDARD\", then call LoadConfig()",
+      "real_components": [
+        "LoadConfig"
+      ],
+      "mockable": [
+        "filesystem (temp directory for .specs/config.toml)",
+        "environment variables"
+      ],
+      "expected_effects": [
+        "LoadConfig returns (AgentSpecConfig, nil) with no error",
+        "returned AgentSpecConfig.Model == \"FAST\" (from AF_SPEC_MODEL, not from config file)",
+        "AuthMethod, VertexProject, VertexRegion are populated from the [provider] section of config.toml if present"
+      ]
+    },
+    {
+      "id": "TS-06-SMOKE-3",
+      "execution_path_id": "06-PATH-3",
+      "description": "End-to-end smoke test: resume a session from disk and accept the PRD, verifying state transition and atomic persistence.",
+      "trigger": "Create a session in StateAssessing via CreateSession and direct JSON manipulation of _session.json, then call ResumeSession followed by SpecSession.AcceptPRD()",
+      "real_components": [
+        "ResumeSession",
+        "SpecSession.AcceptPRD"
+      ],
+      "mockable": [
+        "filesystem (temp directory for _session.json)"
+      ],
+      "expected_effects": [
+        "ResumeSession returns (*SpecSession, nil) with State() == StateAssessing",
+        "AcceptPRD() returns nil",
+        "session.State() == StatePRDAccepted after AcceptPRD",
+        "_session.json contains state=\"prd_accepted\" after AcceptPRD"
+      ]
+    },
+    {
+      "id": "TS-06-SMOKE-4",
+      "execution_path_id": "06-PATH-4",
+      "description": "End-to-end smoke test: build the artifact tool schema for \"requirements\", verifying InlineRefs and CleanSchema are applied correctly.",
+      "trigger": "Call ArtifactTool(\"requirements\") with afspec.Schemas() providing the real embedded requirements JSON Schema",
+      "real_components": [
+        "ArtifactTool",
+        "InlineRefs",
+        "CleanSchema"
+      ],
+      "mockable": [
+        "afspec.Schemas() (use real embedded schemas from the in-repo afspec package)"
+      ],
+      "expected_effects": [
+        "returns []map[string]any with exactly one entry",
+        "entry[\"name\"] == \"submit_requirements\"",
+        "the content property of the input schema contains no $ref keys at any depth",
+        "the content property contains no $defs key",
+        "the content property contains no title keys at any depth",
+        "the content property contains no default keys at any depth",
+        "the content property contains no $schema key",
+        "description fields from the original schema are preserved in the output"
+      ]
+    },
+    {
+      "id": "TS-06-SMOKE-5",
+      "execution_path_id": "06-PATH-5",
+      "description": "End-to-end smoke test: validate a session with some missing artifact files, verifying the fallback path loads individual artifacts and returns a structured result.",
+      "trigger": "Create a SpecSession with a specDir containing only requirements.json (missing test_spec.json and tasks.json), then call session.Validate()",
+      "real_components": [
+        "SpecSession.Validate"
+      ],
+      "mockable": [
+        "afspec.LoadSpec (expected to fail due to missing artifacts)",
+        "filesystem (temp directory with partial artifacts)"
+      ],
+      "expected_effects": [
+        "Validate() returns (SessionValidationResult, nil) with no error from Validate itself",
+        "SessionValidationResult.Valid == false",
+        "SessionValidationResult.SchemaErrors or IntegrityErrors contains entries describing the missing artifacts",
+        "validation does not panic or return a non-nil error from Validate()"
+      ]
+    },
+    {
+      "id": "TS-06-SMOKE-6",
+      "execution_path_id": "06-PATH-6",
+      "description": "End-to-end smoke test: open an existing campaign and list its specs sorted by numeric prefix, excluding archive/.",
+      "trigger": "Create a campaign directory with campaign.yaml and subdirectories 03_gamma, 01_alpha, 02_beta, archive/05_old; call OpenCampaign then Campaign.Specs()",
+      "real_components": [
+        "OpenCampaign",
+        "Campaign.Specs"
+      ],
+      "mockable": [
+        "filesystem (temp directory with campaign structure)",
+        "afspec.ParseSpecDirName (use real implementation)"
+      ],
+      "expected_effects": [
+        "OpenCampaign returns (*Campaign, nil) with Metadata.Name populated from campaign.yaml",
+        "Campaign.Specs() returns ([\"01_alpha\", \"02_beta\", \"03_gamma\"], nil)",
+        "archive/ is not included in the returned slice",
+        "results are sorted ascending by numeric prefix"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}

@@ -1,0 +1,1238 @@
+{
+  "$schema": null,
+  "spec_id": "07",
+  "spec_name": "agentspec_go_ai",
+  "schema_version": 1,
+  "introduction": "The Go AI layer of the `agentspec` package implements the LLM client, prompt template system, and AI agent pipeline that drive PRD assessment, iterative refinement, and sequential artifact generation — porting the Python implementation to Go and wiring it into the `SpecSession` state machine. Note: requirements referencing the Anthropic Go SDK (`github.com/anthropics/anthropic-sdk-go`) and `afspec` Go APIs are based on PRD assumptions and should be cross-checked against the installed library versions before implementation.",
+  "glossary": {
+    "AICall": "The central LLM interface function that resolves the model, creates a platform-aware client, streams the response, and retries on transient errors.",
+    "AICallOptions": "A struct of options passed to AICall, including ModelTier, MaxTokens, Messages, System, Context, CachePolicy, Temperature, Tools, and ToolChoice.",
+    "ANTHROPIC_API_KEY": "Environment variable holding the API key for direct Anthropic API access.",
+    "AgentError": "Richest error type carrying Detail, ErrorCategory, Retryable, HTTPStatus, and an Unwrap() method preserving the original error.",
+    "AgentOption": "A functional option type for SpecAgent methods, used to pass spec landscape, dependent interfaces, project directory, and artifact callbacks.",
+    "AssessPRD": "A SpecAgent method that sends a PRD to the LLM with the assessment system prompt and submit_assessment tool, returning a validated Assessment.",
+    "Assessment": "Go struct capturing PRD quality assessment output: Quality, Summary, Gaps, and Questions.",
+    "AssessmentSystemPrompt": "A function that loads the assessment_system prompt template.",
+    "AssessmentTools": "Function returning the Anthropic tool definition list for the assessment phase.",
+    "AssessmentUserPrompt": "A function that loads and renders the assessment_user prompt template.",
+    "CLAUDE_CODE_USE_BEDROCK": "Environment variable that, when set, causes AICall to create a Bedrock Anthropic client instead of a direct API client.",
+    "CLAUDE_CODE_USE_VERTEX": "Environment variable that, when set, causes AICall to create a Vertex AI Anthropic client instead of a direct API client.",
+    "CacheDefault": "CachePolicy constant indicating ephemeral cache_control injection when the system prompt exceeds the token threshold.",
+    "CacheExtended": "CachePolicy constant indicating ephemeral cache_control with a 1-hour TTL when the system prompt exceeds the token threshold.",
+    "CacheNone": "CachePolicy constant indicating no cache_control injection.",
+    "CachePolicy": "A string type controlling prompt caching behavior: CacheNone, CacheDefault, or CacheExtended.",
+    "DetectProjectLanguage": "A function that scans a project directory for manifest files and returns the detected language name and tooling hints.",
+    "FormatSpecLandscape": "A function that formats spec landscape entries into markdown tables split into active and archived sections.",
+    "GenerateArtifacts": "A SpecAgent method that sequentially generates requirements, test_spec, and tasks artifacts with validation and repair loops.",
+    "GenerateResult": "Go struct returned after artifact generation containing Artifacts list, Validation result, and Warnings.",
+    "GenerationSystemPrompt": "A function that loads the generation_system prompt template.",
+    "GenerationUserPrompt": "A function that loads and renders the generation_user_base and artifact-specific prompt templates.",
+    "LoadPrompt": "A function that loads a named prompt template from a project-local override path or the embedded defaults, stripping YAML frontmatter.",
+    "LoadPromptTemplate": "A function that loads a prompt template via LoadPrompt and performs safe $variable substitution.",
+    "MarshalJSON": "The afspec function used to serialize a validated artifact struct to JSON for writing to disk.",
+    "ModelEntry": "A struct holding a model's ID string, ModelTier, and variant string.",
+    "ModelRegistry": "A package-level map from model ID strings to ModelEntry values.",
+    "ModelTier": "A string type classifying LLM models by capability level: SIMPLE, STANDARD, or ADVANCED.",
+    "NewSpecAgent": "Constructor function that creates a SpecAgent with the given model tier string.",
+    "OnArtifact": "A callback function invoked by GenerateArtifacts after each artifact is successfully validated, with the artifact name and content.",
+    "RefinePRD": "A SpecAgent method that sends a PRD with user answers and prior assessment to the LLM, returning an updated PRD text and new Assessment.",
+    "RefinementSystemPrompt": "A function that loads the refinement_system prompt template.",
+    "RefinementUserPrompt": "A function that loads and renders the refinement_user prompt template.",
+    "RepairUserPrompt": "A function that loads and renders the repair_user prompt template for validation error repair loops.",
+    "ResolveModel": "A function that resolves a model name or tier constant string to a canonical model ID.",
+    "SpecAgent": "A struct that holds the model tier and implements the AI agent pipeline methods: AssessPRD, RefinePRD, and GenerateArtifacts.",
+    "SpecSession": "Go struct representing the stateful session for authoring a single spec, persisted to _session.json.",
+    "StateAssessing": "SessionState indicating the session is undergoing PRD quality assessment.",
+    "StateGenerated": "SessionState indicating all artifacts have been successfully generated.",
+    "StateGenerating": "SessionState indicating artifact generation is in progress.",
+    "StateRefining": "SessionState indicating the session is in iterative Q&A refinement.",
+    "TierAdvanced": "The ADVANCED model tier constant, mapped to claude-opus-4-6 by default.",
+    "TierDefaults": "A package-level map from ModelTier to the default model ID string for that tier.",
+    "TierSimple": "The SIMPLE model tier constant, mapped to claude-haiku-4-5 by default.",
+    "TierStandard": "The STANDARD model tier constant, mapped to claude-sonnet-4-6 by default.",
+    "Validate": "The afspec function that runs schema and cross-file validation on a spec package.",
+    "WithDependentInterfaces": "AgentOption that sets the dependent spec interfaces slice for agent methods.",
+    "WithOnArtifact": "AgentOption that sets a callback invoked after each artifact is successfully generated.",
+    "WithProjectDir": "AgentOption that sets the project directory for agent methods.",
+    "WithSpecLandscape": "AgentOption that sets the spec landscape slice for agent methods.",
+    "YAML frontmatter": "Metadata content between --- delimiters at the start of a prompt template file, stripped before use.",
+    "afspec": "The Go library for loading, validating, mutating, and rendering agent-fox specification packages.",
+    "assessment_block": "A formatted block representing a prior Assessment, injected into the refinement_user prompt template.",
+    "exponential backoff": "A retry strategy with increasing delays between attempts: 2s, 30s, 60s, for a total of 4 attempts.",
+    "generatedArtifacts": "The list of artifact names recorded in SpecSession state after successful generation.",
+    "priorArtifacts": "A map of previously generated artifact names to their content, passed to GenerationUserPrompt to provide context for subsequent artifact generation.",
+    "qa_block": "A formatted block of question-answer pairs injected into the refinement_user prompt template.",
+    "repair loop": "An iterative process in GenerateArtifacts that re-sends validation errors and original content to the LLM to obtain a corrected artifact, up to 2 attempts.",
+    "spec_landscape_block": "A formatted markdown block representing the current spec landscape, injected into prompt templates.",
+    "submit_assessment": "Anthropic tool name used during assessment; accepts quality, summary, gaps, and questions.",
+    "submit_prd_update": "Anthropic tool name used during refinement; accepts an updated_prd string.",
+    "token threshold": "The estimated token count above which cache_control is injected on the system prompt: 2048 for sonnet models, 4096 for opus/haiku models.",
+    "<projectDir>/.spec/prompts/<name>.md": "The filesystem path pattern for project-local prompt template overrides. LoadPrompt checks this location before falling back to embedded defaults.",
+    "$spec_landscape_block": "A template variable in prompt templates that is substituted with the formatted spec landscape markdown block produced by FormatSpecLandscape.",
+    "$qa_block": "A template variable in prompt templates that is substituted with formatted question-answer pairs from previous refinement exchanges.",
+    "$assessment_block": "A template variable in prompt templates that is substituted with a formatted block representing the prior Assessment struct fields.",
+    "NewSpecAgent(modelTier string) *SpecAgent": "Constructor function signature for creating a SpecAgent with the given model tier string, returning a pointer to the new SpecAgent.",
+    "AssessmentTools()": "Function call returning the Anthropic tool definitions for the submit_assessment tool, as defined in the agentspec_go_core spec.",
+    "WithOnArtifact(func(name string, content any))": "Functional option constructor signature that sets an artifact callback on SpecAgent methods, invoked after each artifact is successfully generated.",
+    "WithDependentInterfaces([]map[string]any)": "Functional option constructor signature that sets the dependent spec interfaces slice for SpecAgent methods.",
+    "WithSpecLandscape([]map[string]any)": "Functional option constructor signature that sets the spec landscape slice for SpecAgent methods.",
+    "WithProjectDir(string)": "Functional option constructor signature that sets the project directory for SpecAgent methods.",
+    "ResolveModel(name)": "Function call that resolves a model name or tier constant string to a canonical Anthropic model ID string.",
+    "(*SpecSession).Generate": "Method on the SpecSession pointer receiver that transitions to StateGenerating, calls GenerateArtifacts, writes artifacts to disk, transitions to StateGenerated, and returns a GenerateResult."
+  },
+  "requirements": [
+    {
+      "id": "07-REQ-1",
+      "title": "Model tier types and registry",
+      "user_story": {
+        "role": "Go developer using the agentspec package",
+        "goal": "resolve a human-readable model name or tier constant to a canonical Anthropic model ID",
+        "benefit": "so that callers can specify models by capability tier without hardcoding model IDs"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-1.1",
+          "ears_pattern": "ubiquitous",
+          "system": "agentspec AI layer",
+          "action": "defines `ModelTier` as a string type with constants `TierSimple` (\"SIMPLE\"), `TierStandard` (\"STANDARD\"), and `TierAdvanced` (\"ADVANCED\"); defines `ModelEntry` struct with fields ModelID (string), Tier (`ModelTier`), and Variant (string); exposes `ModelRegistry` as a package-level map from model ID strings to `ModelEntry` with initial entries for claude-haiku-4-5 (`TierSimple`), claude-sonnet-4-6 (`TierStandard`), and claude-opus-4-6 (`TierAdvanced`); exposes `TierDefaults` as a package-level map from `ModelTier` to default model ID string",
+          "return_contract": null
+        },
+        {
+          "id": "07-REQ-1.2",
+          "ears_pattern": "event_driven",
+          "system": "`ResolveModel`",
+          "action": "returns the default model ID for that tier from `TierDefaults`",
+          "return_contract": "returns (modelID string, nil)",
+          "trigger": "called with a name matching a tier constant (case-insensitive)"
+        },
+        {
+          "id": "07-REQ-1.3",
+          "ears_pattern": "event_driven",
+          "system": "`ResolveModel`",
+          "action": "returns the model ID directly",
+          "return_contract": "returns (modelID string, nil)",
+          "trigger": "called with a name matching a model ID key in `ModelRegistry`"
+        },
+        {
+          "id": "07-REQ-1.4",
+          "ears_pattern": "unwanted",
+          "system": "`ResolveModel`",
+          "action": "returns an empty string and a descriptive error",
+          "return_contract": "returns (\"\", error) with a message indicating the name was not recognized",
+          "error_condition": "unrecognized model name — the name matches neither a tier constant nor a `ModelRegistry` key"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-1.E1",
+          "ears_pattern": "event_driven",
+          "system": "`ResolveModel`",
+          "action": "returns an error indicating the model name is empty",
+          "return_contract": "returns (\"\", error)",
+          "trigger": "called with an empty string"
+        },
+        {
+          "id": "07-REQ-1.E2",
+          "ears_pattern": "event_driven",
+          "system": "`ResolveModel`",
+          "action": "performs case-insensitive comparison and returns the correct default model ID",
+          "return_contract": "returns (modelID string, nil)",
+          "trigger": "called with a tier constant in mixed case (e.g. \"standard\")"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-2",
+      "title": "AICall central LLM interface",
+      "user_story": {
+        "role": "AI agent pipeline component",
+        "goal": "send prompts to the Anthropic API with streaming, retry, and prompt caching",
+        "benefit": "so that all LLM calls share a single, robust, platform-aware interface"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-2.1",
+          "ears_pattern": "event_driven",
+          "system": "`AICall`",
+          "action": "resolves the model tier to a model ID via `ResolveModel`, creates a platform-aware Anthropic client (checking `CLAUDE_CODE_USE_VERTEX` then `CLAUDE_CODE_USE_BEDROCK` then falling back to direct API with `ANTHROPIC_API_KEY`), streams the response, and returns the complete response text",
+          "return_contract": "returns (responseText string, rawResponse any, nil)",
+          "trigger": "invoked with valid `AICallOptions`"
+        },
+        {
+          "id": "07-REQ-2.2",
+          "ears_pattern": "ubiquitous",
+          "system": "`AICall`",
+          "action": "defaults MaxTokens to 65536 and `CachePolicy` to `CacheDefault` when not specified in `AICallOptions`",
+          "return_contract": null
+        },
+        {
+          "id": "07-REQ-2.3",
+          "ears_pattern": "complex_event",
+          "system": "`AICall`",
+          "action": "retries with `exponential backoff` delays of 2s, 30s, and 60s between attempts (4 total attempts)",
+          "return_contract": "returns (responseText string, rawResponse any, nil) on eventual success",
+          "trigger": "the API returns a rate limit error, 5xx server error, or connection error",
+          "condition": "the attempt count is fewer than 4"
+        },
+        {
+          "id": "07-REQ-2.4",
+          "ears_pattern": "complex_event",
+          "system": "`AICall`",
+          "action": "injects cache_control on the last system message block: {\"type\": \"ephemeral\"} for `CacheDefault`, adds {\"ttl\": \"1h\"} for `CacheExtended`",
+          "return_contract": null,
+          "trigger": "`CachePolicy` is not `CacheNone` and the system prompt text length divided by 4 exceeds the model-specific `token threshold`",
+          "condition": "the model is a sonnet model (threshold 2048) or an opus/haiku model (threshold 4096)"
+        },
+        {
+          "id": "07-REQ-2.5",
+          "ears_pattern": "unwanted",
+          "system": "`AICall`",
+          "action": "retries the same request without cache_control",
+          "return_contract": "returns (responseText string, rawResponse any, nil) on success after retry, or (\"\", nil, error) if the retry also fails",
+          "error_condition": "cache_control rejection by the Anthropic API — the API rejects the request due to the injected cache_control"
+        },
+        {
+          "id": "07-REQ-2.6",
+          "ears_pattern": "unwanted",
+          "system": "`AICall`",
+          "action": "returns an empty string, nil raw response, and the last error wrapped as an `AgentError`",
+          "return_contract": "returns (\"\", nil, AgentError) with the appropriate category and retryable=false",
+          "error_condition": "persistent API failure after maximum retries — all 4 retry attempts are exhausted"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-2.E1",
+          "ears_pattern": "unwanted",
+          "system": "`AICall`",
+          "action": "stops streaming, releases the connection, and returns an error immediately without further retries",
+          "return_contract": "returns (\"\", nil, error) wrapping the context error",
+          "error_condition": "context cancellation or timeout — the context is cancelled or deadline exceeded before the streaming response completes"
+        },
+        {
+          "id": "07-REQ-2.E2",
+          "ears_pattern": "unwanted",
+          "system": "`AICall`",
+          "action": "returns an error before making any API call",
+          "return_contract": "returns (\"\", nil, AgentError) with category auth",
+          "error_condition": "missing API credentials — `ANTHROPIC_API_KEY` is empty and neither `CLAUDE_CODE_USE_VERTEX` nor `CLAUDE_CODE_USE_BEDROCK` is set"
+        },
+        {
+          "id": "07-REQ-2.E3",
+          "ears_pattern": "unwanted",
+          "system": "`AICall`",
+          "action": "returns an error describing the missing field",
+          "return_contract": "returns (\"\", rawResponse, error)",
+          "error_condition": "unexpected API response shape — the streaming API returns a success status but the response body is missing the expected text content field"
+        },
+        {
+          "id": "07-REQ-2.E4",
+          "ears_pattern": "ubiquitous",
+          "system": "`AICall`",
+          "action": "never calls os.Exit or panics; all errors are returned to the caller via the error return value",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-3",
+      "title": "Prompt template loading and substitution",
+      "user_story": {
+        "role": "AI agent pipeline component",
+        "goal": "load named prompt templates with variable substitution from embedded defaults or project-local overrides",
+        "benefit": "so that prompt content can be customized per project without recompiling the binary"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-3.1",
+          "ears_pattern": "ubiquitous",
+          "system": "agentspec AI layer",
+          "action": "embeds 10 markdown prompt templates at compile time via //go:embed: assessment_system, assessment_user, refinement_system, refinement_user, generation_system, generation_user_base, generation_user_requirements, generation_user_test_spec, generation_user_tasks, repair_user",
+          "return_contract": null
+        },
+        {
+          "id": "07-REQ-3.2",
+          "ears_pattern": "event_driven",
+          "system": "`LoadPrompt`",
+          "action": "reads the override file, strips `YAML frontmatter`, and returns the remaining content",
+          "return_contract": "returns (content string, nil)",
+          "trigger": "called with a valid name and a projectDir where a non-symlink override file exists at `<projectDir>/.spec/prompts/<name>.md`"
+        },
+        {
+          "id": "07-REQ-3.3",
+          "ears_pattern": "event_driven",
+          "system": "`LoadPrompt`",
+          "action": "reads the embedded default template, strips `YAML frontmatter`, and returns the content",
+          "return_contract": "returns (content string, nil)",
+          "trigger": "called with a valid name and no project-local override exists"
+        },
+        {
+          "id": "07-REQ-3.4",
+          "ears_pattern": "unwanted",
+          "system": "`LoadPrompt`",
+          "action": "returns an error without reading any file",
+          "return_contract": "returns (\"\", error) with a message indicating the name is invalid",
+          "error_condition": "invalid template name (potential path traversal) — the name does not match [a-zA-Z0-9_-]+"
+        },
+        {
+          "id": "07-REQ-3.5",
+          "ears_pattern": "event_driven",
+          "system": "`LoadPromptTemplate`",
+          "action": "loads the template via `LoadPrompt` then substitutes $variable references with values from vars; unmatched $variable references pass through unchanged",
+          "return_contract": "returns (substitutedContent string, nil)",
+          "trigger": "called with a valid name, projectDir, and vars map"
+        },
+        {
+          "id": "07-REQ-3.6",
+          "ears_pattern": "event_driven",
+          "system": "`DetectProjectLanguage`",
+          "action": "returns the detected language name and a tooling hints string corresponding to the first matched manifest",
+          "return_contract": "returns (language string, toolHints string)",
+          "trigger": "called with a projectDir containing one or more manifest files (go.mod, Cargo.toml, package.json, pyproject.toml, Gemfile, build.gradle, pom.xml)"
+        },
+        {
+          "id": "07-REQ-3.7",
+          "ears_pattern": "event_driven",
+          "system": "`DetectProjectLanguage`",
+          "action": "returns empty strings for both language and toolHints",
+          "return_contract": "returns (\"\", \"\")",
+          "trigger": "called with a projectDir containing no recognized manifest files"
+        },
+        {
+          "id": "07-REQ-3.8",
+          "ears_pattern": "event_driven",
+          "system": "`FormatSpecLandscape`",
+          "action": "formats the entries into markdown tables split into active and archived sections",
+          "return_contract": "returns a non-empty markdown string",
+          "trigger": "called with a slice of spec landscape entries"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-3.E1",
+          "ears_pattern": "unwanted",
+          "system": "`LoadPrompt`",
+          "action": "ignores the symlink and falls back to the embedded default template",
+          "return_contract": "returns (embeddedContent string, nil)",
+          "error_condition": "symlink at override path — the project-local override path exists but is a symlink"
+        },
+        {
+          "id": "07-REQ-3.E2",
+          "ears_pattern": "unwanted",
+          "system": "`LoadPrompt`",
+          "action": "returns an error without reading any file",
+          "return_contract": "returns (\"\", error)",
+          "error_condition": "empty template name — called with an empty name string"
+        },
+        {
+          "id": "07-REQ-3.E3",
+          "ears_pattern": "event_driven",
+          "system": "`LoadPrompt`",
+          "action": "returns the full file content unchanged",
+          "return_contract": "returns (fullContent string, nil)",
+          "trigger": "the template file has no YAML frontmatter"
+        },
+        {
+          "id": "07-REQ-3.E4",
+          "ears_pattern": "event_driven",
+          "system": "`LoadPromptTemplate`",
+          "action": "leaves the unmatched $variable reference in the output unchanged (safe substitute behavior)",
+          "return_contract": "returns (contentWithUnmatchedVarsPreserved string, nil)",
+          "trigger": "called with a vars map that does not contain a key for a $variable reference in the template"
+        },
+        {
+          "id": "07-REQ-3.E5",
+          "ears_pattern": "event_driven",
+          "system": "`FormatSpecLandscape`",
+          "action": "returns an empty string or a minimal placeholder indicating no specs are present",
+          "return_contract": "returns (string, nil) — empty or minimal placeholder",
+          "trigger": "called with an empty slice"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-4",
+      "title": "Prompt builder functions",
+      "user_story": {
+        "role": "AI agent pipeline component",
+        "goal": "obtain fully rendered system and user prompts for each pipeline stage",
+        "benefit": "so that the agent methods can focus on orchestration rather than prompt construction"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-4.1",
+          "ears_pattern": "event_driven",
+          "system": "`AssessmentSystemPrompt`",
+          "action": "loads the assessment_system template via `LoadPrompt` and returns its content",
+          "return_contract": "returns (promptText string, nil)",
+          "trigger": "called with a projectDir"
+        },
+        {
+          "id": "07-REQ-4.2",
+          "ears_pattern": "event_driven",
+          "system": "`AssessmentUserPrompt`",
+          "action": "loads the assessment_user template via `LoadPromptTemplate` substituting $spec_name, `$spec_landscape_block`, and $prd_text",
+          "return_contract": "returns (promptText string, nil)",
+          "trigger": "called with prdText, specName, projectDir, and specLandscape"
+        },
+        {
+          "id": "07-REQ-4.3",
+          "ears_pattern": "event_driven",
+          "system": "`RefinementUserPrompt`",
+          "action": "loads the refinement_user template via `LoadPromptTemplate` substituting $prd_text, `$assessment_block`, `$qa_block`, and `$spec_landscape_block`",
+          "return_contract": "returns (promptText string, nil)",
+          "trigger": "called with prdText, answers, prevAssessment, projectDir, and specLandscape"
+        },
+        {
+          "id": "07-REQ-4.4",
+          "ears_pattern": "event_driven",
+          "system": "`GenerationUserPrompt`",
+          "action": "loads generation_user_base and the artifact-specific template (generation_user_requirements, generation_user_test_spec, or generation_user_tasks) via `LoadPromptTemplate`, composes them with the appropriate variables, and returns the combined prompt",
+          "return_contract": "returns (promptText string, nil)",
+          "trigger": "called with prdText, artifactName, specID, projectDir, `priorArtifacts`, dependentInterfaces, and specLandscape"
+        },
+        {
+          "id": "07-REQ-4.5",
+          "ears_pattern": "event_driven",
+          "system": "`RepairUserPrompt`",
+          "action": "loads the repair_user template via `LoadPromptTemplate` substituting the artifact name, original content, and validation errors",
+          "return_contract": "returns (promptText string, nil)",
+          "trigger": "called with artifactName, originalContent, errors slice, and projectDir"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-4.E1",
+          "ears_pattern": "unwanted",
+          "system": "`GenerationUserPrompt`",
+          "action": "returns an error indicating the artifact name is not supported",
+          "return_contract": "returns (\"\", error)",
+          "error_condition": "unrecognized artifact name — called with an artifactName that is not one of requirements, test_spec, or tasks"
+        },
+        {
+          "id": "07-REQ-4.E2",
+          "ears_pattern": "unwanted",
+          "system": "any prompt builder function",
+          "action": "propagates the error to the caller without panicking",
+          "return_contract": "returns (\"\", error)",
+          "error_condition": "template load failure — the underlying `LoadPrompt` or `LoadPromptTemplate` call fails"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-5",
+      "title": "SpecAgent and AssessPRD",
+      "user_story": {
+        "role": "SpecSession",
+        "goal": "assess a PRD's quality using the LLM with a forced tool call",
+        "benefit": "so that the session can record a structured Assessment and decide whether to proceed to refinement or generation"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-5.1",
+          "ears_pattern": "ubiquitous",
+          "system": "agentspec AI layer",
+          "action": "defines `SpecAgent` struct with a modelTier string field and `NewSpecAgent(modelTier string) *SpecAgent` constructor",
+          "return_contract": null
+        },
+        {
+          "id": "07-REQ-5.2",
+          "ears_pattern": "event_driven",
+          "system": "`AssessPRD`",
+          "action": "builds system and user prompts via `AssessmentSystemPrompt` and `AssessmentUserPrompt`, calls `AICall` with `AssessmentTools()` and tool_choice {\"type\": \"any\"}, checks the stop reason, extracts the `submit_assessment` tool call, parses and validates the `Assessment` struct, and returns it",
+          "return_contract": "returns (Assessment, nil) on success",
+          "trigger": "called with a context, prdText, specName, and optional `AgentOption` values"
+        },
+        {
+          "id": "07-REQ-5.3",
+          "ears_pattern": "unwanted",
+          "system": "`AssessPRD`",
+          "action": "returns an `AgentError` with category refusal without attempting tool call extraction",
+          "return_contract": "returns (Assessment{}, AgentError{Category: \"refusal\"})",
+          "error_condition": "LLM refusal — the LLM response stop reason is \"refusal\""
+        },
+        {
+          "id": "07-REQ-5.4",
+          "ears_pattern": "unwanted",
+          "system": "`AssessPRD`",
+          "action": "returns an `AgentError` with category context_window",
+          "return_contract": "returns (Assessment{}, AgentError{Category: \"context_window\"})",
+          "error_condition": "context window exceeded — the LLM response stop reason is \"context_window_exceeded\""
+        },
+        {
+          "id": "07-REQ-5.5",
+          "ears_pattern": "unwanted",
+          "system": "`AssessPRD`",
+          "action": "returns an `AgentError` with category pause_turn",
+          "return_contract": "returns (Assessment{}, AgentError{Category: \"pause_turn\"})",
+          "error_condition": "turn paused by the API — the LLM response stop reason is \"pause_turn\""
+        },
+        {
+          "id": "07-REQ-5.6",
+          "ears_pattern": "unwanted",
+          "system": "`AssessPRD`",
+          "action": "wraps the error as an `AgentError` with the appropriate category, retryable flag, and HTTP status code",
+          "return_contract": "returns (Assessment{}, AgentError) with classified category",
+          "error_condition": "SDK-level error (rate limit, auth, transient, overloaded, input, internal) — the Anthropic SDK returns an error"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-5.E1",
+          "ears_pattern": "unwanted",
+          "system": "`AssessPRD`",
+          "action": "returns an `AgentError` with category internal describing the missing tool call",
+          "return_contract": "returns (Assessment{}, AgentError{Category: \"internal\"})",
+          "error_condition": "missing tool call in response — the LLM response does not contain a `submit_assessment` tool call"
+        },
+        {
+          "id": "07-REQ-5.E2",
+          "ears_pattern": "unwanted",
+          "system": "`AssessPRD`",
+          "action": "returns an `AgentError` with category internal and the parse error details",
+          "return_contract": "returns (Assessment{}, AgentError{Category: \"internal\"})",
+          "error_condition": "malformed assessment payload — the tool call payload cannot be parsed into a valid `Assessment` struct"
+        },
+        {
+          "id": "07-REQ-5.E3",
+          "ears_pattern": "unwanted",
+          "system": "`AssessPRD`",
+          "action": "returns immediately with the context error wrapped as an `AgentError`",
+          "return_contract": "returns (Assessment{}, AgentError)",
+          "error_condition": "context cancellation — the context is cancelled before the API call completes"
+        },
+        {
+          "id": "07-REQ-5.E4",
+          "ears_pattern": "event_driven",
+          "system": "`AssessPRD`",
+          "action": "proceeds with the API call; the LLM response determines the outcome",
+          "return_contract": "returns (Assessment, nil) or (Assessment{}, error) depending on LLM response",
+          "trigger": "called with an empty prdText"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-6",
+      "title": "RefinePRD agent method",
+      "user_story": {
+        "role": "SpecSession",
+        "goal": "refine a PRD based on user answers and a prior assessment",
+        "benefit": "so that the PRD quality improves iteratively before artifact generation"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-6.1",
+          "ears_pattern": "event_driven",
+          "system": "`RefinePRD`",
+          "action": "builds system and user prompts via `RefinementSystemPrompt` and `RefinementUserPrompt`, calls `AICall` with refinement tools, extracts `submit_prd_update` for updated PRD text and `submit_assessment` for the new `Assessment`, and returns both",
+          "return_contract": "returns (updatedPRDText string, newAssessment Assessment, nil) on success",
+          "trigger": "called with a context, prdText, answers map, prevAssessment, and optional `AgentOption` values"
+        },
+        {
+          "id": "07-REQ-6.2",
+          "ears_pattern": "complex_event",
+          "system": "`RefinePRD`",
+          "action": "makes a second `AICall` with only the `submit_assessment` tool to obtain the new assessment",
+          "return_contract": "returns (updatedPRDText string, newAssessment Assessment, nil) on success of the second call",
+          "trigger": "the LLM response does not contain a `submit_assessment` tool call",
+          "condition": "the `submit_prd_update` tool call was successfully extracted"
+        },
+        {
+          "id": "07-REQ-6.3",
+          "ears_pattern": "unwanted",
+          "system": "`RefinePRD`",
+          "action": "returns an `AgentError` with the appropriate category",
+          "return_contract": "returns (\"\", Assessment{}, AgentError)",
+          "error_condition": "stop reason indicates non-recoverable state — the LLM response stop reason is refusal, context_window_exceeded, or pause_turn"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-6.E1",
+          "ears_pattern": "unwanted",
+          "system": "`RefinePRD`",
+          "action": "returns the error from the second call without returning partial results",
+          "return_contract": "returns (\"\", Assessment{}, error)",
+          "error_condition": "fallback assessment call failure — the second `AICall` for the assessment also fails"
+        },
+        {
+          "id": "07-REQ-6.E2",
+          "ears_pattern": "unwanted",
+          "system": "`RefinePRD`",
+          "action": "returns immediately with the context error; no partial state is persisted by the agent",
+          "return_contract": "returns (\"\", Assessment{}, AgentError)",
+          "error_condition": "context cancellation mid-refinement — the context is cancelled during either API call"
+        },
+        {
+          "id": "07-REQ-6.E3",
+          "ears_pattern": "unwanted",
+          "system": "`RefinePRD`",
+          "action": "returns an `AgentError` with category internal",
+          "return_contract": "returns (\"\", Assessment{}, AgentError{Category: \"internal\"})",
+          "error_condition": "no tool calls extracted — neither `submit_prd_update` nor `submit_assessment` tool calls are present in the response"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-7",
+      "title": "GenerateArtifacts sequential pipeline with repair loop",
+      "user_story": {
+        "role": "SpecSession",
+        "goal": "generate requirements, test_spec, and tasks artifacts sequentially with validation and repair",
+        "benefit": "so that all three artifacts are produced in a single call with schema-valid content"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-7.1",
+          "ears_pattern": "event_driven",
+          "system": "`GenerateArtifacts`",
+          "action": "generates requirements, test_spec, and tasks sequentially; for each artifact builds the prompt with `priorArtifacts` context, calls `AICall` with temperature=0.2 and the artifact-specific tool, extracts the tool call result, validates via JSON unmarshal into the Go struct and `afspec` schema/cross-file validation, and invokes the `OnArtifact` callback if set",
+          "return_contract": "returns (map[string]any of artifactName to validated content, nil) on success",
+          "trigger": "called with a context, prdText, specID, specName, and optional `AgentOption` values"
+        },
+        {
+          "id": "07-REQ-7.2",
+          "ears_pattern": "complex_event",
+          "system": "`GenerateArtifacts`",
+          "action": "sends validation errors and original content via `RepairUserPrompt` to the LLM, re-extracts the tool call, re-validates, and repeats up to 2 repair attempts",
+          "return_contract": "returns the repaired artifact in the result map on success",
+          "trigger": "validation of an artifact fails",
+          "condition": "the `repair loop` attempt count is fewer than 2"
+        },
+        {
+          "id": "07-REQ-7.3",
+          "ears_pattern": "unwanted",
+          "system": "`GenerateArtifacts`",
+          "action": "returns an error for the failed artifact without generating subsequent artifacts",
+          "return_contract": "returns (nil, error) describing which artifact failed and the final validation errors",
+          "error_condition": "repair loop exhausted — validation still fails after 2 repair attempts"
+        },
+        {
+          "id": "07-REQ-7.4",
+          "ears_pattern": "ubiquitous",
+          "system": "`GenerateArtifacts`",
+          "action": "passes all previously generated artifacts as `priorArtifacts` context when building the prompt for each subsequent artifact, so each generation step has progressively richer context",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-7.E1",
+          "ears_pattern": "unwanted",
+          "system": "`GenerateArtifacts`",
+          "action": "returns immediately with the context error; already-generated artifacts are not written to disk by the agent (the `OnArtifact` callback is responsible for persistence)",
+          "return_contract": "returns (nil, error)",
+          "error_condition": "context cancellation mid-generation — the context is cancelled during any artifact generation or repair call"
+        },
+        {
+          "id": "07-REQ-7.E2",
+          "ears_pattern": "unwanted",
+          "system": "`GenerateArtifacts`",
+          "action": "recovers from the panic or propagates the error and stops generation",
+          "return_contract": "returns (nil, error) describing the callback failure",
+          "error_condition": "artifact callback failure — the `OnArtifact` callback panics or returns an error"
+        },
+        {
+          "id": "07-REQ-7.E3",
+          "ears_pattern": "unwanted",
+          "system": "`GenerateArtifacts`",
+          "action": "treats the unmarshal failure as a validation error and enters the `repair loop`",
+          "return_contract": "returns repaired artifact on success, or (nil, error) after repair loop exhaustion",
+          "error_condition": "malformed artifact payload from LLM — the LLM returns a success response but the tool call payload cannot be JSON-unmarshalled into the expected artifact struct"
+        },
+        {
+          "id": "07-REQ-7.E4",
+          "ears_pattern": "ubiquitous",
+          "system": "`GenerateArtifacts`",
+          "action": "caps the `repair loop` at exactly 2 attempts per artifact regardless of the nature of the validation error, preventing unbounded iteration",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-8",
+      "title": "AgentOption functional options",
+      "user_story": {
+        "role": "caller of SpecAgent methods",
+        "goal": "pass optional configuration such as spec landscape, dependent interfaces, project directory, and artifact callbacks to agent methods",
+        "benefit": "so that agent methods remain composable without requiring a large configuration struct"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-8.1",
+          "ears_pattern": "ubiquitous",
+          "system": "agentspec AI layer",
+          "action": "defines `AgentOption` as a functional option type and provides `WithSpecLandscape([]map[string]any)`, `WithDependentInterfaces([]map[string]any)`, `WithProjectDir(string)`, and `WithOnArtifact(func(name string, content any))` constructors",
+          "return_contract": null
+        },
+        {
+          "id": "07-REQ-8.2",
+          "ears_pattern": "event_driven",
+          "system": "each `SpecAgent` method",
+          "action": "applies all options before executing the method logic",
+          "return_contract": null,
+          "trigger": "called with one or more `AgentOption` values"
+        },
+        {
+          "id": "07-REQ-8.3",
+          "ears_pattern": "event_driven",
+          "system": "each `SpecAgent` method",
+          "action": "uses zero-value defaults for all optional configuration (empty landscape, empty interfaces, empty projectDir, nil callback)",
+          "return_contract": null,
+          "trigger": "called with no `AgentOption` values"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-8.E1",
+          "ears_pattern": "event_driven",
+          "system": "`WithOnArtifact`",
+          "action": "stores nil and skips the callback invocation during artifact generation without panicking",
+          "return_contract": null,
+          "trigger": "the provided callback is nil"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-9",
+      "title": "SpecSession.Assess method",
+      "user_story": {
+        "role": "CLI or test harness",
+        "goal": "trigger PRD assessment on a SpecSession and persist the result",
+        "benefit": "so that the assessment history is durably recorded and the session state reflects the assessment outcome"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-9.1",
+          "ears_pattern": "event_driven",
+          "system": "`(*SpecSession).Assess`",
+          "action": "transitions to `StateAssessing`, creates a `SpecAgent`, loads the spec landscape from sibling specs, calls `AssessPRD`, appends the result to the assessment history, and persists session state",
+          "return_contract": "returns (Assessment, nil) on success",
+          "trigger": "called with a context"
+        },
+        {
+          "id": "07-REQ-9.2",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Assess`",
+          "action": "persists the error as lastError in session state without appending to assessment history, then returns the error",
+          "return_contract": "returns (Assessment{}, error)",
+          "error_condition": "assessment API failure — `AssessPRD` returns an error"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-9.E1",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Assess`",
+          "action": "returns the persist error to the caller; the in-memory assessment history still contains the new entry",
+          "return_contract": "returns (Assessment{}, error)",
+          "error_condition": "disk write failure during state persist — state persistence fails after a successful assessment"
+        },
+        {
+          "id": "07-REQ-9.E2",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Assess`",
+          "action": "persists the context error as lastError and returns it",
+          "return_contract": "returns (Assessment{}, error)",
+          "error_condition": "context cancellation during assessment — the context is cancelled before `AssessPRD` completes"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-10",
+      "title": "SpecSession.Refine method",
+      "user_story": {
+        "role": "CLI or test harness",
+        "goal": "refine the PRD on a SpecSession with user answers and persist the updated PRD and new assessment",
+        "benefit": "so that the PRD file on disk reflects the latest refinement and the QA exchange is recorded"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-10.1",
+          "ears_pattern": "event_driven",
+          "system": "`(*SpecSession).Refine`",
+          "action": "transitions to `StateRefining`, calls `RefinePRD` with the current PRD text, user answers, and latest assessment; updates the PRD file on disk with the refined text; appends the new assessment to history; records a QA exchange with assessment_index, answers, and UTC timestamp; and persists session state",
+          "return_contract": "returns (newAssessment Assessment, nil) on success",
+          "trigger": "called with a context and an answers map"
+        },
+        {
+          "id": "07-REQ-10.2",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Refine`",
+          "action": "persists the error as lastError without updating the PRD file, without appending to assessment history, and without recording a QA exchange",
+          "return_contract": "returns (Assessment{}, error)",
+          "error_condition": "refinement API failure — `RefinePRD` returns an error"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-10.E1",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Refine`",
+          "action": "returns the write error; the QA exchange is not recorded and session state is not updated with the new assessment",
+          "return_contract": "returns (Assessment{}, error)",
+          "error_condition": "disk write failure for updated PRD — the PRD file write fails after `RefinePRD` succeeds"
+        },
+        {
+          "id": "07-REQ-10.E2",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Refine`",
+          "action": "proceeds with the refinement call using an empty answers map; the LLM determines the outcome",
+          "return_contract": "returns (Assessment, nil) or (Assessment{}, error) depending on LLM response",
+          "error_condition": "no user answers provided — called with an empty answers map"
+        },
+        {
+          "id": "07-REQ-10.E3",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Refine`",
+          "action": "persists the context error as lastError and returns it without modifying the PRD file or recording a QA exchange",
+          "return_contract": "returns (Assessment{}, error)",
+          "error_condition": "context cancellation during refinement — the context is cancelled before `RefinePRD` completes"
+        }
+      ]
+    },
+    {
+      "id": "07-REQ-11",
+      "title": "SpecSession.Generate method",
+      "user_story": {
+        "role": "CLI or test harness",
+        "goal": "generate all three spec artifacts from a SpecSession and persist them to disk",
+        "benefit": "so that the spec package is complete and validated after a single Generate call"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-11.1",
+          "ears_pattern": "event_driven",
+          "system": "`(*SpecSession).Generate`",
+          "action": "transitions to `StateGenerating` immediately, checks for existing artifact files to skip already-generated artifacts (partial failure recovery), calls `GenerateArtifacts` with an `OnArtifact` callback that writes each artifact to disk via `afspec` `MarshalJSON` and records it in `generatedArtifacts`, transitions to `StateGenerated` after all artifacts are generated, runs `Validate`, and returns a `GenerateResult`",
+          "return_contract": "returns (GenerateResult{ArtifactList, ValidationResult, Warnings}, nil) on success",
+          "trigger": "called with a context"
+        },
+        {
+          "id": "07-REQ-11.2",
+          "ears_pattern": "complex_event",
+          "system": "`(*SpecSession).Generate`",
+          "action": "skips generation for artifacts whose files already exist and only generates the missing ones",
+          "return_contract": "returns (GenerateResult, nil) including both pre-existing and newly generated artifacts",
+          "trigger": "existing artifact files are found on disk before generation begins",
+          "condition": "partial failure recovery mode"
+        },
+        {
+          "id": "07-REQ-11.3",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Generate`",
+          "action": "does not transition to `StateGenerated`; persists the error as lastError and returns it",
+          "return_contract": "returns (GenerateResult{}, error)",
+          "error_condition": "artifact generation failure — `GenerateArtifacts` returns an error"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "07-REQ-11.E1",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Generate`",
+          "action": "returns the write error from the callback; generation of subsequent artifacts is halted",
+          "return_contract": "returns (GenerateResult{}, error)",
+          "error_condition": "disk write failure during artifact persistence — writing an artifact file to disk fails inside the `OnArtifact` callback"
+        },
+        {
+          "id": "07-REQ-11.E2",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Generate`",
+          "action": "stops generation, does not transition to `StateGenerated`, persists the context error as lastError, and returns it",
+          "return_contract": "returns (GenerateResult{}, error)",
+          "error_condition": "context cancellation mid-generation — the context is cancelled during artifact generation"
+        },
+        {
+          "id": "07-REQ-11.E3",
+          "ears_pattern": "unwanted",
+          "system": "`(*SpecSession).Generate`",
+          "action": "still returns `GenerateResult` with the validation result and warnings; does not treat validation errors as a fatal error that prevents returning results",
+          "return_contract": "returns (GenerateResult{ArtifactList, ValidationResult with errors, Warnings}, nil)",
+          "error_condition": "post-generation validation errors — `Validate` returns validation errors after all artifacts are generated"
+        },
+        {
+          "id": "07-REQ-11.E4",
+          "ears_pattern": "event_driven",
+          "system": "`(*SpecSession).Generate`",
+          "action": "skips all generation, transitions to `StateGenerated`, runs `Validate`, and returns `GenerateResult` with the existing artifacts",
+          "return_contract": "returns (GenerateResult, nil)",
+          "trigger": "all three artifact files already exist on disk"
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [
+    {
+      "id": "07-PROP-1",
+      "title": "ResolveModel is total on valid inputs",
+      "for_any": "name string that is a valid tier constant (case-insensitive) or a key in `ModelRegistry`",
+      "invariant": "`ResolveModel(name)` returns a non-empty model ID string and a nil error",
+      "validates": [
+        "07-REQ-1.2",
+        "07-REQ-1.3"
+      ]
+    },
+    {
+      "id": "07-PROP-2",
+      "title": "ResolveModel rejects all unrecognized names",
+      "for_any": "name string that is neither a tier constant nor a `ModelRegistry` key",
+      "invariant": "`ResolveModel(name)` returns an empty string and a non-nil error",
+      "validates": [
+        "07-REQ-1.4",
+        "07-REQ-1.E1"
+      ]
+    },
+    {
+      "id": "07-PROP-3",
+      "title": "AICall retry count is bounded",
+      "for_any": "sequence of transient API errors",
+      "invariant": "`AICall` makes at most 4 total attempts before returning an error, regardless of the number of consecutive transient failures",
+      "validates": [
+        "07-REQ-2.3",
+        "07-REQ-2.6"
+      ]
+    },
+    {
+      "id": "07-PROP-4",
+      "title": "Cache injection is threshold-gated",
+      "for_any": "system prompt text of any length and any `CachePolicy` value",
+      "invariant": "cache_control is injected if and only if `CachePolicy` is not `CacheNone` and the estimated token count (len(text)/4) exceeds the model-specific `token threshold`",
+      "validates": [
+        "07-REQ-2.4"
+      ]
+    },
+    {
+      "id": "07-PROP-5",
+      "title": "LoadPrompt name validation prevents path traversal",
+      "for_any": "name string containing characters outside [a-zA-Z0-9_-]",
+      "invariant": "`LoadPrompt` returns a non-nil error and reads no file from disk",
+      "validates": [
+        "07-REQ-3.4",
+        "07-REQ-3.E2"
+      ]
+    },
+    {
+      "id": "07-PROP-6",
+      "title": "LoadPromptTemplate safe substitution preserves unmatched variables",
+      "for_any": "template content containing $variable references and a vars map missing some keys",
+      "invariant": "the returned string contains the unmatched $variable references verbatim and all matched references are replaced",
+      "validates": [
+        "07-REQ-3.5",
+        "07-REQ-3.E4"
+      ]
+    },
+    {
+      "id": "07-PROP-7",
+      "title": "GenerateArtifacts repair loop is bounded",
+      "for_any": "artifact that fails validation on every attempt",
+      "invariant": "`GenerateArtifacts` makes at most 2 repair attempts per artifact before returning an error",
+      "validates": [
+        "07-REQ-7.2",
+        "07-REQ-7.3",
+        "07-REQ-7.E4"
+      ]
+    },
+    {
+      "id": "07-PROP-8",
+      "title": "SpecSession methods never call os.Exit",
+      "for_any": "any error condition in Assess, Refine, or Generate",
+      "invariant": "the method returns an error value to the caller and never terminates the process directly",
+      "validates": [
+        "07-REQ-9.2",
+        "07-REQ-10.2",
+        "07-REQ-11.3"
+      ]
+    },
+    {
+      "id": "07-PROP-9",
+      "title": "Refine does not record QA exchange on failure",
+      "for_any": "any error returned by RefinePRD or the PRD file write",
+      "invariant": "no QA exchange is appended to session state and the PRD file on disk is not modified",
+      "validates": [
+        "07-REQ-10.2",
+        "07-REQ-10.E1"
+      ]
+    },
+    {
+      "id": "07-PROP-10",
+      "title": "Generate partial recovery skips existing artifacts",
+      "for_any": "any subset of the three artifact files already present on disk",
+      "invariant": "`(*SpecSession).Generate` only calls `GenerateArtifacts` for artifacts whose files do not already exist",
+      "validates": [
+        "07-REQ-11.2",
+        "07-REQ-11.E4"
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "07-PATH-1",
+      "title": "Full end-to-end spec authoring: assess, refine, generate",
+      "steps": [
+        {
+          "actor": "CLI (spec_cli_go)",
+          "action": "user runs `spec session start` with a PRD file; CLI creates a SpecSession via agentspec_go_core and calls Assess(ctx)"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "transitions to StateAssessing, loads spec landscape from sibling specs, creates a SpecAgent"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "calls AssessPRD: builds assessment prompts, calls AICall with AssessmentTools() and tool_choice any"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "resolves model tier, creates platform-aware Anthropic client, streams response with retry and prompt caching"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "extracts submit_assessment tool call, parses and validates Assessment struct, returns it"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "appends Assessment to history, persists state to disk, returns Assessment to CLI"
+        },
+        {
+          "actor": "CLI (spec_cli_go)",
+          "action": "presents assessment questions to user, collects answers, calls Refine(ctx, answers)"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "transitions to StateRefining, calls RefinePRD with current PRD text, answers, and latest assessment"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "calls AICall with refinement tools, extracts submit_prd_update and submit_assessment tool calls"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "writes updated PRD to disk, records QA exchange, appends new Assessment, persists state"
+        },
+        {
+          "actor": "CLI (spec_cli_go)",
+          "action": "user confirms PRD is ready; CLI calls Generate(ctx)"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "transitions to StateGenerating, checks for existing artifact files, calls GenerateArtifacts with OnArtifact callback"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "generates requirements, test_spec, tasks sequentially; runs repair loop on validation failures; invokes OnArtifact callback after each"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "OnArtifact callback writes each artifact to disk via afspec MarshalJSON, records in generatedArtifacts"
+        },
+        {
+          "actor": "SpecSession.Validate",
+          "action": "transitions to StateGenerated, runs Validate, returns GenerateResult with artifact list, validation result, and warnings to CLI"
+        }
+      ]
+    },
+    {
+      "id": "07-PATH-2",
+      "title": "AICall with Vertex AI platform and prompt caching",
+      "steps": [
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "calls AICall with AICallOptions specifying TierStandard, a long system prompt, and CacheDefault"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "resolves TierStandard to claude-sonnet-4-6 via ResolveModel"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "detects CLAUDE_CODE_USE_VERTEX is set, creates a Vertex AI Anthropic client"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "estimates system prompt tokens via len(text)/4; exceeds 2048 threshold for sonnet; injects cache_control {\"type\": \"ephemeral\"} on the last system message block"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "streams the response from the Vertex AI endpoint, collecting the complete text"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "returns (responseText, rawResponse, nil) to the SpecAgent caller"
+        }
+      ]
+    },
+    {
+      "id": "07-PATH-3",
+      "title": "Artifact generation with repair loop",
+      "steps": [
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "calls GenerateArtifacts for the requirements artifact"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "builds generation prompt via GenerationUserPrompt with empty priorArtifacts, calls AICall with temperature=0.2 and requirements tool"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "returns LLM response with requirements tool call payload"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "JSON-unmarshals payload into requirements struct; afspec schema validation fails with errors"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "enters repair loop: calls RepairUserPrompt with validation errors and original content, calls AICall again"
+        },
+        {
+          "actor": "AICall (agentspec_go_ai)",
+          "action": "returns repaired requirements payload"
+        },
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "re-validates repaired payload; validation passes; invokes OnArtifact callback with requirements content"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "OnArtifact callback writes requirements artifact to disk via afspec MarshalJSON and records it in generatedArtifacts"
+        }
+      ]
+    },
+    {
+      "id": "07-PATH-4",
+      "title": "LoadPrompt with project-local override",
+      "steps": [
+        {
+          "actor": "SpecAgent (agentspec_go_ai)",
+          "action": "calls AssessmentSystemPrompt with a projectDir that contains a custom assessment_system.md override"
+        },
+        {
+          "actor": "LoadPrompt (agentspec_go_ai)",
+          "action": "validates the name against [a-zA-Z0-9_-]+, checks for a non-symlink file at <projectDir>/.spec/prompts/assessment_system.md"
+        },
+        {
+          "actor": "LoadPrompt (agentspec_go_ai)",
+          "action": "reads the override file, strips YAML frontmatter, and returns the custom prompt content"
+        },
+        {
+          "actor": "AssessmentSystemPrompt (agentspec_go_ai)",
+          "action": "returns the custom prompt content to the SpecAgent caller"
+        }
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "id": "07-ERR-1",
+      "condition": "AICall exhausts all 4 retry attempts due to persistent transient errors",
+      "behavior": "returns (\"\", nil, AgentError) with the last error, appropriate category, and retryable=false",
+      "requirement_id": "07-REQ-2.6"
+    },
+    {
+      "id": "07-ERR-2",
+      "condition": "AICall context is cancelled or deadline exceeded",
+      "behavior": "stops streaming immediately, releases the connection, and returns (\"\", nil, error) wrapping the context error without further retries",
+      "requirement_id": "07-REQ-2.E1"
+    },
+    {
+      "id": "07-ERR-3",
+      "condition": "ANTHROPIC_API_KEY is empty and no platform override env vars are set",
+      "behavior": "returns (\"\", nil, AgentError) with category auth before making any API call",
+      "requirement_id": "07-REQ-2.E2"
+    },
+    {
+      "id": "07-ERR-4",
+      "condition": "LoadPrompt called with a name containing characters outside [a-zA-Z0-9_-]",
+      "behavior": "returns (\"\", error) with a message indicating the name is invalid, without reading any file",
+      "requirement_id": "07-REQ-3.4"
+    },
+    {
+      "id": "07-ERR-5",
+      "condition": "LoadPrompt override path exists but is a symlink",
+      "behavior": "ignores the symlink and falls back to the embedded default template, returning (embeddedContent, nil)",
+      "requirement_id": "07-REQ-3.E1"
+    },
+    {
+      "id": "07-ERR-6",
+      "condition": "AssessPRD receives a refusal, context_window_exceeded, or pause_turn stop reason",
+      "behavior": "returns (Assessment{}, AgentError) with the matching category without attempting tool call extraction",
+      "requirement_id": "07-REQ-5.3"
+    },
+    {
+      "id": "07-ERR-7",
+      "condition": "AssessPRD response contains no submit_assessment tool call",
+      "behavior": "returns (Assessment{}, AgentError{Category: \"internal\"}) describing the missing tool call",
+      "requirement_id": "07-REQ-5.E1"
+    },
+    {
+      "id": "07-ERR-8",
+      "condition": "RefinePRD response contains neither submit_prd_update nor submit_assessment tool calls",
+      "behavior": "returns (\"\", Assessment{}, AgentError{Category: \"internal\"})",
+      "requirement_id": "07-REQ-6.E3"
+    },
+    {
+      "id": "07-ERR-9",
+      "condition": "GenerateArtifacts validation fails after 2 repair attempts for an artifact",
+      "behavior": "returns (nil, error) describing which artifact failed and the final validation errors; subsequent artifacts are not generated",
+      "requirement_id": "07-REQ-7.3"
+    },
+    {
+      "id": "07-ERR-10",
+      "condition": "SpecSession.Assess fails due to AssessPRD error",
+      "behavior": "persists the error as lastError in session state and returns (Assessment{}, error) without appending to assessment history",
+      "requirement_id": "07-REQ-9.2"
+    },
+    {
+      "id": "07-ERR-11",
+      "condition": "SpecSession.Refine fails due to RefinePRD error or PRD file write error",
+      "behavior": "persists the error as lastError, does not update PRD file, does not record QA exchange, returns (Assessment{}, error)",
+      "requirement_id": "07-REQ-10.2"
+    },
+    {
+      "id": "07-ERR-12",
+      "condition": "SpecSession.Generate fails due to GenerateArtifacts error or OnArtifact callback error",
+      "behavior": "does not transition to StateGenerated, persists the error as lastError, returns (GenerateResult{}, error)",
+      "requirement_id": "07-REQ-11.3"
+    },
+    {
+      "id": "07-ERR-13",
+      "condition": "GenerationUserPrompt called with an unrecognized artifactName",
+      "behavior": "returns (\"\", error) indicating the artifact name is not supported",
+      "requirement_id": "07-REQ-4.E1"
+    },
+    {
+      "id": "07-ERR-14",
+      "condition": "AICall streaming response returns success status but missing expected text content field",
+      "behavior": "returns (\"\", rawResponse, error) describing the missing field",
+      "requirement_id": "07-REQ-2.E3"
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "github.com/anthropics/anthropic-sdk-go",
+      "version": "unverified — cross-check installed version before implementation",
+      "symbols": [
+        {
+          "name": "Client",
+          "import_path": "github.com/anthropics/anthropic-sdk-go",
+          "signature": "struct",
+          "notes": "Direct API client; created with anthropic.NewClient(apiKey)"
+        },
+        {
+          "name": "NewClient",
+          "import_path": "github.com/anthropics/anthropic-sdk-go",
+          "signature": "func NewClient(opts ...option.RequestOption) Client",
+          "notes": "Creates a direct Anthropic API client; pass anthropic.WithAPIKey(key) option"
+        },
+        {
+          "name": "Messages.NewStreaming",
+          "import_path": "github.com/anthropics/anthropic-sdk-go",
+          "signature": "func (r *MessagesService) NewStreaming(ctx context.Context, params MessageNewParams, opts ...option.RequestOption) *ssestream.Stream[MessageStreamEvent]",
+          "notes": "Streaming message creation; unverified — confirm exact signature against installed SDK"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1573 @@
+{
+  "$schema": null,
+  "spec_id": "08",
+  "spec_name": "spec_cli_go",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "go test ./golang/cmd/spec/... -count=1 -v",
+    "all_tests": "go test ./... -count=1",
+    "linter": "go vet ./golang/cmd/spec/..."
+  },
+  "dependencies": [
+    {
+      "depends_on_spec": "04",
+      "from_group": 1,
+      "to_group": 1,
+      "relationship": "CLI validate command uses full validation pipeline",
+      "sentinel": false
+    },
+    {
+      "depends_on_spec": "05",
+      "from_group": 1,
+      "to_group": 1,
+      "relationship": "CLI lint command uses lint module",
+      "sentinel": false
+    },
+    {
+      "depends_on_spec": "06",
+      "from_group": 1,
+      "to_group": 1,
+      "relationship": "CLI uses Campaign, SpecSession, config",
+      "sentinel": false
+    },
+    {
+      "depends_on_spec": "07",
+      "from_group": 1,
+      "to_group": 1,
+      "relationship": "CLI AI commands use session Assess/Refine/Generate",
+      "sentinel": false
+    }
+  ],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write Tests: Root Command, Agent Mode, JSON Helpers, Spinner",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write tests for root command global flags and banner behavior",
+          "details": [
+            "Test binary name is 'spec' and --version prints embedded version string",
+            "Test --spec-dir/-d flag defaults to '.specs' and is overridable via SPEC_DIR env var",
+            "Test --source/-s flag defaults to '.' and rejects non-existent directories",
+            "Test --quiet/-q suppresses banner on stderr",
+            "Test banner is suppressed when AF_AGENT=1, or subcommand is validate/status/list, or --json appears in args",
+            "Test invoking without subcommand displays help text"
+          ],
+          "test_spec_refs": [
+            "TS-08-1",
+            "TS-08-2",
+            "TS-08-3",
+            "TS-08-4"
+          ],
+          "requirement_refs": [
+            "08-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write tests for agent mode behavior",
+          "details": [
+            "Test AF_AGENT=1 suppresses banner and forces --quiet",
+            "Test unhandled errors are wrapped as {\"ok\": false, \"error\": \"...\"} on stdout with exit code 1",
+            "Test structured output goes to stdout as JSON in agent mode",
+            "Test progress/diagnostic messages do not appear on stdout in agent mode"
+          ],
+          "test_spec_refs": [
+            "TS-08-5",
+            "TS-08-6"
+          ],
+          "requirement_refs": [
+            "08-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write tests for JSON output helpers emit and emitOK",
+          "details": [
+            "Test emit() writes pretty-printed JSON (2-space indent) to stdout",
+            "Test emit() handles broken pipe silently without panicking",
+            "Test emitOK() wraps data with {\"ok\": true, ...} and emits to stdout",
+            "Test emitOK() with multiple fields merges them correctly into the output envelope"
+          ],
+          "test_spec_refs": [
+            "TS-08-7",
+            "TS-08-8"
+          ],
+          "requirement_refs": [
+            "08-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.4",
+          "title": "Write tests for StatusSpinner progress feedback",
+          "details": [
+            "Test StatusSpinner shows animated spinner message on stderr when stderr is a TTY",
+            "Test StatusSpinner falls back to plain text lines when stderr is not a TTY",
+            "Test all StatusSpinner methods are no-ops when --quiet is set",
+            "Test Update(message) changes the spinner text",
+            "Test Log(message) prints a permanent line above the spinner"
+          ],
+          "test_spec_refs": [
+            "TS-08-9",
+            "TS-08-10",
+            "TS-08-11"
+          ],
+          "requirement_refs": [
+            "08-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.5",
+          "title": "Write tests for spec resolver",
+          "details": [
+            "Test resolver matches spec by numeric prefix when argument is purely numeric",
+            "Test resolver matches spec by directory name when argument is a string",
+            "Test resolver returns error when zero matches are found",
+            "Test resolver returns error when multiple matches are found"
+          ],
+          "test_spec_refs": [
+            "TS-08-12",
+            "TS-08-13"
+          ],
+          "requirement_refs": [
+            "08-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All test files compile without errors: go build ./golang/cmd/spec/...",
+          "Test stubs exist for TS-08-1 through TS-08-13 and are discoverable by go test",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-1, 08-REQ-2, 08-REQ-3, 08-REQ-4, 08-REQ-5 acceptance criteria are covered by test stubs"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write Tests: spec new, list, refine Commands",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write tests for spec new command",
+          "details": [
+            "Test SPEC_PATH positional argument is required and must point to an existing file",
+            "Test --name flag validates against [a-z][a-z0-9_]* pattern and rejects invalid names",
+            "Test name is derived as snake_case from filename when --name is omitted",
+            "Test spec directory and default campaign.yaml are auto-initialized when missing",
+            "Test emitted JSON contains spec_dir and state fields with ok: true"
+          ],
+          "test_spec_refs": [
+            "TS-08-14",
+            "TS-08-15",
+            "TS-08-16"
+          ],
+          "requirement_refs": [
+            "08-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for spec list command",
+          "details": [
+            "Test list scans spec directory for subdirectories matching naming pattern",
+            "Test list reads _session.json state field for each spec, defaulting to 'no_session' if missing or malformed",
+            "Test emitted JSON shape: {\"ok\": true, \"spec_dir\": \"...\", \"specs\": [{\"name\": \"...\", \"state\": \"...\"}]}",
+            "Test list always exits with code 0"
+          ],
+          "test_spec_refs": [
+            "TS-08-17"
+          ],
+          "requirement_refs": [
+            "08-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for spec refine command — no answers path",
+          "details": [
+            "Test refine without --answers runs session.Assess() with spinner when session needs assessment",
+            "Test refine without --answers returns session.PendingQuestions() when session does not need assessment",
+            "Test emitted JSON contains assessment result"
+          ],
+          "test_spec_refs": [
+            "TS-08-18",
+            "TS-08-19"
+          ],
+          "requirement_refs": [
+            "08-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.4",
+          "title": "Write tests for spec refine command — answers and force paths",
+          "details": [
+            "Test --answers with a JSON file path parses answers and calls session.Refine(answers)",
+            "Test --answers with '-' reads JSON from stdin and calls session.Refine(answers)",
+            "Test answers JSON with 'answers' key is unwrapped before passing to Refine",
+            "Test --force resets session: deletes artifact files, resets state to INIT, clears assessment history and QA exchanges"
+          ],
+          "test_spec_refs": [
+            "TS-08-20",
+            "TS-08-21",
+            "TS-08-22"
+          ],
+          "requirement_refs": [
+            "08-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All test files compile without errors: go build ./golang/cmd/spec/...",
+          "Test stubs exist for TS-08-14 through TS-08-22 and are discoverable by go test",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-6, 08-REQ-7, 08-REQ-8 acceptance criteria are covered by test stubs"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Write Tests: spec generate, render, validate Commands",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write tests for spec generate command",
+          "details": [
+            "Test generate auto-accepts PRD via session.AcceptPRD() when state is ASSESSING or REFINING",
+            "Test generate runs session.Generate() with spinner",
+            "Test --force deletes existing artifact files before regenerating",
+            "Test emitted JSON contains list of generated artifacts with ok: true"
+          ],
+          "test_spec_refs": [
+            "TS-08-23",
+            "TS-08-24",
+            "TS-08-25"
+          ],
+          "requirement_refs": [
+            "08-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write tests for spec render command — raw markdown paths",
+          "details": [
+            "Test render without --json prints raw markdown to stdout",
+            "Test per-artifact mode separates artifacts with '---' on stdout",
+            "Test --combined produces single concatenated document on stdout",
+            "Test render falls back to available artifacts when some files are missing"
+          ],
+          "test_spec_refs": [
+            "TS-08-26",
+            "TS-08-27",
+            "TS-08-30"
+          ],
+          "requirement_refs": [
+            "08-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Write tests for spec render command — JSON envelope paths",
+          "details": [
+            "Test --json with --combined emits {\"ok\": true, \"format\": \"combined\", \"content\": \"...\"}",
+            "Test --json without --combined emits {\"ok\": true, \"format\": \"individual\", \"artifacts\": {...}}",
+            "Test --json is auto-enabled in agent mode (AF_AGENT=1)"
+          ],
+          "test_spec_refs": [
+            "TS-08-28",
+            "TS-08-29",
+            "TS-08-31"
+          ],
+          "requirement_refs": [
+            "08-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.4",
+          "title": "Write tests for spec validate command",
+          "details": [
+            "Test single-spec mode checks required files (prd.md, requirements.json, test_spec.json, tasks.json) and JSON readability",
+            "Test single-spec mode runs ValidateStructured and emits result",
+            "Test multi-spec mode discovers all specs and aggregates validation results",
+            "Test --cross flag runs ValidateCrossSpec and merges results",
+            "Test --short flag produces condensed output with only valid/error_count/warning_count",
+            "Test exit code 1 when any spec has validation errors"
+          ],
+          "test_spec_refs": [
+            "TS-08-32",
+            "TS-08-33",
+            "TS-08-34",
+            "TS-08-35"
+          ],
+          "requirement_refs": [
+            "08-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "All test files compile without errors: go build ./golang/cmd/spec/...",
+          "Test stubs exist for TS-08-23 through TS-08-35 and are discoverable by go test",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-9, 08-REQ-10, 08-REQ-11 acceptance criteria are covered by test stubs"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "tests",
+      "title": "Write Tests: spec lint, status, campaign, Build, Signal Handling",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Write tests for spec lint command",
+          "details": [
+            "Test lint runs RunLintSpecs(specDir, lintAll) with spinner",
+            "Test --all flag includes fully-implemented specs in lint run",
+            "Test emitted JSON contains findings with ok: true",
+            "Test exit code 1 when lint findings have non-zero exit_code"
+          ],
+          "test_spec_refs": [
+            "TS-08-36",
+            "TS-08-37"
+          ],
+          "requirement_refs": [
+            "08-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Write tests for spec status command",
+          "details": [
+            "Test status resumes session in read-only mode",
+            "Test emitted JSON shape: {\"ok\": true, \"state\": \"...\", \"has_assessment\": bool, \"generated_artifacts\": [...]}",
+            "Test last_error and quality fields are included when present in session"
+          ],
+          "test_spec_refs": [
+            "TS-08-38"
+          ],
+          "requirement_refs": [
+            "08-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.3",
+          "title": "Write tests for spec campaign command",
+          "details": [
+            "Test --path/-p and --name/-n are required flags",
+            "Test successful campaign creation prints confirmation to stderr",
+            "Test CampaignError causes exit 1 with error message to stderr"
+          ],
+          "test_spec_refs": [
+            "TS-08-39"
+          ],
+          "requirement_refs": [
+            "08-REQ-14"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.4",
+          "title": "Write tests for build and distribution",
+          "details": [
+            "Test version string is embedded at build time via -ldflags -X main.version=...",
+            "Test CGO_ENABLED=0 produces a static binary (no dynamic library dependencies)",
+            "Test build targets: darwin/arm64, darwin/amd64, linux/arm64, linux/amd64 compile successfully"
+          ],
+          "test_spec_refs": [
+            "TS-08-40",
+            "TS-08-41"
+          ],
+          "requirement_refs": [
+            "08-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.5",
+          "title": "Write tests for signal handling and context propagation",
+          "details": [
+            "Test SIGINT triggers graceful cancellation of AI-calling commands via context.Context",
+            "Test SIGTERM triggers graceful cancellation of AI-calling commands via context.Context",
+            "Test context cancellation propagates to session.Assess, session.Refine, session.Generate calls"
+          ],
+          "test_spec_refs": [
+            "TS-08-42",
+            "TS-08-43"
+          ],
+          "requirement_refs": [
+            "08-REQ-16"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.6",
+          "title": "Write smoke tests for end-to-end CLI invocation",
+          "details": [
+            "Write TS-08-SMOKE-1: invoke 'spec --version' and verify version string is printed and exit code is 0",
+            "Write TS-08-SMOKE-2: invoke 'spec list' against an empty spec dir and verify JSON output shape",
+            "Write TS-08-SMOKE-3: invoke 'spec validate' against a known-good spec dir and verify exit code 0",
+            "Write TS-08-SMOKE-4: invoke 'spec lint' and verify JSON findings are emitted",
+            "Smoke tests use the compiled binary via exec.Command to exercise real entry points"
+          ],
+          "test_spec_refs": [
+            "TS-08-SMOKE-1",
+            "TS-08-SMOKE-2",
+            "TS-08-SMOKE-3",
+            "TS-08-SMOKE-4"
+          ],
+          "requirement_refs": [
+            "08-REQ-1",
+            "08-REQ-7",
+            "08-REQ-11",
+            "08-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "All test files compile without errors: go build ./golang/cmd/spec/...",
+          "Test stubs exist for TS-08-36 through TS-08-43 and smoke test stubs are present",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-12, 08-REQ-13, 08-REQ-14, 08-REQ-15, 08-REQ-16 acceptance criteria are covered by test stubs"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement Root Command, Global Flags, and Binary Entry Point",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Scaffold cobra root command with global flags",
+          "details": [
+            "Create golang/cmd/spec/main.go with cobra root command",
+            "Add --spec-dir/-d flag (default '.specs', overridable via SPEC_DIR env var)",
+            "Add --source/-s flag (default '.', validate directory exists)",
+            "Add --quiet/-q flag to suppress progress output",
+            "Add --version flag that prints embedded version string and exits 0",
+            "Embed version via ldflags: var version string in main.go"
+          ],
+          "test_spec_refs": [
+            "TS-08-1",
+            "TS-08-2"
+          ],
+          "requirement_refs": [
+            "08-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Implement ASCII art banner with suppression logic",
+          "details": [
+            "Print banner to stderr on startup showing tool name, version, and current working directory",
+            "Suppress banner when --quiet is set",
+            "Suppress banner when AF_AGENT=1 is set",
+            "Suppress banner when subcommand is validate, status, or list",
+            "Suppress banner when --json appears anywhere in os.Args",
+            "Banner suppression check runs in PersistentPreRun before subcommand execution"
+          ],
+          "test_spec_refs": [
+            "TS-08-3",
+            "TS-08-4"
+          ],
+          "requirement_refs": [
+            "08-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Implement agent mode detection and error wrapping",
+          "details": [
+            "Detect AF_AGENT=1 at startup and store in global config",
+            "In agent mode: suppress banner, force --quiet, redirect all progress to /dev/null",
+            "Wrap unhandled errors as {\"ok\": false, \"error\": \"<message>\"} on stdout before exit 1",
+            "Ensure structured output goes to stdout as JSON; progress never appears on stdout"
+          ],
+          "test_spec_refs": [
+            "TS-08-5",
+            "TS-08-6"
+          ],
+          "requirement_refs": [
+            "08-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.4",
+          "title": "Implement emit and emitOK JSON output helpers",
+          "details": [
+            "Implement emit(data any) using json.MarshalIndent with 2-space indent, writing to stdout",
+            "Handle broken pipe (syscall.EPIPE / io.ErrClosedPipe) silently in emit",
+            "Implement emitOK(fields ...any) that merges fields into {\"ok\": true, ...} map and calls emit",
+            "Place helpers in golang/cmd/spec/output.go"
+          ],
+          "test_spec_refs": [
+            "TS-08-7",
+            "TS-08-8"
+          ],
+          "requirement_refs": [
+            "08-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.5",
+          "title": "Implement StatusSpinner progress feedback type",
+          "details": [
+            "Create StatusSpinner struct in golang/cmd/spec/spinner.go",
+            "Show animated spinner (dots or braille) with message on stderr when stderr is a TTY",
+            "Fall back to plain text lines when stderr is not a TTY",
+            "All methods (Start, Stop, Update, Log) are no-ops when --quiet is set",
+            "Update(message string) changes the spinner text in-place",
+            "Log(message string) prints a permanent line above the spinner"
+          ],
+          "test_spec_refs": [
+            "TS-08-9",
+            "TS-08-10",
+            "TS-08-11"
+          ],
+          "requirement_refs": [
+            "08-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.6",
+          "title": "Implement spec resolver",
+          "details": [
+            "Create ResolveSpec(specDir, arg string) (string, error) in golang/cmd/spec/resolver.go",
+            "If arg is purely numeric, match spec subdirectory by numeric prefix",
+            "Otherwise match by exact directory name",
+            "Return error wrapping 'no match' if zero specs match",
+            "Return error wrapping 'ambiguous match' if multiple specs match"
+          ],
+          "test_spec_refs": [
+            "TS-08-12",
+            "TS-08-13"
+          ],
+          "requirement_refs": [
+            "08-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "go test ./golang/cmd/spec/... -count=1 -run 'TestRoot|TestBanner|TestAgent|TestEmit|TestSpinner|TestResolver' passes",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-1, 08-REQ-2, 08-REQ-3, 08-REQ-4, 08-REQ-5 acceptance criteria met",
+          "TS-08-1 through TS-08-13 pass"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement spec new and spec list Commands",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Implement spec new command",
+          "details": [
+            "Create golang/cmd/spec/cmd/new.go with cobra subcommand 'new'",
+            "Require SPEC_PATH positional argument; validate file exists",
+            "Add --name TEXT flag; validate against regexp [a-z][a-z0-9_]*",
+            "Derive snake_case name from filename when --name is omitted",
+            "Auto-initialize spec directory and campaign.yaml (name: 'default', description: 'default campaign') if missing",
+            "Call Campaign.NewSpec, then emitOK with spec_dir and state fields"
+          ],
+          "test_spec_refs": [
+            "TS-08-14",
+            "TS-08-15",
+            "TS-08-16"
+          ],
+          "requirement_refs": [
+            "08-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement spec list command",
+          "details": [
+            "Create golang/cmd/spec/cmd/list.go with cobra subcommand 'list'",
+            "Scan spec directory for subdirectories matching spec naming pattern",
+            "Read _session.json from each subdirectory; extract state field; default to 'no_session' if missing or malformed",
+            "Emit JSON: {\"ok\": true, \"spec_dir\": \"...\", \"specs\": [{\"name\": \"...\", \"state\": \"...\"}]}",
+            "Always exit 0"
+          ],
+          "test_spec_refs": [
+            "TS-08-17"
+          ],
+          "requirement_refs": [
+            "08-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.3",
+          "title": "Implement signal handling and context propagation",
+          "details": [
+            "Create a root context in main.go using signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)",
+            "Pass context down to all AI-calling commands (refine, generate, assess)",
+            "Ensure context cancellation propagates to session.Assess, session.Refine, session.Generate",
+            "On cancellation, spinner stops and command exits gracefully"
+          ],
+          "test_spec_refs": [
+            "TS-08-42",
+            "TS-08-43"
+          ],
+          "requirement_refs": [
+            "08-REQ-16"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "go test ./golang/cmd/spec/... -count=1 -run 'TestNew|TestList|TestSignal' passes",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-6, 08-REQ-7, 08-REQ-16 acceptance criteria met",
+          "TS-08-14 through TS-08-17 and TS-08-42, TS-08-43 pass"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement spec refine Command",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Implement spec refine command — core structure and no-answers path",
+          "details": [
+            "Create golang/cmd/spec/cmd/refine.go with cobra subcommand 'refine'",
+            "Require SPEC positional argument; resolve via ResolveSpec",
+            "Add --answers TEXT flag (JSON file path or '-' for stdin)",
+            "Add --force flag",
+            "Without --answers: if session needs assessment, run session.Assess(ctx) with StatusSpinner",
+            "Without --answers: if session does not need assessment, call session.PendingQuestions() and emit result"
+          ],
+          "test_spec_refs": [
+            "TS-08-18",
+            "TS-08-19"
+          ],
+          "requirement_refs": [
+            "08-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Implement spec refine command — answers and force paths",
+          "details": [
+            "With --answers <file>: read JSON from file; unwrap 'answers' key if present; call session.Refine(ctx, answers) with spinner",
+            "With --answers '-': read JSON from os.Stdin; unwrap 'answers' key if present; call session.Refine(ctx, answers) with spinner",
+            "With --force: delete artifact files, reset state to INIT, clear assessment history, QA exchanges, and generated artifacts",
+            "Emit assessment result as JSON after refine completes"
+          ],
+          "test_spec_refs": [
+            "TS-08-20",
+            "TS-08-21",
+            "TS-08-22"
+          ],
+          "requirement_refs": [
+            "08-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "go test ./golang/cmd/spec/... -count=1 -run 'TestRefine' passes",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-8 acceptance criteria met",
+          "TS-08-18 through TS-08-22 pass"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "standard",
+      "title": "Implement spec generate and spec render Commands",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Implement spec generate command",
+          "details": [
+            "Create golang/cmd/spec/cmd/generate.go with cobra subcommand 'generate'",
+            "Require SPEC positional argument; resolve via ResolveSpec",
+            "Add --force flag; when set, delete existing artifact files before generating",
+            "If session state is ASSESSING or REFINING, call session.AcceptPRD() before generating",
+            "Run session.Generate(ctx) with StatusSpinner",
+            "Emit JSON with list of generated artifacts and ok: true"
+          ],
+          "test_spec_refs": [
+            "TS-08-23",
+            "TS-08-24",
+            "TS-08-25"
+          ],
+          "requirement_refs": [
+            "08-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Implement spec render command — raw markdown output",
+          "details": [
+            "Create golang/cmd/spec/cmd/render.go with cobra subcommand 'render'",
+            "Require SPEC positional argument; resolve via ResolveSpec",
+            "Add --combined flag and --json flag",
+            "Without --json: print raw markdown to stdout; separate per-artifact output with '---'",
+            "With --combined and without --json: print single concatenated document to stdout",
+            "Fall back to rendering available artifacts individually when some files are missing"
+          ],
+          "test_spec_refs": [
+            "TS-08-26",
+            "TS-08-27",
+            "TS-08-30"
+          ],
+          "requirement_refs": [
+            "08-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Implement spec render command — JSON envelope output",
+          "details": [
+            "With --json and --combined: emit {\"ok\": true, \"format\": \"combined\", \"content\": \"<markdown>\"}",
+            "With --json without --combined: emit {\"ok\": true, \"format\": \"individual\", \"artifacts\": {\"requirements\": \"...\", ...}}",
+            "Auto-enable --json when AF_AGENT=1 is set",
+            "Ensure render does not print banner (--json in args suppresses it)"
+          ],
+          "test_spec_refs": [
+            "TS-08-28",
+            "TS-08-29",
+            "TS-08-31"
+          ],
+          "requirement_refs": [
+            "08-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "go test ./golang/cmd/spec/... -count=1 -run 'TestGenerate|TestRender' passes",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-9, 08-REQ-10 acceptance criteria met",
+          "TS-08-23 through TS-08-31 pass"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "standard",
+      "title": "Implement spec validate and spec lint Commands",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Implement spec validate command — single-spec mode",
+          "details": [
+            "Create golang/cmd/spec/cmd/validate.go with cobra subcommand 'validate'",
+            "Accept optional SPEC positional argument; resolve via ResolveSpec when provided",
+            "Add --cross and --short flags",
+            "Single-spec mode: check prd.md, requirements.json, test_spec.json, tasks.json exist and are valid JSON",
+            "Run ValidateStructured on the loaded spec; emit result as JSON"
+          ],
+          "test_spec_refs": [
+            "TS-08-32",
+            "TS-08-33"
+          ],
+          "requirement_refs": [
+            "08-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Implement spec validate command — multi-spec and cross-spec modes",
+          "details": [
+            "Multi-spec mode (no SPEC arg): discover all specs via DiscoverSpecs, validate each, aggregate results",
+            "--cross flag: build dependency graph via BuildDependencyGraph, run ValidateCrossSpec, merge results",
+            "--short flag: emit condensed output with only valid/error_count/warning_count per spec",
+            "Exit code 1 if any spec has validation errors; exit 0 otherwise"
+          ],
+          "test_spec_refs": [
+            "TS-08-34",
+            "TS-08-35"
+          ],
+          "requirement_refs": [
+            "08-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Implement spec lint command",
+          "details": [
+            "Create golang/cmd/spec/cmd/lint.go with cobra subcommand 'lint'",
+            "Add --all flag to include fully-implemented specs",
+            "Run RunLintSpecs(specDir, lintAll) with StatusSpinner",
+            "Emit findings as JSON with ok: true",
+            "Exit code 1 if lint result has non-zero exit_code; exit 0 otherwise"
+          ],
+          "test_spec_refs": [
+            "TS-08-36",
+            "TS-08-37"
+          ],
+          "requirement_refs": [
+            "08-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "go test ./golang/cmd/spec/... -count=1 -run 'TestValidate|TestLint' passes",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-11, 08-REQ-12 acceptance criteria met",
+          "TS-08-32 through TS-08-37 pass"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "standard",
+      "title": "Implement spec status and spec campaign Commands",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Implement spec status command",
+          "details": [
+            "Create golang/cmd/spec/cmd/status.go with cobra subcommand 'status'",
+            "Require SPEC positional argument; resolve via ResolveSpec",
+            "Resume session in read-only mode (no state mutations)",
+            "Emit JSON: {\"ok\": true, \"state\": \"...\", \"has_assessment\": bool, \"generated_artifacts\": [...]}",
+            "Include last_error field when present in session",
+            "Include quality field when present in session"
+          ],
+          "test_spec_refs": [
+            "TS-08-38"
+          ],
+          "requirement_refs": [
+            "08-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Implement spec campaign command",
+          "details": [
+            "Create golang/cmd/spec/cmd/campaign.go with cobra subcommand 'campaign'",
+            "Add --path/-p (required) and --name/-n (required) flags",
+            "Add --description flag (optional, default empty string)",
+            "Call CreateCampaign with provided path, name, and description",
+            "Print confirmation message to stderr on success",
+            "On CampaignError: print error to stderr and exit 1"
+          ],
+          "test_spec_refs": [
+            "TS-08-39"
+          ],
+          "requirement_refs": [
+            "08-REQ-14"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "go test ./golang/cmd/spec/... -count=1 -run 'TestStatus|TestCampaign' passes",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-13, 08-REQ-14 acceptance criteria met",
+          "TS-08-38 and TS-08-39 pass"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "kind": "standard",
+      "title": "Build System and Distribution",
+      "subtasks": [
+        {
+          "id": "11.1",
+          "title": "Configure Makefile targets for cross-platform static builds",
+          "details": [
+            "Add Makefile targets for darwin/arm64, darwin/amd64, linux/arm64, linux/amd64",
+            "Set CGO_ENABLED=0 for all targets to produce static binaries",
+            "Embed version via -ldflags \"-X main.version=$(VERSION)\" in each target",
+            "Output binaries to dist/ directory with platform-specific names (e.g. spec-darwin-arm64)"
+          ],
+          "test_spec_refs": [
+            "TS-08-40",
+            "TS-08-41"
+          ],
+          "requirement_refs": [
+            "08-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.2",
+          "title": "Update install.sh to download and install Go binary",
+          "details": [
+            "Replace uv tool install logic with curl/wget download of Go binary from release URL",
+            "Detect OS and architecture to select correct binary (darwin/arm64, darwin/amd64, linux/arm64, linux/amd64)",
+            "Place binary in PATH (e.g. /usr/local/bin/spec) with executable permissions",
+            "Print installation confirmation with version string"
+          ],
+          "test_spec_refs": [
+            "TS-08-40"
+          ],
+          "requirement_refs": [
+            "08-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "11.V",
+        "checks": [
+          "make build-all completes without errors for all four platform targets",
+          "file dist/spec-linux-amd64 reports 'statically linked' (no dynamic library dependencies)",
+          "dist/spec-darwin-arm64 --version prints the embedded version string",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "Requirements 08-REQ-15 acceptance criteria met",
+          "TS-08-40 and TS-08-41 pass"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "kind": "checkpoint",
+      "title": "Integration Checkpoint: All Commands Wired and Tests Green",
+      "subtasks": [
+        {
+          "id": "12.1",
+          "title": "Run full test suite and confirm all spec tests pass",
+          "details": [
+            "Run go test ./golang/cmd/spec/... -count=1 -v and confirm all tests pass",
+            "Confirm no test is skipped due to missing stubs or panic(\"not implemented\")",
+            "Confirm TS-08-1 through TS-08-43 all pass"
+          ],
+          "test_spec_refs": [
+            "TS-08-1",
+            "TS-08-2",
+            "TS-08-3",
+            "TS-08-4",
+            "TS-08-5",
+            "TS-08-6",
+            "TS-08-7",
+            "TS-08-8",
+            "TS-08-9",
+            "TS-08-10",
+            "TS-08-11",
+            "TS-08-12",
+            "TS-08-13"
+          ],
+          "requirement_refs": [
+            "08-REQ-1",
+            "08-REQ-2",
+            "08-REQ-3",
+            "08-REQ-4",
+            "08-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.2",
+          "title": "Audit for stub markers and dead code",
+          "details": [
+            "Search for panic(\"not implemented\") in golang/cmd/spec/... and confirm none remain",
+            "Search for bare 'return nil' in non-trivial command handlers",
+            "Search for // TODO markers that indicate incomplete implementation",
+            "Confirm all cobra subcommands are registered on the root command"
+          ],
+          "test_spec_refs": [
+            "TS-08-14",
+            "TS-08-17",
+            "TS-08-18",
+            "TS-08-23",
+            "TS-08-26",
+            "TS-08-32",
+            "TS-08-36",
+            "TS-08-38",
+            "TS-08-39"
+          ],
+          "requirement_refs": [
+            "08-REQ-1",
+            "08-REQ-6",
+            "08-REQ-7",
+            "08-REQ-8",
+            "08-REQ-9",
+            "08-REQ-10",
+            "08-REQ-11",
+            "08-REQ-12",
+            "08-REQ-13",
+            "08-REQ-14"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.3",
+          "title": "Verify cross-spec integration points compile and link",
+          "details": [
+            "Confirm ValidateStructured, ValidateCrossSpec from afspec_go_validation are imported and called",
+            "Confirm RunLintSpecs from afspec_go_mutation_lint is imported and called",
+            "Confirm Campaign, NewSpec, CreateCampaign, CampaignError from agentspec_go_core are imported and called",
+            "Confirm session.Assess, session.Refine, session.Generate, session.AcceptPRD from agentspec_go_ai are imported and called",
+            "Run go build ./golang/cmd/spec/... and confirm no import errors"
+          ],
+          "test_spec_refs": [
+            "TS-08-20",
+            "TS-08-23",
+            "TS-08-32",
+            "TS-08-36",
+            "TS-08-39"
+          ],
+          "requirement_refs": [
+            "08-REQ-8",
+            "08-REQ-9",
+            "08-REQ-11",
+            "08-REQ-12",
+            "08-REQ-14"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "12.V",
+        "checks": [
+          "go test ./golang/cmd/spec/... -count=1 passes with zero failures",
+          "go vet ./golang/cmd/spec/... reports no issues",
+          "grep -r 'panic(\"not implemented\")' golang/cmd/spec/ returns no results",
+          "go build ./golang/cmd/spec/... succeeds with all cross-spec imports resolved",
+          "All 43 spec test cases (TS-08-1 through TS-08-43) are confirmed passing"
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "kind": "wiring_verification",
+      "title": "Wiring Verification: End-to-End Integration and Smoke Tests",
+      "subtasks": [
+        {
+          "id": "13.1",
+          "title": "Trace execution paths from main entry point through all command handlers",
+          "details": [
+            "Verify main() registers all 9 subcommands (new, list, refine, generate, render, validate, lint, status, campaign) on the cobra root command",
+            "Verify each subcommand's RunE calls the correct downstream function (e.g. refine calls session.Assess or session.Refine, generate calls session.Generate)",
+            "Verify PersistentPreRun banner suppression logic is wired before every subcommand",
+            "Verify agent mode error wrapping is wired in the root command's Execute() error path"
+          ],
+          "test_spec_refs": [
+            "TS-08-1",
+            "TS-08-5",
+            "TS-08-14",
+            "TS-08-17",
+            "TS-08-18",
+            "TS-08-23",
+            "TS-08-26",
+            "TS-08-32",
+            "TS-08-36",
+            "TS-08-38",
+            "TS-08-39"
+          ],
+          "requirement_refs": [
+            "08-REQ-1",
+            "08-REQ-2",
+            "08-REQ-6",
+            "08-REQ-7",
+            "08-REQ-8",
+            "08-REQ-9",
+            "08-REQ-10",
+            "08-REQ-11",
+            "08-REQ-12",
+            "08-REQ-13",
+            "08-REQ-14"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.2",
+          "title": "Verify return value propagation across command boundaries",
+          "details": [
+            "Confirm emit() return value (error) is checked and handled in all callers",
+            "Confirm ResolveSpec error is propagated and causes non-zero exit in all commands that use it",
+            "Confirm session.Generate return value (artifact list) is passed to emitOK",
+            "Confirm ValidateStructured and ValidateCrossSpec results are correctly mapped to exit codes"
+          ],
+          "test_spec_refs": [
+            "TS-08-7",
+            "TS-08-12",
+            "TS-08-23",
+            "TS-08-32"
+          ],
+          "requirement_refs": [
+            "08-REQ-3",
+            "08-REQ-5",
+            "08-REQ-9",
+            "08-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.3",
+          "title": "Run smoke tests against compiled binary",
+          "details": [
+            "Build the binary: go build -ldflags \"-X main.version=test\" -o /tmp/spec ./golang/cmd/spec/",
+            "Run TS-08-SMOKE-1: /tmp/spec --version exits 0 and prints version string",
+            "Run TS-08-SMOKE-2: /tmp/spec list against empty spec dir exits 0 and emits valid JSON",
+            "Run TS-08-SMOKE-3: /tmp/spec validate against known-good spec dir exits 0",
+            "Run TS-08-SMOKE-4: /tmp/spec lint emits JSON findings"
+          ],
+          "test_spec_refs": [
+            "TS-08-SMOKE-1",
+            "TS-08-SMOKE-2",
+            "TS-08-SMOKE-3",
+            "TS-08-SMOKE-4"
+          ],
+          "requirement_refs": [
+            "08-REQ-1",
+            "08-REQ-7",
+            "08-REQ-11",
+            "08-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.4",
+          "title": "Stub and dead-code audit",
+          "details": [
+            "Search for panic(\"not implemented\") in golang/cmd/spec/... — must return zero results",
+            "Search for bare 'return nil' in command RunE handlers that should return errors",
+            "Search for // TODO comments indicating deferred implementation",
+            "Confirm StatusSpinner is actually instantiated and used in refine, generate, lint commands (not bypassed)"
+          ],
+          "test_spec_refs": [
+            "TS-08-9",
+            "TS-08-18",
+            "TS-08-23",
+            "TS-08-36"
+          ],
+          "requirement_refs": [
+            "08-REQ-4",
+            "08-REQ-8",
+            "08-REQ-9",
+            "08-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.5",
+          "title": "Verify cross-spec entry points are called from production code",
+          "details": [
+            "Confirm ValidateStructured is called from validate command RunE (not just tested in isolation)",
+            "Confirm RunLintSpecs is called from lint command RunE (not just tested in isolation)",
+            "Confirm Campaign.NewSpec is called from new command RunE (not just tested in isolation)",
+            "Confirm session.Assess, session.Refine, session.Generate are called from their respective command RunE functions",
+            "Confirm signal.NotifyContext is wired in main() and context is passed to all AI-calling commands"
+          ],
+          "test_spec_refs": [
+            "TS-08-14",
+            "TS-08-18",
+            "TS-08-23",
+            "TS-08-32",
+            "TS-08-36",
+            "TS-08-42"
+          ],
+          "requirement_refs": [
+            "08-REQ-6",
+            "08-REQ-8",
+            "08-REQ-9",
+            "08-REQ-11",
+            "08-REQ-12",
+            "08-REQ-16"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.6",
+          "title": "Final full test suite run and build verification",
+          "details": [
+            "Run go test ./... -count=1 and confirm zero failures across all packages",
+            "Run go vet ./... and confirm no issues",
+            "Build all four platform targets and confirm static binaries are produced",
+            "Confirm AF_AGENT=1 spec list emits valid JSON on stdout with no banner on stdout"
+          ],
+          "test_spec_refs": [
+            "TS-08-5",
+            "TS-08-17",
+            "TS-08-40",
+            "TS-08-41"
+          ],
+          "requirement_refs": [
+            "08-REQ-2",
+            "08-REQ-7",
+            "08-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "13.V",
+        "checks": [
+          "go test ./... -count=1 passes with zero failures",
+          "go vet ./... reports no issues",
+          "Smoke tests TS-08-SMOKE-1 through TS-08-SMOKE-4 all pass against compiled binary",
+          "grep -r 'panic(\"not implemented\")' golang/cmd/spec/ returns no results — stub/dead-code audit clean",
+          "All 9 subcommands are registered and reachable via 'spec --help'",
+          "AF_AGENT=1 spec list produces valid JSON on stdout with no banner or progress on stdout",
+          "Static binary confirmed: file dist/spec-linux-amd64 reports 'statically linked'",
+          "All cross-spec imports (ValidateStructured, RunLintSpecs, Campaign.NewSpec, session.Assess/Refine/Generate) resolve and are called from production RunE handlers"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "08-REQ-1.1",
+      "test_spec_id": "TS-08-1",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-1.1",
+      "test_spec_id": "TS-08-2",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-1.1",
+      "test_spec_id": "TS-08-3",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-1.1",
+      "test_spec_id": "TS-08-4",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-2.1",
+      "test_spec_id": "TS-08-5",
+      "task_id": "5.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-2.1",
+      "test_spec_id": "TS-08-6",
+      "task_id": "5.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-3.1",
+      "test_spec_id": "TS-08-7",
+      "task_id": "5.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-3.1",
+      "test_spec_id": "TS-08-8",
+      "task_id": "5.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-4.1",
+      "test_spec_id": "TS-08-9",
+      "task_id": "5.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-4.1",
+      "test_spec_id": "TS-08-10",
+      "task_id": "5.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-4.1",
+      "test_spec_id": "TS-08-11",
+      "task_id": "5.5",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-5.1",
+      "test_spec_id": "TS-08-12",
+      "task_id": "5.6",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-5.1",
+      "test_spec_id": "TS-08-13",
+      "task_id": "5.6",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-6.1",
+      "test_spec_id": "TS-08-14",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-6.1",
+      "test_spec_id": "TS-08-15",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-6.1",
+      "test_spec_id": "TS-08-16",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-7.1",
+      "test_spec_id": "TS-08-17",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-8.1",
+      "test_spec_id": "TS-08-18",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-8.1",
+      "test_spec_id": "TS-08-19",
+      "task_id": "7.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-8.1",
+      "test_spec_id": "TS-08-20",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-8.1",
+      "test_spec_id": "TS-08-21",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-8.1",
+      "test_spec_id": "TS-08-22",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-9.1",
+      "test_spec_id": "TS-08-23",
+      "task_id": "8.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-9.1",
+      "test_spec_id": "TS-08-24",
+      "task_id": "8.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-9.1",
+      "test_spec_id": "TS-08-25",
+      "task_id": "8.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-10.1",
+      "test_spec_id": "TS-08-26",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-10.1",
+      "test_spec_id": "TS-08-27",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-10.1",
+      "test_spec_id": "TS-08-28",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-10.1",
+      "test_spec_id": "TS-08-29",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-10.1",
+      "test_spec_id": "TS-08-30",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-10.1",
+      "test_spec_id": "TS-08-31",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-11.1",
+      "test_spec_id": "TS-08-32",
+      "task_id": "9.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-11.1",
+      "test_spec_id": "TS-08-33",
+      "task_id": "9.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-11.1",
+      "test_spec_id": "TS-08-34",
+      "task_id": "9.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-11.1",
+      "test_spec_id": "TS-08-35",
+      "task_id": "9.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-12.1",
+      "test_spec_id": "TS-08-36",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-12.1",
+      "test_spec_id": "TS-08-37",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-13.1",
+      "test_spec_id": "TS-08-38",
+      "task_id": "10.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-14.1",
+      "test_spec_id": "TS-08-39",
+      "task_id": "10.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-15.1",
+      "test_spec_id": "TS-08-40",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-15.1",
+      "test_spec_id": "TS-08-41",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-16.1",
+      "test_spec_id": "TS-08-42",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "08-REQ-16.1",
+      "test_spec_id": "TS-08-43",
+      "task_id": "6.3",
+      "test_path": null
+    }
+  ]
+}

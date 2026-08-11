@@ -1,0 +1,1831 @@
+{
+  "$schema": null,
+  "spec_id": "07",
+  "spec_name": "agentspec_go_ai",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "go test ./agentspec/... -count=1 -v -run 'TestSpec07'",
+    "all_tests": "go test ./... -count=1",
+    "linter": "go vet ./..."
+  },
+  "dependencies": [
+    {
+      "depends_on_spec": "06",
+      "from_group": 1,
+      "to_group": 17,
+      "relationship": "Uses SpecSession, Assessment, AgentError, tool definitions, config",
+      "sentinel": true
+    }
+  ],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write tests: model registry, ResolveModel, and AICall options (REQ-1, REQ-2 partial)",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write tests for ModelTier constants, ModelEntry, ModelRegistry, and TierDefaults",
+          "details": [
+            "Create test file agentspec/llm_registry_test.go",
+            "Assert TierSimple==\"SIMPLE\", TierStandard==\"STANDARD\", TierAdvanced==\"ADVANCED\"",
+            "Assert ModelRegistry contains claude-haiku-4-5 (SIMPLE), claude-sonnet-4-6 (STANDARD), claude-opus-4-6 (ADVANCED)",
+            "Assert TierDefaults maps each ModelTier to the correct default model ID"
+          ],
+          "test_spec_refs": [
+            "TS-07-1",
+            "TS-07-2"
+          ],
+          "requirement_refs": [
+            "07-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write tests for ResolveModel: tier name, model ID, and unknown name",
+          "details": [
+            "Test ResolveModel(\"SIMPLE\") returns claude-haiku-4-5 (case-insensitive: \"simple\", \"Simple\")",
+            "Test ResolveModel(\"claude-sonnet-4-6\") returns claude-sonnet-4-6 directly",
+            "Test ResolveModel(\"unknown-model\") returns an error",
+            "Test ResolveModel(\"ADVANCED\") returns claude-opus-4-6"
+          ],
+          "test_spec_refs": [
+            "TS-07-3",
+            "TS-07-4"
+          ],
+          "requirement_refs": [
+            "07-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write tests for CachePolicy constants and AICallOptions defaults",
+          "details": [
+            "Assert CacheNone, CacheDefault, CacheExtended have correct string values",
+            "Test that AICallOptions zero value has MaxTokens=0 (caller must set) and CachePolicy defaults applied by AICall",
+            "Test AICallOptions struct fields are accessible: ModelTier, MaxTokens, Messages, System, Context, CachePolicy, Temperature, Tools, ToolChoice"
+          ],
+          "test_spec_refs": [
+            "TS-07-5"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.4",
+          "title": "Write tests for AICall platform selection via environment variables",
+          "details": [
+            "Use a fake/stub Anthropic client interface to intercept client creation",
+            "Test that CLAUDE_CODE_USE_VERTEX set causes Vertex AI client path",
+            "Test that CLAUDE_CODE_USE_BEDROCK set causes Bedrock client path",
+            "Test that neither env var set causes direct API client path with ANTHROPIC_API_KEY"
+          ],
+          "test_spec_refs": [
+            "TS-07-6"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.5",
+          "title": "Write tests for AICall retry logic with exponential backoff",
+          "details": [
+            "Mock transport to return rate-limit (429), 5xx, and connection errors",
+            "Assert retry happens up to 4 total attempts with delays 2s, 30s, 60s (use fake clock or short delays in test)",
+            "Assert non-retryable errors (4xx non-429) do not retry",
+            "Assert successful response on 3rd attempt is returned correctly"
+          ],
+          "test_spec_refs": [
+            "TS-07-7",
+            "TS-07-8"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.6",
+          "title": "Write tests for AICall cache_control injection logic",
+          "details": [
+            "Test that system prompt below token threshold does not inject cache_control",
+            "Test that sonnet model with system prompt >2048 estimated tokens injects {\"type\":\"ephemeral\"} for CacheDefault",
+            "Test that CacheExtended adds {\"ttl\":\"1h\"} in addition to ephemeral",
+            "Test that CacheNone never injects cache_control regardless of prompt length",
+            "Test that API rejection of cache_control triggers retry without it"
+          ],
+          "test_spec_refs": [
+            "TS-07-9",
+            "TS-07-10"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All test stubs compile: go build ./agentspec/...",
+          "go test ./agentspec/... -run 'TestModelRegistry|TestResolveModel|TestCachePolicy|TestAICall' -count=1 reports expected failures (red phase)",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 07-REQ-1 and 07-REQ-2 test coverage is complete per test_spec"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write tests: prompt template loading, substitution, and builder functions (REQ-3, REQ-4)",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write tests for LoadPrompt: embedded fallback, project-local override, and path traversal prevention",
+          "details": [
+            "Test LoadPrompt returns embedded template content when no project-local override exists",
+            "Test LoadPrompt uses <projectDir>/.spec/prompts/<name>.md when it exists and is not a symlink",
+            "Test LoadPrompt rejects names with path traversal characters (e.g. \"../etc/passwd\") with an error",
+            "Test LoadPrompt strips YAML frontmatter (--- delimited) from loaded content",
+            "Test LoadPrompt rejects symlink overrides and falls back to embedded"
+          ],
+          "test_spec_refs": [
+            "TS-07-11",
+            "TS-07-12",
+            "TS-07-13"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for LoadPromptTemplate variable substitution",
+          "details": [
+            "Test $variable references are replaced with values from vars map",
+            "Test unmatched $variable references pass through unchanged (safe substitute)",
+            "Test multiple variables in one template are all substituted",
+            "Test empty vars map returns template content unchanged"
+          ],
+          "test_spec_refs": [
+            "TS-07-14",
+            "TS-07-15"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for DetectProjectLanguage manifest scanning",
+          "details": [
+            "Test go.mod detected → language=\"Go\", toolHints contains go test/go vet",
+            "Test Cargo.toml detected → language=\"Rust\"",
+            "Test package.json detected → language=\"TypeScript\" or \"JavaScript\"",
+            "Test pyproject.toml detected → language=\"Python\"",
+            "Test empty directory returns empty strings for both language and toolHints"
+          ],
+          "test_spec_refs": [
+            "TS-07-16",
+            "TS-07-17"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.4",
+          "title": "Write tests for FormatSpecLandscape markdown table output",
+          "details": [
+            "Test active specs appear in active section table",
+            "Test archived specs appear in archived section table",
+            "Test empty landscape returns empty or minimal string without panicking",
+            "Test mixed active/archived entries are split correctly"
+          ],
+          "test_spec_refs": [
+            "TS-07-18"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.5",
+          "title": "Write tests for AssessmentSystemPrompt and AssessmentUserPrompt",
+          "details": [
+            "Test AssessmentSystemPrompt returns non-empty string from embedded template",
+            "Test AssessmentUserPrompt substitutes $spec_name, $spec_landscape_block, $prd_text correctly",
+            "Test AssessmentUserPrompt with empty specLandscape produces valid output"
+          ],
+          "test_spec_refs": [
+            "TS-07-19",
+            "TS-07-20"
+          ],
+          "requirement_refs": [
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.6",
+          "title": "Write tests for RefinementUserPrompt and GenerationUserPrompt",
+          "details": [
+            "Test RefinementUserPrompt substitutes $prd_text, $assessment_block, $qa_block, $spec_landscape_block",
+            "Test GenerationUserPrompt composes generation_user_base with artifact-specific template for requirements, test_spec, tasks",
+            "Test GenerationUserPrompt with priorArtifacts map injects prior context",
+            "Test RepairUserPrompt substitutes artifactName, originalContent, and errors list"
+          ],
+          "test_spec_refs": [
+            "TS-07-21",
+            "TS-07-22",
+            "TS-07-23"
+          ],
+          "requirement_refs": [
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All prompt test stubs compile: go build ./agentspec/...",
+          "go test ./agentspec/... -run 'TestLoadPrompt|TestLoadPromptTemplate|TestDetectProjectLanguage|TestFormatSpecLandscape|TestAssessment.*Prompt|TestRefinement.*Prompt|TestGeneration.*Prompt|TestRepairUserPrompt' -count=1 reports expected failures (red phase)",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 07-REQ-3 and 07-REQ-4 test coverage is complete per test_spec"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Write tests: SpecAgent pipeline — AssessPRD, RefinePRD, GenerateArtifacts (REQ-5, REQ-6, REQ-7)",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write tests for NewSpecAgent and AssessPRD happy path",
+          "details": [
+            "Test NewSpecAgent returns a non-nil *SpecAgent with the given modelTier",
+            "Mock AICall to return a valid submit_assessment tool call response",
+            "Test AssessPRD returns a populated Assessment struct",
+            "Test AssessPRD forces tool_choice={\"type\":\"any\"} in the API call"
+          ],
+          "test_spec_refs": [
+            "TS-07-24",
+            "TS-07-25"
+          ],
+          "requirement_refs": [
+            "07-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write tests for AssessPRD stop reason handling and error classification",
+          "details": [
+            "Test that stop_reason=refusal returns AgentError with category=refusal",
+            "Test that stop_reason=context_window_exceeded returns AgentError with category=context_window",
+            "Test that stop_reason=pause_turn returns AgentError with category=pause_turn",
+            "Test that Anthropic SDK rate-limit error is wrapped as AgentError with category=rate_limit and retryable=true",
+            "Test that auth error is wrapped as AgentError with category=auth and retryable=false"
+          ],
+          "test_spec_refs": [
+            "TS-07-26",
+            "TS-07-27",
+            "TS-07-28",
+            "TS-07-29"
+          ],
+          "requirement_refs": [
+            "07-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Write tests for RefinePRD happy path and fallback assessment call",
+          "details": [
+            "Mock AICall to return both submit_prd_update and submit_assessment tool calls",
+            "Test RefinePRD returns (updatedPRDText, newAssessment, nil)",
+            "Test RefinePRD makes a second API call when submit_assessment tool call is missing from first response",
+            "Test RefinePRD passes user answers and prevAssessment in the prompt"
+          ],
+          "test_spec_refs": [
+            "TS-07-30",
+            "TS-07-31",
+            "TS-07-32"
+          ],
+          "requirement_refs": [
+            "07-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.4",
+          "title": "Write tests for GenerateArtifacts sequential pipeline and OnArtifact callback",
+          "details": [
+            "Mock AICall to return valid tool call responses for requirements, test_spec, tasks in sequence",
+            "Test that artifacts are generated in order: requirements → test_spec → tasks",
+            "Test that priorArtifacts map grows with each generated artifact",
+            "Test that OnArtifact callback is invoked after each successful artifact with correct name and content",
+            "Test that temperature=0.2 is passed for each artifact generation call"
+          ],
+          "test_spec_refs": [
+            "TS-07-33",
+            "TS-07-34"
+          ],
+          "requirement_refs": [
+            "07-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.5",
+          "title": "Write tests for GenerateArtifacts validation and repair loop",
+          "details": [
+            "Test that validation failure triggers repair loop (up to 2 attempts)",
+            "Test that repair loop sends validation errors and original content via RepairUserPrompt",
+            "Test that successful repair on 2nd attempt returns the corrected artifact",
+            "Test that repair loop exhaustion (all attempts fail) returns an error"
+          ],
+          "test_spec_refs": [
+            "TS-07-35",
+            "TS-07-36"
+          ],
+          "requirement_refs": [
+            "07-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.6",
+          "title": "Write tests for AgentOption functional options",
+          "details": [
+            "Test WithSpecLandscape sets the spec landscape on agent call options",
+            "Test WithDependentInterfaces sets dependent interfaces on agent call options",
+            "Test WithProjectDir sets the project directory on agent call options",
+            "Test WithOnArtifact sets the callback on agent call options",
+            "Test multiple options can be composed and all take effect"
+          ],
+          "test_spec_refs": [
+            "TS-07-37",
+            "TS-07-38",
+            "TS-07-39"
+          ],
+          "requirement_refs": [
+            "07-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "All agent test stubs compile: go build ./agentspec/...",
+          "go test ./agentspec/... -run 'TestNewSpecAgent|TestAssessPRD|TestRefinePRD|TestGenerateArtifacts|TestAgentOption' -count=1 reports expected failures (red phase)",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 07-REQ-5 through 07-REQ-8 test coverage is complete per test_spec"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "tests",
+      "title": "Write tests: SpecSession AI methods — Assess, Refine, Generate (REQ-9, REQ-10, REQ-11)",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Write tests for SpecSession.Assess state transitions and persistence",
+          "details": [
+            "Test Assess transitions session to StateAssessing before calling AssessPRD",
+            "Test Assess appends returned Assessment to assessment history",
+            "Test Assess persists state after successful assessment",
+            "Test Assess persists lastError and does not append to history on error"
+          ],
+          "test_spec_refs": [
+            "TS-07-40",
+            "TS-07-41"
+          ],
+          "requirement_refs": [
+            "07-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Write tests for SpecSession.Refine state transitions, PRD update, and QA recording",
+          "details": [
+            "Test Refine transitions session to StateRefining",
+            "Test Refine writes updated PRD text to disk",
+            "Test Refine appends new Assessment to history and records QA exchange with assessment_index, answers, UTC timestamp",
+            "Test Refine persists lastError and does NOT record QA exchange on error"
+          ],
+          "test_spec_refs": [
+            "TS-07-42",
+            "TS-07-43"
+          ],
+          "requirement_refs": [
+            "07-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.3",
+          "title": "Write tests for SpecSession.Generate artifact writing, partial recovery, and state transitions",
+          "details": [
+            "Test Generate transitions to StateGenerating immediately",
+            "Test Generate skips already-existing artifact files (partial failure recovery)",
+            "Test Generate writes each artifact to disk via afspec.MarshalJSON",
+            "Test Generate transitions to StateGenerated after all artifacts are written",
+            "Test Generate runs Validate() and returns GenerateResult with artifact list and validation result"
+          ],
+          "test_spec_refs": [
+            "TS-07-44",
+            "TS-07-45",
+            "TS-07-46"
+          ],
+          "requirement_refs": [
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "All session AI method test stubs compile: go build ./agentspec/...",
+          "go test ./agentspec/... -run 'TestSpecSession_Assess|TestSpecSession_Refine|TestSpecSession_Generate' -count=1 reports expected failures (red phase)",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 07-REQ-9 through 07-REQ-11 test coverage is complete per test_spec"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement model registry, ResolveModel, and CachePolicy types (REQ-1)",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Define ModelTier type, constants, ModelEntry struct, ModelRegistry, and TierDefaults",
+          "details": [
+            "Create agentspec/model_registry.go",
+            "Define type ModelTier string with constants TierSimple=\"SIMPLE\", TierStandard=\"STANDARD\", TierAdvanced=\"ADVANCED\"",
+            "Define ModelEntry struct with fields ModelID string, Tier ModelTier, Variant string",
+            "Define package-level ModelRegistry map[string]ModelEntry with entries for claude-haiku-4-5, claude-sonnet-4-6, claude-opus-4-6",
+            "Define package-level TierDefaults map[ModelTier]string mapping each tier to its default model ID"
+          ],
+          "test_spec_refs": [
+            "TS-07-1",
+            "TS-07-2"
+          ],
+          "requirement_refs": [
+            "07-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Implement ResolveModel function",
+          "details": [
+            "Add func ResolveModel(name string) (string, error) to model_registry.go",
+            "Case-insensitive match against tier constant strings (SIMPLE, STANDARD, ADVANCED) → return TierDefaults value",
+            "Exact match against ModelRegistry keys → return model ID directly",
+            "Otherwise return fmt.Errorf(\"unknown model or tier: %q\", name)"
+          ],
+          "test_spec_refs": [
+            "TS-07-3",
+            "TS-07-4"
+          ],
+          "requirement_refs": [
+            "07-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Define CachePolicy type and constants",
+          "details": [
+            "Add type CachePolicy string to model_registry.go or a new agentspec/cache.go",
+            "Define CacheNone CachePolicy = \"none\", CacheDefault CachePolicy = \"default\", CacheExtended CachePolicy = \"extended\"",
+            "Add token threshold constants: sonnetThreshold=2048, defaultThreshold=4096",
+            "Add helper estimateTokens(text string) int using len(text)/4"
+          ],
+          "test_spec_refs": [
+            "TS-07-5"
+          ],
+          "requirement_refs": [
+            "07-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestModelRegistry|TestResolveModel|TestCachePolicy' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-1.1 through 07-REQ-1.4 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement AICallOptions struct and platform-aware client creation (REQ-2 partial)",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Define AICallOptions struct with all fields",
+          "details": [
+            "Create agentspec/aicall.go",
+            "Define AICallOptions struct: ModelTier ModelTier, MaxTokens int, Messages []anthropic.MessageParam, System []anthropic.TextBlockParam, Context string, CachePolicy CachePolicy, Temperature *float64, Tools []anthropic.ToolParam, ToolChoice *anthropic.ToolChoiceUnionParam",
+            "Apply defaults in AICall: MaxTokens defaults to 65536, CachePolicy defaults to CacheDefault"
+          ],
+          "test_spec_refs": [
+            "TS-07-5"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement platform-aware Anthropic client factory",
+          "details": [
+            "Add func newAnthropicClient() (client, error) that checks CLAUDE_CODE_USE_VERTEX → anthropic.NewVertexClient(), CLAUDE_CODE_USE_BEDROCK → anthropic.NewBedrockClient(), else → anthropic.NewClient(os.Getenv(\"ANTHROPIC_API_KEY\"))",
+            "Return typed client interface to allow test injection",
+            "Document environment variable precedence in a comment"
+          ],
+          "test_spec_refs": [
+            "TS-07-6"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.3",
+          "title": "Implement cache_control injection logic",
+          "details": [
+            "Add injectCacheControl(system []anthropic.TextBlockParam, policy CachePolicy, modelID string) []anthropic.TextBlockParam",
+            "Determine threshold: 2048 for sonnet models (strings.Contains(modelID, \"sonnet\")), 4096 otherwise",
+            "Estimate tokens via estimateTokens on concatenated system text",
+            "If above threshold and policy != CacheNone, inject cache_control on last block: {\"type\":\"ephemeral\"} for CacheDefault, add {\"ttl\":\"1h\"} for CacheExtended",
+            "Return unmodified slice if below threshold or CacheNone"
+          ],
+          "test_spec_refs": [
+            "TS-07-9",
+            "TS-07-10"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestAICallOptions|TestPlatformClient|TestCacheControl' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-2.1 and 07-REQ-2.2 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement AICall streaming, retry, and cache fallback (REQ-2 complete)",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Implement AICall streaming response collection",
+          "details": [
+            "In aicall.go, implement func AICall(ctx context.Context, opts AICallOptions) (string, any, error)",
+            "Call ResolveModel(string(opts.ModelTier)) to get model ID",
+            "Use anthropic streaming API (client.Messages.NewStreaming) to collect response chunks",
+            "Accumulate text content blocks into response string",
+            "Return (responseText, rawResponse, nil) on success"
+          ],
+          "test_spec_refs": [
+            "TS-07-5",
+            "TS-07-6"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Implement retry with exponential backoff in AICall",
+          "details": [
+            "Wrap the streaming call in a retry loop: up to 4 total attempts",
+            "Retry on HTTP 429 (rate limit), 5xx server errors, and connection/timeout errors",
+            "Delays between attempts: 2s, 30s, 60s (use time.Sleep, respect ctx cancellation)",
+            "Do not retry on 4xx errors other than 429",
+            "Return the last error after all attempts exhausted"
+          ],
+          "test_spec_refs": [
+            "TS-07-7",
+            "TS-07-8"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.3",
+          "title": "Implement cache_control rejection fallback in AICall",
+          "details": [
+            "After injecting cache_control, if the API returns an error indicating cache_control is unsupported or invalid, retry the same call without cache_control",
+            "Detect rejection by checking error message or HTTP status for cache-related error codes",
+            "Log a warning when falling back to no-cache mode"
+          ],
+          "test_spec_refs": [
+            "TS-07-9",
+            "TS-07-10"
+          ],
+          "requirement_refs": [
+            "07-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestAICall' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-2.3 through 07-REQ-2.6 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "standard",
+      "title": "Implement prompt template embedding, LoadPrompt, and LoadPromptTemplate (REQ-3)",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Embed 10 prompt templates at compile time",
+          "details": [
+            "Create agentspec/templates/ directory with 10 .md files: assessment_system.md, assessment_user.md, refinement_system.md, refinement_user.md, generation_system.md, generation_user_base.md, generation_user_requirements.md, generation_user_test_spec.md, generation_user_tasks.md, repair_user.md",
+            "Add //go:embed templates/*.md in agentspec/prompts.go",
+            "Expose embedded FS as package-level variable for use by LoadPrompt"
+          ],
+          "test_spec_refs": [
+            "TS-07-11"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Implement LoadPrompt with validation, two-tier fallback, and frontmatter stripping",
+          "details": [
+            "Add func LoadPrompt(name string, projectDir string) (string, error) in agentspec/prompts.go",
+            "Validate name against regexp [a-zA-Z0-9_-]+ and return error on mismatch",
+            "Check <projectDir>/.spec/prompts/<name>.md: if exists and not a symlink, read it; else use embedded FS",
+            "Strip YAML frontmatter: if content starts with ---, remove content up to and including the closing ---",
+            "Return trimmed content string"
+          ],
+          "test_spec_refs": [
+            "TS-07-11",
+            "TS-07-12",
+            "TS-07-13"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Implement LoadPromptTemplate with safe $variable substitution",
+          "details": [
+            "Add func LoadPromptTemplate(name string, projectDir string, vars map[string]string) (string, error)",
+            "Call LoadPrompt to get raw template content",
+            "Substitute $variable references using regexp or strings.Replacer; unmatched variables pass through unchanged",
+            "Return substituted string"
+          ],
+          "test_spec_refs": [
+            "TS-07-14",
+            "TS-07-15"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.4",
+          "title": "Implement DetectProjectLanguage and FormatSpecLandscape",
+          "details": [
+            "Add func DetectProjectLanguage(projectDir string) (language, toolHints string)",
+            "Scan for manifest files in order: go.mod, Cargo.toml, package.json, pyproject.toml, Gemfile, build.gradle, pom.xml",
+            "Return appropriate language name and tooling hints string for each; empty strings if none found",
+            "Add func FormatSpecLandscape(landscape []map[string]any) string",
+            "Split entries by status into active and archived sections, format each as a markdown table with spec name, status, and intent columns"
+          ],
+          "test_spec_refs": [
+            "TS-07-16",
+            "TS-07-17",
+            "TS-07-18"
+          ],
+          "requirement_refs": [
+            "07-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestLoadPrompt|TestLoadPromptTemplate|TestDetectProjectLanguage|TestFormatSpecLandscape' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "go build ./agentspec/... succeeds with embedded templates",
+          "Requirements 07-REQ-3.1 through 07-REQ-3.8 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "standard",
+      "title": "Implement prompt builder functions (REQ-4)",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Implement AssessmentSystemPrompt and AssessmentUserPrompt",
+          "details": [
+            "Add func AssessmentSystemPrompt(projectDir string) (string, error) — calls LoadPrompt(\"assessment_system\", projectDir)",
+            "Add func AssessmentUserPrompt(prdText, specName, projectDir string, specLandscape []map[string]any) (string, error)",
+            "Build vars map: $spec_name=specName, $spec_landscape_block=FormatSpecLandscape(specLandscape), $prd_text=prdText",
+            "Call LoadPromptTemplate(\"assessment_user\", projectDir, vars)"
+          ],
+          "test_spec_refs": [
+            "TS-07-19",
+            "TS-07-20"
+          ],
+          "requirement_refs": [
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Implement RefinementSystemPrompt and RefinementUserPrompt",
+          "details": [
+            "Add func RefinementSystemPrompt(projectDir string) (string, error) — calls LoadPrompt(\"refinement_system\", projectDir)",
+            "Add func RefinementUserPrompt(prdText string, answers map[string]string, prevAssessment Assessment, projectDir string, specLandscape []map[string]any) (string, error)",
+            "Format assessment_block from prevAssessment struct fields",
+            "Format qa_block from answers map as Q&A pairs",
+            "Build vars and call LoadPromptTemplate(\"refinement_user\", projectDir, vars)"
+          ],
+          "test_spec_refs": [
+            "TS-07-21"
+          ],
+          "requirement_refs": [
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Implement GenerationSystemPrompt and GenerationUserPrompt",
+          "details": [
+            "Add func GenerationSystemPrompt(projectDir string) (string, error) — calls LoadPrompt(\"generation_system\", projectDir)",
+            "Add func GenerationUserPrompt(prdText, artifactName, specID, projectDir string, priorArtifacts map[string]any, dependentInterfaces []map[string]any, specLandscape []map[string]any) (string, error)",
+            "Load generation_user_base template and artifact-specific template (generation_user_requirements, generation_user_test_spec, or generation_user_tasks) based on artifactName",
+            "Compose both templates with variables including $prd_text, $spec_id, $prior_artifacts_block, $dependent_interfaces_block, $spec_landscape_block"
+          ],
+          "test_spec_refs": [
+            "TS-07-22",
+            "TS-07-23"
+          ],
+          "requirement_refs": [
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.4",
+          "title": "Implement RepairUserPrompt",
+          "details": [
+            "Add func RepairUserPrompt(artifactName string, originalContent map[string]any, errors []string, projectDir string) (string, error)",
+            "Format errors list as a bulleted markdown list",
+            "Marshal originalContent to JSON string for inclusion in prompt",
+            "Build vars map and call LoadPromptTemplate(\"repair_user\", projectDir, vars)"
+          ],
+          "test_spec_refs": [
+            "TS-07-21",
+            "TS-07-22",
+            "TS-07-23"
+          ],
+          "requirement_refs": [
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestAssessment.*Prompt|TestRefinement.*Prompt|TestGeneration.*Prompt|TestRepairUserPrompt' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-4.1 through 07-REQ-4.5 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "checkpoint",
+      "title": "Checkpoint: LLM client and prompt system complete",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Run full test suite for REQ-1 through REQ-4 and confirm green",
+          "details": [
+            "Run go test ./agentspec/... -run 'TestModelRegistry|TestResolveModel|TestCachePolicy|TestAICall|TestLoadPrompt|TestLoadPromptTemplate|TestDetectProjectLanguage|TestFormatSpecLandscape|TestAssessment.*Prompt|TestRefinement.*Prompt|TestGeneration.*Prompt|TestRepairUserPrompt' -count=1 -v",
+            "Confirm all tests pass with no failures",
+            "Confirm no race conditions: go test -race ./agentspec/..."
+          ],
+          "test_spec_refs": [
+            "TS-07-1",
+            "TS-07-2",
+            "TS-07-3",
+            "TS-07-4",
+            "TS-07-5",
+            "TS-07-6",
+            "TS-07-7",
+            "TS-07-8",
+            "TS-07-9",
+            "TS-07-10",
+            "TS-07-11",
+            "TS-07-12",
+            "TS-07-13",
+            "TS-07-14",
+            "TS-07-15"
+          ],
+          "requirement_refs": [
+            "07-REQ-1",
+            "07-REQ-2",
+            "07-REQ-3",
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Audit for stub markers and incomplete implementations",
+          "details": [
+            "Search for panic(\"not implemented\"), // TODO, and bare return nil in non-trivial paths in agentspec/ package",
+            "Confirm all functions defined in REQ-1 through REQ-4 have real implementations",
+            "Confirm go vet ./... and go build ./... succeed with no errors"
+          ],
+          "test_spec_refs": [
+            "TS-07-16",
+            "TS-07-17",
+            "TS-07-18",
+            "TS-07-19",
+            "TS-07-20"
+          ],
+          "requirement_refs": [
+            "07-REQ-1",
+            "07-REQ-2",
+            "07-REQ-3",
+            "07-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "go test ./agentspec/... -count=1 passes with 0 failures for all REQ-1 through REQ-4 tests",
+          "go test -race ./agentspec/... reports no race conditions",
+          "go vet ./... reports no issues",
+          "No panic(\"not implemented\") or bare TODO stubs remain in agentspec/ for REQ-1 through REQ-4 scope"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "kind": "standard",
+      "title": "Implement SpecAgent, AgentOption, and AssessPRD (REQ-5, REQ-8)",
+      "subtasks": [
+        {
+          "id": "11.1",
+          "title": "Define SpecAgent struct, AgentOption type, and NewSpecAgent constructor",
+          "details": [
+            "Create agentspec/agent.go",
+            "Define type SpecAgent struct { modelTier string; opts agentCallOpts }",
+            "Define type AgentOption func(*agentCallOpts)",
+            "Define agentCallOpts struct: SpecLandscape []map[string]any, DependentInterfaces []map[string]any, ProjectDir string, OnArtifact func(name string, content any)",
+            "Add func NewSpecAgent(modelTier string) *SpecAgent"
+          ],
+          "test_spec_refs": [
+            "TS-07-24",
+            "TS-07-37",
+            "TS-07-38",
+            "TS-07-39"
+          ],
+          "requirement_refs": [
+            "07-REQ-5",
+            "07-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.2",
+          "title": "Implement WithSpecLandscape, WithDependentInterfaces, WithProjectDir, WithOnArtifact options",
+          "details": [
+            "Add func WithSpecLandscape(landscape []map[string]any) AgentOption",
+            "Add func WithDependentInterfaces(interfaces []map[string]any) AgentOption",
+            "Add func WithProjectDir(dir string) AgentOption",
+            "Add func WithOnArtifact(cb func(name string, content any)) AgentOption",
+            "Each returns a closure that sets the corresponding field on *agentCallOpts"
+          ],
+          "test_spec_refs": [
+            "TS-07-37",
+            "TS-07-38",
+            "TS-07-39"
+          ],
+          "requirement_refs": [
+            "07-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.3",
+          "title": "Implement AssessPRD with tool forcing, stop reason handling, and error classification",
+          "details": [
+            "Add func (a *SpecAgent) AssessPRD(ctx context.Context, prdText, specName string, opts ...AgentOption) (Assessment, error)",
+            "Apply AgentOptions to build agentCallOpts",
+            "Build system and user prompts via AssessmentSystemPrompt and AssessmentUserPrompt",
+            "Call AICall with AssessmentTools(), tool_choice={\"type\":\"any\"}, and the agent's modelTier",
+            "Check stop reason: refusal → AgentError{Category:\"refusal\"}, context_window_exceeded → AgentError{Category:\"context_window\"}, pause_turn → AgentError{Category:\"pause_turn\"}",
+            "Extract submit_assessment tool call from response, JSON-unmarshal into Assessment, return"
+          ],
+          "test_spec_refs": [
+            "TS-07-24",
+            "TS-07-25",
+            "TS-07-26",
+            "TS-07-27",
+            "TS-07-28",
+            "TS-07-29"
+          ],
+          "requirement_refs": [
+            "07-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.4",
+          "title": "Implement AgentError wrapping for Anthropic SDK errors",
+          "details": [
+            "Add func classifyAnthropicError(err error) AgentError in agent.go",
+            "Map HTTP 429 → category=rate_limit, retryable=true",
+            "Map HTTP 401/403 → category=auth, retryable=false",
+            "Map HTTP 503/529 → category=overloaded, retryable=true",
+            "Map HTTP 5xx → category=transient, retryable=true",
+            "Map HTTP 400 → category=input, retryable=false",
+            "Map other → category=internal, retryable=false",
+            "Include HTTP status code in AgentError"
+          ],
+          "test_spec_refs": [
+            "TS-07-28",
+            "TS-07-29"
+          ],
+          "requirement_refs": [
+            "07-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "11.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestNewSpecAgent|TestAssessPRD|TestAgentOption|TestClassifyAnthropicError' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-5 and 07-REQ-8 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "kind": "standard",
+      "title": "Implement RefinePRD agent method (REQ-6)",
+      "subtasks": [
+        {
+          "id": "12.1",
+          "title": "Implement RefinePRD with dual tool extraction",
+          "details": [
+            "Add func (a *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[string]string, prevAssessment Assessment, opts ...AgentOption) (string, Assessment, error)",
+            "Build system and user prompts via RefinementSystemPrompt and RefinementUserPrompt",
+            "Call AICall with both submit_prd_update and submit_assessment tools",
+            "Extract submit_prd_update tool call → updatedPRDText string",
+            "Extract submit_assessment tool call → newAssessment Assessment",
+            "Return (updatedPRDText, newAssessment, nil)"
+          ],
+          "test_spec_refs": [
+            "TS-07-30",
+            "TS-07-31"
+          ],
+          "requirement_refs": [
+            "07-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.2",
+          "title": "Implement fallback second API call when submit_assessment is missing",
+          "details": [
+            "After first AICall, check if submit_assessment tool call is present in response",
+            "If missing, make a second AICall with only the submit_assessment tool and tool_choice={\"type\":\"any\"}",
+            "Use the updated PRD text from the first call as context for the second call",
+            "Return error if second call also fails to produce an assessment"
+          ],
+          "test_spec_refs": [
+            "TS-07-32"
+          ],
+          "requirement_refs": [
+            "07-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "12.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestRefinePRD' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-6.1 through 07-REQ-6.3 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "kind": "standard",
+      "title": "Implement GenerateArtifacts sequential pipeline with validation and repair loop (REQ-7)",
+      "subtasks": [
+        {
+          "id": "13.1",
+          "title": "Implement GenerateArtifacts sequential artifact generation loop",
+          "details": [
+            "Add func (a *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, specName string, opts ...AgentOption) (map[string]any, error)",
+            "Iterate over artifact names in order: [\"requirements\", \"test_spec\", \"tasks\"]",
+            "For each artifact, call GenerationUserPrompt with priorArtifacts map (grows after each success)",
+            "Call AICall with artifact-specific tool, temperature=0.2",
+            "Extract tool call result and JSON-unmarshal into the appropriate Go struct"
+          ],
+          "test_spec_refs": [
+            "TS-07-33",
+            "TS-07-34"
+          ],
+          "requirement_refs": [
+            "07-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.2",
+          "title": "Implement artifact validation and repair loop",
+          "details": [
+            "After extraction, validate artifact by running afspec schema and cross-file validation",
+            "If validation fails, enter repair loop: up to 2 additional attempts",
+            "Each repair attempt: call RepairUserPrompt with validation errors and original content, re-call AICall, re-extract, re-validate",
+            "If all repair attempts fail, return error with last validation errors",
+            "If validation passes, add artifact to priorArtifacts map and invoke OnArtifact callback if set"
+          ],
+          "test_spec_refs": [
+            "TS-07-35",
+            "TS-07-36"
+          ],
+          "requirement_refs": [
+            "07-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.3",
+          "title": "Wire OnArtifact callback invocation after each successful artifact",
+          "details": [
+            "After successful validation of each artifact, check if opts.OnArtifact != nil",
+            "If set, call opts.OnArtifact(artifactName, validatedContent)",
+            "Ensure callback is called before moving to the next artifact in the sequence",
+            "Ensure callback errors do not abort the pipeline (log and continue)"
+          ],
+          "test_spec_refs": [
+            "TS-07-33",
+            "TS-07-34"
+          ],
+          "requirement_refs": [
+            "07-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "13.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestGenerateArtifacts' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-7.1 through 07-REQ-7.4 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 14,
+      "kind": "standard",
+      "title": "Implement SpecSession.Assess and SpecSession.Refine (REQ-9, REQ-10)",
+      "subtasks": [
+        {
+          "id": "14.1",
+          "title": "Implement SpecSession.Assess with state transitions and persistence",
+          "details": [
+            "Add func (s *SpecSession) Assess(ctx context.Context) (Assessment, error) in agentspec/session_ai.go",
+            "Transition session state to StateAssessing via state machine",
+            "Load spec landscape from sibling specs in the project directory",
+            "Create NewSpecAgent(s.config.ModelTier) and call AssessPRD with WithSpecLandscape and WithProjectDir options",
+            "On success: append Assessment to s.assessmentHistory, persist state, return assessment",
+            "On error: persist lastError to state, return error"
+          ],
+          "test_spec_refs": [
+            "TS-07-40",
+            "TS-07-41"
+          ],
+          "requirement_refs": [
+            "07-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "14.2",
+          "title": "Implement SpecSession.Refine with PRD update, QA recording, and error handling",
+          "details": [
+            "Add func (s *SpecSession) Refine(ctx context.Context, answers map[string]string) (Assessment, error) in session_ai.go",
+            "Transition session state to StateRefining",
+            "Call RefinePRD with current PRD text, answers, and latest assessment from history",
+            "On success: write updated PRD text to disk, append new Assessment to history, record QA exchange with assessment_index, answers, UTC timestamp, persist state",
+            "On error: persist lastError, do NOT record QA exchange, return error"
+          ],
+          "test_spec_refs": [
+            "TS-07-42",
+            "TS-07-43"
+          ],
+          "requirement_refs": [
+            "07-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "14.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestSpecSession_Assess|TestSpecSession_Refine' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-9 and 07-REQ-10 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 15,
+      "kind": "standard",
+      "title": "Implement SpecSession.Generate with partial recovery and validation (REQ-11)",
+      "subtasks": [
+        {
+          "id": "15.1",
+          "title": "Implement SpecSession.Generate state transition and partial failure recovery",
+          "details": [
+            "Add func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) in session_ai.go",
+            "Transition to StateGenerating immediately before any API calls",
+            "Check for existing artifact files on disk: skip generation for artifacts already present (partial failure recovery)",
+            "Build list of missing artifacts to generate"
+          ],
+          "test_spec_refs": [
+            "TS-07-44",
+            "TS-07-45"
+          ],
+          "requirement_refs": [
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "15.2",
+          "title": "Implement GenerateArtifacts call with OnArtifact disk-write callback",
+          "details": [
+            "Create NewSpecAgent and call GenerateArtifacts with WithOnArtifact callback",
+            "In the OnArtifact callback: serialize artifact via afspec.MarshalJSON, write to the appropriate file path, record artifact name in s.generatedArtifacts",
+            "After all artifacts generated, transition to StateGenerated",
+            "Run s.Validate() and collect validation result and warnings"
+          ],
+          "test_spec_refs": [
+            "TS-07-45",
+            "TS-07-46"
+          ],
+          "requirement_refs": [
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "15.3",
+          "title": "Return GenerateResult with artifact list, validation result, and warnings",
+          "details": [
+            "Define GenerateResult struct: Artifacts []string, ValidationResult afspec.ValidationResult, Warnings []string",
+            "Populate Artifacts from s.generatedArtifacts",
+            "Populate ValidationResult from Validate() output",
+            "Collect any non-fatal warnings (e.g. validation warnings) into Warnings field",
+            "Return (GenerateResult, nil) on success"
+          ],
+          "test_spec_refs": [
+            "TS-07-44",
+            "TS-07-46"
+          ],
+          "requirement_refs": [
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "15.V",
+        "checks": [
+          "go test ./agentspec/... -run 'TestSpecSession_Generate' -count=1 passes (green)",
+          "go vet ./agentspec/... reports no issues",
+          "Requirements 07-REQ-11.1 through 07-REQ-11.3 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 16,
+      "kind": "checkpoint",
+      "title": "Checkpoint: full AI pipeline and session methods complete",
+      "subtasks": [
+        {
+          "id": "16.1",
+          "title": "Run full test suite for REQ-5 through REQ-11 and confirm green",
+          "details": [
+            "Run go test ./agentspec/... -count=1 -v",
+            "Confirm all tests for REQ-5 through REQ-11 pass with no failures",
+            "Run go test -race ./agentspec/... to check for race conditions"
+          ],
+          "test_spec_refs": [
+            "TS-07-24",
+            "TS-07-25",
+            "TS-07-26",
+            "TS-07-27",
+            "TS-07-28",
+            "TS-07-29",
+            "TS-07-30",
+            "TS-07-31",
+            "TS-07-32",
+            "TS-07-33",
+            "TS-07-34",
+            "TS-07-35",
+            "TS-07-36"
+          ],
+          "requirement_refs": [
+            "07-REQ-5",
+            "07-REQ-6",
+            "07-REQ-7",
+            "07-REQ-8",
+            "07-REQ-9",
+            "07-REQ-10",
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "16.2",
+          "title": "Audit for stub markers in agent and session AI code",
+          "details": [
+            "Search for panic(\"not implemented\"), // TODO, and bare return nil in non-trivial paths in agent.go and session_ai.go",
+            "Confirm all SpecAgent methods and SpecSession AI methods have real implementations",
+            "Confirm go build ./... succeeds with no errors"
+          ],
+          "test_spec_refs": [
+            "TS-07-37",
+            "TS-07-38",
+            "TS-07-39",
+            "TS-07-40",
+            "TS-07-41",
+            "TS-07-42",
+            "TS-07-43",
+            "TS-07-44",
+            "TS-07-45",
+            "TS-07-46"
+          ],
+          "requirement_refs": [
+            "07-REQ-5",
+            "07-REQ-6",
+            "07-REQ-7",
+            "07-REQ-8",
+            "07-REQ-9",
+            "07-REQ-10",
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "16.V",
+        "checks": [
+          "go test ./agentspec/... -count=1 passes with 0 failures for all REQ-5 through REQ-11 tests",
+          "go test -race ./agentspec/... reports no race conditions",
+          "go vet ./... reports no issues",
+          "No panic(\"not implemented\") or bare TODO stubs remain in agent.go or session_ai.go"
+        ]
+      }
+    },
+    {
+      "id": 17,
+      "kind": "wiring_verification",
+      "title": "Wiring verification: end-to-end integration of AI layer into SpecSession",
+      "subtasks": [
+        {
+          "id": "17.1",
+          "title": "Trace execution paths from SpecSession.Assess through AICall to Anthropic SDK",
+          "details": [
+            "Verify SpecSession.Assess → NewSpecAgent → AssessPRD → AICall → Anthropic streaming client (no stubs in chain)",
+            "Verify SpecSession.Refine → RefinePRD → AICall chain is fully wired",
+            "Verify SpecSession.Generate → GenerateArtifacts → AICall → afspec.MarshalJSON → disk write chain is fully wired",
+            "Confirm no panic(\"not implemented\") or // TODO markers remain in any function in the call chain"
+          ],
+          "test_spec_refs": [
+            "TS-07-40",
+            "TS-07-44",
+            "TS-07-SMOKE-1",
+            "TS-07-SMOKE-2",
+            "TS-07-SMOKE-3",
+            "TS-07-SMOKE-4"
+          ],
+          "requirement_refs": [
+            "07-REQ-9",
+            "07-REQ-10",
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "17.2",
+          "title": "Verify return value propagation across the AI pipeline",
+          "details": [
+            "Confirm Assessment returned by AssessPRD is appended to SpecSession.assessmentHistory",
+            "Confirm updated PRD text from RefinePRD is written to disk and reflected in session state",
+            "Confirm GenerateResult.Artifacts list matches files written to disk",
+            "Confirm ValidationResult from Validate() is propagated into GenerateResult"
+          ],
+          "test_spec_refs": [
+            "TS-07-41",
+            "TS-07-43",
+            "TS-07-46"
+          ],
+          "requirement_refs": [
+            "07-REQ-9",
+            "07-REQ-10",
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "17.3",
+          "title": "Stub and dead-code audit across the entire agentspec AI layer",
+          "details": [
+            "Run: grep -rn 'panic(\"not implemented\")\\|// TODO\\|// FIXME' ./agentspec/ and confirm zero matches in production code",
+            "Verify all 10 embedded prompt templates are non-empty and load correctly at runtime",
+            "Confirm ResolveModel, AICall, LoadPrompt, AssessPRD, RefinePRD, GenerateArtifacts, Assess, Refine, Generate are all reachable from production entry points"
+          ],
+          "test_spec_refs": [
+            "TS-07-11",
+            "TS-07-24",
+            "TS-07-30",
+            "TS-07-33"
+          ],
+          "requirement_refs": [
+            "07-REQ-1",
+            "07-REQ-2",
+            "07-REQ-3",
+            "07-REQ-4",
+            "07-REQ-5",
+            "07-REQ-6",
+            "07-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "17.4",
+          "title": "Cross-spec entry point verification: SpecSession and Assessment from agentspec_go_core",
+          "details": [
+            "Confirm SpecSession struct (from agentspec_go_core) is used as the receiver for Assess, Refine, Generate methods",
+            "Confirm Assessment struct (from agentspec_go_core) is returned by AssessPRD and RefinePRD without redefinition",
+            "Confirm AssessmentTools() (from agentspec_go_core) is called in AssessPRD without reimplementation",
+            "Confirm AgentError (from agentspec_go_core) is used for all error wrapping in the AI layer"
+          ],
+          "test_spec_refs": [
+            "TS-07-25",
+            "TS-07-31",
+            "TS-07-40",
+            "TS-07-42"
+          ],
+          "requirement_refs": [
+            "07-REQ-5",
+            "07-REQ-6",
+            "07-REQ-9",
+            "07-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "17.5",
+          "title": "Call-site verification: confirm AI methods are wired into production entry points",
+          "details": [
+            "Verify SpecSession.Assess is called from the spec CLI assess command (spec_cli_go) or equivalent production entry point",
+            "Verify SpecSession.Refine is called from the spec CLI refine command",
+            "Verify SpecSession.Generate is called from the spec CLI generate command",
+            "Confirm these are not dead code — each method has at least one non-test caller"
+          ],
+          "test_spec_refs": [
+            "TS-07-40",
+            "TS-07-42",
+            "TS-07-44"
+          ],
+          "requirement_refs": [
+            "07-REQ-9",
+            "07-REQ-10",
+            "07-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "17.V",
+        "checks": [
+          "go test ./... -count=1 passes with 0 failures across all packages",
+          "go test -race ./... reports no race conditions",
+          "go vet ./... reports no issues",
+          "grep -rn 'panic(\"not implemented\")' ./agentspec/ returns zero matches in production files",
+          "All 10 embedded prompt templates load without error in a smoke test: go test ./agentspec/... -run 'TestEmbeddedTemplatesLoad' -count=1",
+          "SpecSession.Assess, Refine, and Generate are each called from at least one non-test production file",
+          "Requirements 07-REQ-1 through 07-REQ-11 all acceptance criteria verified end-to-end"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "07-REQ-1.1",
+      "test_spec_id": "TS-07-1",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-1.1",
+      "test_spec_id": "TS-07-2",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-1.1",
+      "test_spec_id": "TS-07-3",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-1.1",
+      "test_spec_id": "TS-07-4",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-2.1",
+      "test_spec_id": "TS-07-5",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-2.1",
+      "test_spec_id": "TS-07-6",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-2.1",
+      "test_spec_id": "TS-07-7",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-2.1",
+      "test_spec_id": "TS-07-8",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-2.1",
+      "test_spec_id": "TS-07-9",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-2.1",
+      "test_spec_id": "TS-07-10",
+      "task_id": "7.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-11",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-12",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-13",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-14",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-15",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-16",
+      "task_id": "8.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-17",
+      "task_id": "8.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-3.1",
+      "test_spec_id": "TS-07-18",
+      "task_id": "8.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-4.1",
+      "test_spec_id": "TS-07-19",
+      "task_id": "9.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-4.1",
+      "test_spec_id": "TS-07-20",
+      "task_id": "9.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-4.1",
+      "test_spec_id": "TS-07-21",
+      "task_id": "9.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-4.1",
+      "test_spec_id": "TS-07-22",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-4.1",
+      "test_spec_id": "TS-07-23",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-5.1",
+      "test_spec_id": "TS-07-24",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-5.1",
+      "test_spec_id": "TS-07-25",
+      "task_id": "11.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-5.1",
+      "test_spec_id": "TS-07-26",
+      "task_id": "11.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-5.1",
+      "test_spec_id": "TS-07-27",
+      "task_id": "11.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-5.1",
+      "test_spec_id": "TS-07-28",
+      "task_id": "11.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-5.1",
+      "test_spec_id": "TS-07-29",
+      "task_id": "11.4",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-6.1",
+      "test_spec_id": "TS-07-30",
+      "task_id": "12.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-6.1",
+      "test_spec_id": "TS-07-31",
+      "task_id": "12.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-6.1",
+      "test_spec_id": "TS-07-32",
+      "task_id": "12.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-7.1",
+      "test_spec_id": "TS-07-33",
+      "task_id": "13.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-7.1",
+      "test_spec_id": "TS-07-34",
+      "task_id": "13.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-7.1",
+      "test_spec_id": "TS-07-35",
+      "task_id": "13.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-7.1",
+      "test_spec_id": "TS-07-36",
+      "task_id": "13.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-8.1",
+      "test_spec_id": "TS-07-37",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-8.1",
+      "test_spec_id": "TS-07-38",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-8.1",
+      "test_spec_id": "TS-07-39",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-9.1",
+      "test_spec_id": "TS-07-40",
+      "task_id": "14.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-9.1",
+      "test_spec_id": "TS-07-41",
+      "task_id": "14.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-10.1",
+      "test_spec_id": "TS-07-42",
+      "task_id": "14.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-10.1",
+      "test_spec_id": "TS-07-43",
+      "task_id": "14.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-11.1",
+      "test_spec_id": "TS-07-44",
+      "task_id": "15.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-11.1",
+      "test_spec_id": "TS-07-45",
+      "task_id": "15.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "07-REQ-11.1",
+      "test_spec_id": "TS-07-46",
+      "task_id": "15.3",
+      "test_path": null
+    }
+  ]
+}

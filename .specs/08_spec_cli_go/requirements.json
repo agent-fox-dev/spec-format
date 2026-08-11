@@ -1,0 +1,1428 @@
+{
+  "$schema": null,
+  "spec_id": "08",
+  "spec_name": "spec_cli_go",
+  "schema_version": 1,
+  "introduction": "The `spec` CLI is a Go-based command-line tool that ports the existing Python `spec` CLI to a single static binary using cobra, providing identical commands, flags, JSON output shapes, and exit codes. Note: requirements referencing afspec, agentspec, and related Go library APIs are based on PRD-stated assumptions and should be cross-checked against the installed library interfaces before implementation.",
+  "glossary": {
+    "AF_AGENT": "Environment variable; when set to '1', activates agent mode which suppresses the banner, forces quiet output, and wraps errors as JSON on stdout",
+    "ASSESSING": "Session state value indicating the session is in the PRD assessment phase",
+    "AcceptPRD": "Method on SpecSession from agentspec_go_core that transitions the session from ASSESSING or REFINING state to accepted",
+    "AgentSpecConfig": "Go struct holding model and provider configuration loaded from config.toml.",
+    "Assess": "Method on SpecSession from agentspec_go_ai that runs PRD quality assessment",
+    "BuildDependencyGraph": "Function from afspec_go or afspec_go_mutation_lint that constructs a dependency graph from discovered specs",
+    "CGO_ENABLED": "Go build environment variable; set to 0 for static compilation without C dependencies",
+    "Campaign": "Go struct holding a filesystem path and CampaignMetadata representing an agentspec campaign directory.",
+    "CampaignError": "Error type returned for campaign directory operation failures such as duplicate path, missing campaign.yaml, or invalid spec name.",
+    "CreateCampaign": "Function that initializes a new campaign directory by writing campaign.yaml atomically.",
+    "DiscoverSpecs": "Function from afspec_go that scans a directory and returns all discovered spec entries",
+    "Generate": "Method on SpecSession from agentspec_go_ai that generates specification artifacts from an accepted PRD",
+    "INIT": "Session state value indicating a freshly initialized or reset spec session",
+    "LintFinding": "A single lint diagnostic result with severity, rule, message, and location metadata.",
+    "NewSpec": "Method on Campaign that provisions a new spec directory with prd.md and an initial SpecSession.",
+    "PendingQuestions": "Method on SpecSession from agentspec_go_core that returns unanswered refinement questions",
+    "REFINING": "Session state value indicating the session is in the Q&A refinement phase",
+    "Refine": "Method on SpecSession from agentspec_go_ai that runs a refinement pass given user answers",
+    "RunLintSpecs": "Function from afspec_go_mutation_lint that runs lint checks across the spec directory",
+    "SIGINT": "Unix signal 2, sent when the user presses Ctrl+C, used to trigger graceful cancellation",
+    "SIGTERM": "Unix signal 15, sent by process managers to request graceful shutdown",
+    "SPEC_DIR": "Environment variable that overrides the default spec directory path (default: '.specs')",
+    "SpecSession": "Go struct representing the stateful session for authoring a single spec, persisted to _session.json.",
+    "StatusSpinner": "A context-manager-style type that shows an animated spinner with a message on stderr during long-running operations",
+    "ValidateCrossSpec": "Function from afspec_go_validation that runs cross-spec interface consistency checks across multiple specs",
+    "ValidateStructured": "Function from afspec_go_validation that runs full structured validation on a single spec",
+    "ValidationResult": "Type from afspec_go_validation representing the aggregated result of validating one or more specs",
+    "_session.json": "JSON file inside a spec directory that persists SpecSession state atomically.",
+    "agent mode": "Operational mode activated by AF_AGENT=1 where all structured output is JSON on stdout and progress messages are suppressed",
+    "campaign.yaml": "YAML file at the root of a campaign directory that stores CampaignMetadata.",
+    "emit": "Helper function that writes pretty-printed JSON to stdout, handling broken pipe silently",
+    "emitOK": "Helper function that wraps data with {ok: true, ...} and writes pretty-printed JSON to stdout",
+    "ldflags": "Go linker flags used at build time to embed the version string into the binary via -X main.version=...",
+    "prd.md": "Required markdown file within a spec directory containing the Product Requirements Document",
+    "requirements.json": "Required JSON artifact file within a spec directory containing structured requirements",
+    "snake_case": "Naming convention using lowercase letters and underscores (e.g. my_spec_name), used to derive spec names from filenames",
+    "spec directory": "The directory (default '.specs') where all spec subdirectories and campaign files are stored",
+    "spec naming pattern": "The directory naming convention used to identify spec subdirectories within the spec directory",
+    "tasks.json": "Required JSON artifact file within a spec directory containing implementation tasks",
+    "test_spec.json": "Required JSON artifact file within a spec directory containing test specifications"
+  },
+  "requirements": [
+    {
+      "id": "08-REQ-1",
+      "title": "Root Command and Global Flags",
+      "user_story": {
+        "role": "developer",
+        "goal": "invoke the spec binary with global flags and see help when no subcommand is given",
+        "benefit": "I can discover available commands and configure the tool's working directories"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-1.1",
+          "ears_pattern": "ubiquitous",
+          "system": "spec binary",
+          "action": "expose global flags: --spec-dir/-d (default '.specs', overridable via SPEC_DIR env var), --source/-s (default '.', must be an existing directory), --quiet/-q (suppress progress output), --version (print version and exit), and --help",
+          "return_contract": "flag values are accessible to all subcommands; --version prints the embedded version string and exits 0; --help prints usage and exits 0"
+        },
+        {
+          "id": "08-REQ-1.2",
+          "ears_pattern": "event_driven",
+          "system": "spec binary",
+          "action": "display the cobra-generated help text",
+          "return_contract": "exits 0 with help text on stdout",
+          "trigger": "invoked without a subcommand"
+        },
+        {
+          "id": "08-REQ-1.3",
+          "ears_pattern": "event_driven",
+          "system": "spec binary",
+          "action": "display an ASCII art banner on stderr showing the tool name, embedded version, and current working directory, unless suppressed by --quiet, AF_AGENT=1, the subcommand being one of validate/status/list, or --json appearing in the arguments",
+          "return_contract": "banner is written to stderr only; no effect on stdout or exit code",
+          "trigger": "a subcommand is about to execute"
+        },
+        {
+          "id": "08-REQ-1.4",
+          "ears_pattern": "complex_event",
+          "system": "spec binary",
+          "action": "reject the flag value with a descriptive error message",
+          "return_contract": "exits 1 with error message on stderr",
+          "trigger": "--source is provided",
+          "condition": "the provided path does not exist or is not a directory"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-1.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec binary",
+          "action": "fall back to the default value '.specs' rather than using an empty path",
+          "return_contract": "spec-dir resolves to '.specs'",
+          "error_condition": "SPEC_DIR env var is set to an empty string"
+        },
+        {
+          "id": "08-REQ-1.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec binary",
+          "action": "prefer the --spec-dir flag value over the environment variable",
+          "return_contract": "spec-dir resolves to the flag value",
+          "error_condition": "both --spec-dir flag and SPEC_DIR env var are set"
+        },
+        {
+          "id": "08-REQ-1.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec binary",
+          "action": "print cobra's unknown flag error and usage hint",
+          "return_contract": "exits 1 with error on stderr",
+          "error_condition": "an unknown flag is passed"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-2",
+      "title": "Agent Mode",
+      "user_story": {
+        "role": "automated agent",
+        "goal": "run spec commands with AF_AGENT=1 and receive machine-readable JSON output",
+        "benefit": "I can parse command results reliably without filtering banner or spinner text"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-2.1",
+          "ears_pattern": "state_driven",
+          "system": "spec binary",
+          "action": "suppress the banner, force --quiet mode, and route all structured output to stdout as JSON; ensure progress and diagnostic messages never appear on stdout",
+          "return_contract": "stdout contains only valid JSON; stderr is silent for progress output",
+          "state": "AF_AGENT=1 is set in the environment"
+        },
+        {
+          "id": "08-REQ-2.2",
+          "ears_pattern": "unwanted",
+          "system": "spec binary",
+          "action": "write {\"ok\": false, \"error\": \"<message>\"} to stdout and exit with code 1",
+          "return_contract": "exits 1; stdout contains {\"ok\": false, \"error\": string}",
+          "error_condition": "an unhandled error occurs while AF_AGENT=1 is set"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-2.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec binary",
+          "action": "treat the combination as quiet+agent mode without conflict",
+          "return_contract": "behavior is identical to AF_AGENT=1 alone",
+          "error_condition": "AF_AGENT=1 is set and the command also receives --quiet explicitly"
+        },
+        {
+          "id": "08-REQ-2.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec binary",
+          "action": "suppress the broken pipe error and exit cleanly",
+          "return_contract": "exits 0 or 1 based on command result; no panic or unhandled error",
+          "error_condition": "stdout is a broken pipe while writing JSON in agent mode"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-3",
+      "title": "JSON Output Helpers",
+      "user_story": {
+        "role": "developer",
+        "goal": "have all commands emit consistently formatted JSON",
+        "benefit": "consumers can parse output reliably without custom per-command formatting logic"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-3.1",
+          "ears_pattern": "ubiquitous",
+          "system": "emit helper",
+          "action": "write pretty-printed JSON (2-space indent via json.MarshalIndent) to stdout; handle broken pipe errors silently without propagating them to the caller",
+          "return_contract": "stdout receives valid indented JSON; broken pipe does not cause a non-zero exit"
+        },
+        {
+          "id": "08-REQ-3.2",
+          "ears_pattern": "ubiquitous",
+          "system": "emitOK helper",
+          "action": "merge the provided fields with {\"ok\": true} and call emit to write the combined object to stdout",
+          "return_contract": "stdout receives {\"ok\": true, ...fields} as indented JSON"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-3.E1",
+          "ears_pattern": "unwanted",
+          "system": "emit helper",
+          "action": "return an error to the caller rather than writing partial output or panicking",
+          "return_contract": "returns a non-nil error; stdout is unchanged",
+          "error_condition": "the data value cannot be marshalled to JSON (e.g. contains a channel or function)"
+        },
+        {
+          "id": "08-REQ-3.E2",
+          "ears_pattern": "unwanted",
+          "system": "emit helper",
+          "action": "suppress the error and return nil to the caller",
+          "return_contract": "returns nil; no panic",
+          "error_condition": "stdout is closed or a broken pipe occurs during write"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-4",
+      "title": "StatusSpinner Progress Feedback",
+      "user_story": {
+        "role": "developer",
+        "goal": "see animated progress feedback during long-running AI operations",
+        "benefit": "I know the tool is working and can read status updates without the output being cluttered"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-4.1",
+          "ears_pattern": "ubiquitous",
+          "system": "StatusSpinner",
+          "action": "show an animated spinner with a message on stderr during long-running operations; use a simple animation (dots or braille characters); support Update(message) to change the spinner text and Log(message) to print a permanent line above the spinner",
+          "return_contract": "spinner output goes to stderr only; stdout is unaffected"
+        },
+        {
+          "id": "08-REQ-4.2",
+          "ears_pattern": "state_driven",
+          "system": "StatusSpinner",
+          "action": "fall back to printing plain text lines instead of an animated spinner",
+          "return_contract": "each status update is written as a plain line to stderr",
+          "state": "stderr is not a TTY"
+        },
+        {
+          "id": "08-REQ-4.3",
+          "ears_pattern": "state_driven",
+          "system": "StatusSpinner",
+          "action": "make all StatusSpinner methods no-ops; produce no output",
+          "return_contract": "stderr receives no spinner or status output",
+          "state": "--quiet is set or AF_AGENT=1 is active"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-4.E1",
+          "ears_pattern": "unwanted",
+          "system": "StatusSpinner",
+          "action": "stop the spinner and clean up the goroutine before returning control to the caller",
+          "return_contract": "no goroutine leak; terminal cursor is restored to a clean state",
+          "error_condition": "the spinner goroutine or ticker is still running when the operation completes"
+        },
+        {
+          "id": "08-REQ-4.E2",
+          "ears_pattern": "unwanted",
+          "system": "StatusSpinner",
+          "action": "suppress the write error and continue; do not propagate to the caller",
+          "return_contract": "no error returned; spinner silently stops updating",
+          "error_condition": "writing to stderr fails during spinner update"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-5",
+      "title": "Spec Resolver",
+      "user_story": {
+        "role": "developer",
+        "goal": "refer to a spec by name or numeric prefix in any command",
+        "benefit": "I don't need to remember the full directory name to operate on a spec"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-5.1",
+          "ears_pattern": "event_driven",
+          "system": "spec resolver",
+          "action": "scan the spec directory and match entries whose directory name begins with that numeric prefix",
+          "return_contract": "returns the matched spec path; returns an error if zero or multiple matches are found",
+          "trigger": "a command receives a spec argument that is purely numeric"
+        },
+        {
+          "id": "08-REQ-5.2",
+          "ears_pattern": "event_driven",
+          "system": "spec resolver",
+          "action": "scan the spec directory and match entries whose directory name equals the argument",
+          "return_contract": "returns the matched spec path; returns an error if zero or multiple matches are found",
+          "trigger": "a command receives a spec argument that is a non-numeric string"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-5.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec resolver",
+          "action": "return a descriptive error naming the argument and the spec directory searched",
+          "return_contract": "returns (nil, error) with message identifying the missing spec",
+          "error_condition": "no spec directory entries match the argument"
+        },
+        {
+          "id": "08-REQ-5.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec resolver",
+          "action": "return an error listing all ambiguous matches",
+          "return_contract": "returns (nil, error) listing the conflicting directory names",
+          "error_condition": "multiple spec directory entries match the numeric prefix"
+        },
+        {
+          "id": "08-REQ-5.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec resolver",
+          "action": "return an error describing the directory access failure",
+          "return_contract": "returns (nil, error) with the underlying OS error message",
+          "error_condition": "the spec directory does not exist or cannot be read"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-6",
+      "title": "spec new Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "create a new spec from a PRD file",
+        "benefit": "I can start the spec authoring workflow with a single command"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-6.1",
+          "ears_pattern": "event_driven",
+          "system": "spec new command",
+          "action": "auto-initialize the spec directory and a default campaign.yaml (name: 'default', description: 'default campaign') if they do not exist; open the campaign; create a new spec via NewSpec; emit JSON with spec_dir and state",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"spec_dir\": string, \"state\": string}",
+          "trigger": "invoked with a valid SPEC_PATH to an existing PRD file"
+        },
+        {
+          "id": "08-REQ-6.2",
+          "ears_pattern": "complex_event",
+          "system": "spec new command",
+          "action": "use the provided name as the spec name",
+          "return_contract": "spec is created with the given name",
+          "trigger": "--name is provided",
+          "condition": "the name matches [a-z][a-z0-9_]*"
+        },
+        {
+          "id": "08-REQ-6.3",
+          "ears_pattern": "complex_event",
+          "system": "spec new command",
+          "action": "derive a snake_case spec name from the PRD filename (strip extension, convert to snake_case)",
+          "return_contract": "spec is created with the derived snake_case name",
+          "trigger": "--name is omitted",
+          "condition": "SPEC_PATH has a valid filename"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-6.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec new command",
+          "action": "return an error before attempting any initialization",
+          "return_contract": "exits 1; stdout contains {\"ok\": false, \"error\": string} in agent mode; error on stderr otherwise",
+          "error_condition": "SPEC_PATH does not exist or is not a file"
+        },
+        {
+          "id": "08-REQ-6.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec new command",
+          "action": "reject the name with a validation error describing the required pattern",
+          "return_contract": "exits 1 with descriptive error",
+          "error_condition": "--name is provided but does not match [a-z][a-z0-9_]*"
+        },
+        {
+          "id": "08-REQ-6.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec new command",
+          "action": "propagate the error to the user without leaving partial state",
+          "return_contract": "exits 1 with error message; no partially-created spec directory",
+          "error_condition": "NewSpec returns an error (e.g. spec already exists)"
+        },
+        {
+          "id": "08-REQ-6.E4",
+          "ears_pattern": "unwanted",
+          "system": "spec new command",
+          "action": "return an OS-level error describing the failure",
+          "return_contract": "exits 1 with error message identifying the path and permission issue",
+          "error_condition": "the spec directory cannot be created due to filesystem permissions"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-7",
+      "title": "spec list Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "list all specs and their current states",
+        "benefit": "I can see the status of all specs at a glance"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-7.1",
+          "ears_pattern": "event_driven",
+          "system": "spec list command",
+          "action": "scan the spec directory for subdirectories matching the spec naming pattern; for each, read _session.json to get the state field (default to 'no_session' if missing or malformed); emit JSON with spec_dir and specs array",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"spec_dir\": string, \"specs\": [{\"name\": string, \"state\": string}]}",
+          "trigger": "invoked"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-7.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec list command",
+          "action": "emit an empty specs array rather than an error",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"spec_dir\": string, \"specs\": []}",
+          "error_condition": "the spec directory does not exist"
+        },
+        {
+          "id": "08-REQ-7.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec list command",
+          "action": "default the state to 'no_session' and continue listing remaining specs",
+          "return_contract": "exits 0; the malformed entry appears with state 'no_session'",
+          "error_condition": "_session.json exists but contains malformed JSON"
+        },
+        {
+          "id": "08-REQ-7.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec list command",
+          "action": "emit an empty specs array",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"spec_dir\": string, \"specs\": []}",
+          "error_condition": "the spec directory exists but contains no matching subdirectories"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-8",
+      "title": "spec refine Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "iteratively refine a PRD through AI-driven Q&A",
+        "benefit": "I can improve PRD quality before generating artifacts"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-8.1",
+          "ears_pattern": "complex_event",
+          "system": "spec refine command",
+          "action": "run Assess on the session with a StatusSpinner showing progress; emit the assessment result as JSON",
+          "return_contract": "exits 0; stdout contains assessment result JSON with ok: true",
+          "trigger": "invoked without --answers",
+          "condition": "the session needs assessment"
+        },
+        {
+          "id": "08-REQ-8.2",
+          "ears_pattern": "complex_event",
+          "system": "spec refine command",
+          "action": "call PendingQuestions on the session and emit the result as JSON",
+          "return_contract": "exits 0; stdout contains pending questions JSON with ok: true",
+          "trigger": "invoked without --answers",
+          "condition": "the session does not need assessment"
+        },
+        {
+          "id": "08-REQ-8.3",
+          "ears_pattern": "event_driven",
+          "system": "spec refine command",
+          "action": "parse the JSON from the file (unwrap the 'answers' key if present); run Refine on the session with a StatusSpinner; emit the result as JSON",
+          "return_contract": "exits 0; stdout contains refinement result JSON with ok: true",
+          "trigger": "invoked with --answers pointing to a JSON file"
+        },
+        {
+          "id": "08-REQ-8.4",
+          "ears_pattern": "event_driven",
+          "system": "spec refine command",
+          "action": "read answers JSON from stdin (unwrap 'answers' key if present); run Refine on the session with a StatusSpinner; emit the result as JSON",
+          "return_contract": "exits 0; stdout contains refinement result JSON with ok: true",
+          "trigger": "invoked with --answers -"
+        },
+        {
+          "id": "08-REQ-8.5",
+          "ears_pattern": "event_driven",
+          "system": "spec refine command",
+          "action": "delete artifact files, reset session state to INIT, clear assessment history, QA exchanges, and generated artifacts before proceeding",
+          "return_contract": "session is reset; subsequent behavior follows the no-answers path",
+          "trigger": "invoked with --force"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-8.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec refine command",
+          "action": "cancel the context, stop the StatusSpinner, and return an error to the caller",
+          "return_contract": "exits 1 with error message; no goroutine leak",
+          "error_condition": "Assess or Refine call hangs beyond a reasonable timeout or is cancelled via SIGINT/SIGTERM"
+        },
+        {
+          "id": "08-REQ-8.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec refine command",
+          "action": "return an error before calling Refine",
+          "return_contract": "exits 1 with file-not-found or permission error message",
+          "error_condition": "--answers file does not exist or cannot be read"
+        },
+        {
+          "id": "08-REQ-8.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec refine command",
+          "action": "return a JSON parse error before calling Refine",
+          "return_contract": "exits 1 with descriptive parse error message",
+          "error_condition": "--answers content is not valid JSON"
+        },
+        {
+          "id": "08-REQ-8.E4",
+          "ears_pattern": "unwanted",
+          "system": "spec refine command",
+          "action": "propagate the error; stop the spinner cleanly",
+          "return_contract": "exits 1 with error message; spinner is stopped before exit",
+          "error_condition": "Refine returns an error from the AI layer"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-9",
+      "title": "spec generate Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "generate specification artifacts from an accepted PRD",
+        "benefit": "I can produce requirements, test_spec, and tasks files automatically"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-9.1",
+          "ears_pattern": "event_driven",
+          "system": "spec generate command",
+          "action": "auto-accept the PRD via AcceptPRD before running Generate",
+          "return_contract": "session transitions to accepted state; Generate proceeds",
+          "trigger": "invoked for a spec whose session state is ASSESSING or REFINING"
+        },
+        {
+          "id": "08-REQ-9.2",
+          "ears_pattern": "event_driven",
+          "system": "spec generate command",
+          "action": "run Generate on the session with a StatusSpinner; emit JSON listing the generated artifacts",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"artifacts\": [string]}",
+          "trigger": "invoked for a spec in an accepted state"
+        },
+        {
+          "id": "08-REQ-9.3",
+          "ears_pattern": "event_driven",
+          "system": "spec generate command",
+          "action": "delete existing artifact files before running Generate",
+          "return_contract": "existing artifacts are removed; fresh artifacts are generated and emitted",
+          "trigger": "invoked with --force"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-9.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec generate command",
+          "action": "cancel the context, stop the StatusSpinner, and return an error; clean up any partially written artifact files",
+          "return_contract": "exits 1 with error message; partial artifacts are removed",
+          "error_condition": "Generate call is cancelled via SIGINT/SIGTERM or times out"
+        },
+        {
+          "id": "08-REQ-9.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec generate command",
+          "action": "propagate the error; stop the spinner cleanly",
+          "return_contract": "exits 1 with error message",
+          "error_condition": "Generate returns an error from the AI layer"
+        },
+        {
+          "id": "08-REQ-9.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec generate command",
+          "action": "return an OS-level error before attempting generation",
+          "return_contract": "exits 1 with error identifying the file and permission issue",
+          "error_condition": "--force is set but an artifact file cannot be deleted due to permissions"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-10",
+      "title": "spec render Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "render spec artifacts as markdown or JSON",
+        "benefit": "I can read or pipe spec content in the format most useful for my workflow"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-10.1",
+          "ears_pattern": "complex_event",
+          "system": "spec render command",
+          "action": "print raw markdown for each artifact to stdout, separated by '---'",
+          "return_contract": "exits 0; stdout contains markdown sections separated by '---'",
+          "trigger": "invoked without --json",
+          "condition": "--combined is not set"
+        },
+        {
+          "id": "08-REQ-10.2",
+          "ears_pattern": "complex_event",
+          "system": "spec render command",
+          "action": "print a single concatenated markdown document to stdout",
+          "return_contract": "exits 0; stdout contains a single combined markdown document",
+          "trigger": "invoked without --json",
+          "condition": "--combined is set"
+        },
+        {
+          "id": "08-REQ-10.3",
+          "ears_pattern": "complex_event",
+          "system": "spec render command",
+          "action": "emit {\"ok\": true, \"format\": \"combined\", \"content\": \"<markdown>\"}",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"format\": \"combined\", \"content\": string}",
+          "trigger": "invoked with --json",
+          "condition": "--combined is set"
+        },
+        {
+          "id": "08-REQ-10.4",
+          "ears_pattern": "complex_event",
+          "system": "spec render command",
+          "action": "emit {\"ok\": true, \"format\": \"individual\", \"artifacts\": {\"requirements\": \"...\", ...}}",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"format\": \"individual\", \"artifacts\": object}",
+          "trigger": "invoked with --json",
+          "condition": "--combined is not set"
+        },
+        {
+          "id": "08-REQ-10.5",
+          "ears_pattern": "state_driven",
+          "system": "spec render command",
+          "action": "auto-enable --json mode",
+          "return_contract": "output follows the --json contract regardless of whether --json was passed explicitly",
+          "state": "AF_AGENT=1 is active"
+        },
+        {
+          "id": "08-REQ-10.6",
+          "ears_pattern": "unwanted",
+          "system": "spec render command",
+          "action": "fall back to rendering only the available artifacts individually",
+          "return_contract": "exits 0; output includes only the artifacts that exist",
+          "error_condition": "some artifact files are missing"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-10.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec render command",
+          "action": "return an error indicating no renderable artifacts were found",
+          "return_contract": "exits 1 with error message",
+          "error_condition": "all artifact files are missing"
+        },
+        {
+          "id": "08-REQ-10.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec render command",
+          "action": "return an OS-level error identifying the unreadable file",
+          "return_contract": "exits 1 with error message identifying the file",
+          "error_condition": "an artifact file exists but cannot be read due to permissions"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-11",
+      "title": "spec validate Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "validate one or all specs for structural correctness",
+        "benefit": "I can catch schema and cross-file errors before committing or deploying"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-11.1",
+          "ears_pattern": "event_driven",
+          "system": "spec validate command",
+          "action": "check that prd.md, requirements.json, test_spec.json, and tasks.json exist; verify JSON readability; load the spec; run ValidateStructured; emit the ValidationResult as JSON",
+          "return_contract": "exits 0 if no errors; exits 1 if any validation errors; stdout contains ValidationResult JSON",
+          "trigger": "invoked with a SPEC argument (single-spec mode)"
+        },
+        {
+          "id": "08-REQ-11.2",
+          "ears_pattern": "event_driven",
+          "system": "spec validate command",
+          "action": "discover all specs via DiscoverSpecs; validate each with ValidateStructured; aggregate results and emit as JSON",
+          "return_contract": "exits 0 if all specs pass; exits 1 if any spec has errors; stdout contains aggregated ValidationResult JSON",
+          "trigger": "invoked without a SPEC argument (multi-spec mode)"
+        },
+        {
+          "id": "08-REQ-11.3",
+          "ears_pattern": "event_driven",
+          "system": "spec validate command",
+          "action": "discover specs; build dependency graph via BuildDependencyGraph; run ValidateCrossSpec; merge results and emit as JSON",
+          "return_contract": "exits 0 if no cross-spec errors; exits 1 if errors found; stdout contains merged ValidationResult JSON",
+          "trigger": "invoked with --cross"
+        },
+        {
+          "id": "08-REQ-11.4",
+          "ears_pattern": "event_driven",
+          "system": "spec validate command",
+          "action": "emit condensed output containing only valid, error_count, and warning_count fields",
+          "return_contract": "stdout contains {\"ok\": bool, \"valid\": bool, \"error_count\": int, \"warning_count\": int}",
+          "trigger": "invoked with --short"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-11.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec validate command",
+          "action": "report the missing file as a validation error in the result rather than a command failure",
+          "return_contract": "exits 1; stdout contains ValidationResult with the missing file listed as an error",
+          "error_condition": "a required file (prd.md, requirements.json, test_spec.json, tasks.json) is missing in single-spec mode"
+        },
+        {
+          "id": "08-REQ-11.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec validate command",
+          "action": "report the parse error as a validation error in the result",
+          "return_contract": "exits 1; stdout contains ValidationResult with parse error listed",
+          "error_condition": "a JSON artifact file exists but contains malformed JSON"
+        },
+        {
+          "id": "08-REQ-11.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec validate command",
+          "action": "propagate the error and exit without emitting a partial result",
+          "return_contract": "exits 1 with error message on stderr",
+          "error_condition": "DiscoverSpecs or BuildDependencyGraph returns an error"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-12",
+      "title": "spec lint Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "lint all specs for quality and consistency issues",
+        "benefit": "I can identify specs that need attention before they block downstream work"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-12.1",
+          "ears_pattern": "event_driven",
+          "system": "spec lint command",
+          "action": "run RunLintSpecs(specDir, lintAll) with a StatusSpinner; emit the LintFinding list as JSON",
+          "return_contract": "exits 0 if exit_code from lint is zero; exits 1 if exit_code is non-zero; stdout contains lint findings JSON",
+          "trigger": "invoked"
+        },
+        {
+          "id": "08-REQ-12.2",
+          "ears_pattern": "event_driven",
+          "system": "spec lint command",
+          "action": "pass lintAll=true to RunLintSpecs to include fully-implemented specs in the lint run",
+          "return_contract": "lint findings include fully-implemented specs",
+          "trigger": "invoked with --all"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-12.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec lint command",
+          "action": "propagate the error and exit without emitting partial findings",
+          "return_contract": "exits 1 with error message",
+          "error_condition": "RunLintSpecs returns an error (e.g. spec directory unreadable)"
+        },
+        {
+          "id": "08-REQ-12.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec lint command",
+          "action": "emit an empty findings array and exit 0",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"findings\": []}",
+          "error_condition": "the spec directory is empty or contains no lintable specs"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-13",
+      "title": "spec status Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "check the current state of a spec session",
+        "benefit": "I can see what phase the spec is in and what artifacts have been generated"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-13.1",
+          "ears_pattern": "event_driven",
+          "system": "spec status command",
+          "action": "resume the session in read-only mode; emit JSON with state, has_assessment, and generated_artifacts; include last_error and quality fields when present",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"state\": string, \"has_assessment\": bool, \"generated_artifacts\": [string]} with optional last_error and quality fields",
+          "trigger": "invoked with a SPEC argument"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-13.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec status command",
+          "action": "return a resolution error",
+          "return_contract": "exits 1 with error message identifying the spec",
+          "error_condition": "the spec does not exist or cannot be resolved"
+        },
+        {
+          "id": "08-REQ-13.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec status command",
+          "action": "report state as 'no_session' with has_assessment false and empty generated_artifacts",
+          "return_contract": "exits 0; stdout contains {\"ok\": true, \"state\": \"no_session\", \"has_assessment\": false, \"generated_artifacts\": []}",
+          "error_condition": "_session.json is missing or malformed"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-14",
+      "title": "spec campaign Command",
+      "user_story": {
+        "role": "developer",
+        "goal": "create a named campaign to group related specs",
+        "benefit": "I can organize specs into logical collections for batch operations"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-14.1",
+          "ears_pattern": "event_driven",
+          "system": "spec campaign command",
+          "action": "call CreateCampaign with the provided arguments; print a confirmation message to stderr on success",
+          "return_contract": "exits 0; confirmation message on stderr; campaign.yaml created at the specified path",
+          "trigger": "invoked with --path, --name, and optional --description"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-14.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec campaign command",
+          "action": "print the error message to stderr and exit 1",
+          "return_contract": "exits 1; error message on stderr",
+          "error_condition": "CreateCampaign returns a CampaignError"
+        },
+        {
+          "id": "08-REQ-14.E2",
+          "ears_pattern": "unwanted",
+          "system": "spec campaign command",
+          "action": "cobra reports the missing required flag and exits before calling CreateCampaign",
+          "return_contract": "exits 1 with cobra's required-flag error message",
+          "error_condition": "--path or --name is missing"
+        },
+        {
+          "id": "08-REQ-14.E3",
+          "ears_pattern": "unwanted",
+          "system": "spec campaign command",
+          "action": "propagate the CampaignError from CreateCampaign describing the conflict",
+          "return_contract": "exits 1 with error message describing the existing campaign",
+          "error_condition": "the target path already contains a campaign.yaml"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-15",
+      "title": "Build and Distribution",
+      "user_story": {
+        "role": "release engineer",
+        "goal": "produce static binaries for all supported platforms",
+        "benefit": "users can install the spec tool without any runtime dependencies"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-15.1",
+          "ears_pattern": "ubiquitous",
+          "system": "build system",
+          "action": "compile the spec binary with CGO_ENABLED=0 and embed the version string at build time via ldflags (-X main.version=...); produce binaries for darwin/arm64, darwin/amd64, linux/arm64, and linux/amd64",
+          "return_contract": "four static binaries are produced; each reports the correct version via --version"
+        },
+        {
+          "id": "08-REQ-15.2",
+          "ears_pattern": "ubiquitous",
+          "system": "install.sh script",
+          "action": "download and install the Go binary for the detected platform instead of using uv tool install",
+          "return_contract": "the spec binary is installed and executable on the target system"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-15.E1",
+          "ears_pattern": "unwanted",
+          "system": "install.sh script",
+          "action": "print an unsupported platform error and exit 1",
+          "return_contract": "exits 1 with message listing supported platforms",
+          "error_condition": "the detected platform is not one of the four supported targets"
+        },
+        {
+          "id": "08-REQ-15.E2",
+          "ears_pattern": "unwanted",
+          "system": "install.sh script",
+          "action": "print the download error and exit 1 without leaving a partial binary",
+          "return_contract": "exits 1 with error message; no partial file left on disk",
+          "error_condition": "the binary download fails (network error or 404)"
+        }
+      ]
+    },
+    {
+      "id": "08-REQ-16",
+      "title": "Signal Handling and Context Propagation",
+      "user_story": {
+        "role": "developer",
+        "goal": "cancel long-running AI operations cleanly with Ctrl+C",
+        "benefit": "I can interrupt the tool without leaving orphaned processes or corrupted state"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "08-REQ-16.1",
+          "ears_pattern": "ubiquitous",
+          "system": "spec binary",
+          "action": "pass a context.Context with SIGINT and SIGTERM signal handling to all AI-calling commands (refine, generate); cancel the context on signal receipt",
+          "return_contract": "AI operations respect context cancellation; the binary exits cleanly after cancellation"
+        },
+        {
+          "id": "08-REQ-16.2",
+          "ears_pattern": "event_driven",
+          "system": "spec binary",
+          "action": "cancel the context, stop the StatusSpinner, and exit with code 1",
+          "return_contract": "exits 1; spinner is stopped; no goroutine leak",
+          "trigger": "SIGINT or SIGTERM is received during an AI operation"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "08-REQ-16.E1",
+          "ears_pattern": "unwanted",
+          "system": "spec binary",
+          "action": "force-exit immediately without waiting for cleanup",
+          "return_contract": "exits 1 immediately on second signal",
+          "error_condition": "a second SIGINT is received before the first cancellation completes"
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [
+    {
+      "id": "08-PROP-1",
+      "title": "Agent mode never writes non-JSON to stdout",
+      "for_any": "command executed with AF_AGENT=1",
+      "invariant": "every byte written to stdout is part of a valid JSON object; no banner, spinner, or plain-text diagnostic appears on stdout",
+      "validates": [
+        "08-REQ-2.1",
+        "08-REQ-2.2"
+      ]
+    },
+    {
+      "id": "08-PROP-2",
+      "title": "emitOK always produces ok:true envelope",
+      "for_any": "call to emitOK with any data fields",
+      "invariant": "the JSON written to stdout contains {\"ok\": true} merged with the provided fields; the output is valid indented JSON",
+      "validates": [
+        "08-REQ-3.2"
+      ]
+    },
+    {
+      "id": "08-PROP-3",
+      "title": "Spec resolver is deterministic for unambiguous inputs",
+      "for_any": "spec directory with exactly one entry matching a given name or numeric prefix",
+      "invariant": "the resolver always returns the same path for the same argument; it never returns an error for an unambiguous match",
+      "validates": [
+        "08-REQ-5.1",
+        "08-REQ-5.2"
+      ]
+    },
+    {
+      "id": "08-PROP-4",
+      "title": "Validate exit code reflects error presence",
+      "for_any": "invocation of spec validate in any mode",
+      "invariant": "the exit code is 1 if and only if the emitted ValidationResult contains at least one error-level finding; exit code is 0 otherwise",
+      "validates": [
+        "08-REQ-11.1",
+        "08-REQ-11.2",
+        "08-REQ-11.3"
+      ]
+    },
+    {
+      "id": "08-PROP-5",
+      "title": "StatusSpinner produces no stdout output",
+      "for_any": "any invocation of StatusSpinner methods",
+      "invariant": "no bytes are written to stdout by StatusSpinner; all output goes to stderr or is suppressed in quiet/agent mode",
+      "validates": [
+        "08-REQ-4.1",
+        "08-REQ-4.3"
+      ]
+    },
+    {
+      "id": "08-PROP-6",
+      "title": "Banner suppression is consistent",
+      "for_any": "any command invocation where --quiet is set, AF_AGENT=1, the subcommand is validate/status/list, or --json appears in arguments",
+      "invariant": "no banner text is written to stderr",
+      "validates": [
+        "08-REQ-1.3"
+      ]
+    },
+    {
+      "id": "08-PROP-7",
+      "title": "Context cancellation stops AI operations",
+      "for_any": "SIGINT or SIGTERM received during any AI-calling command",
+      "invariant": "the context is cancelled, the StatusSpinner is stopped, and the binary exits with code 1 without goroutine leaks",
+      "validates": [
+        "08-REQ-16.1",
+        "08-REQ-16.2"
+      ]
+    },
+    {
+      "id": "08-PROP-8",
+      "title": "spec list always exits 0",
+      "for_any": "any invocation of spec list regardless of spec directory state",
+      "invariant": "the exit code is always 0; the specs array is empty rather than an error when no specs exist",
+      "validates": [
+        "08-REQ-7.1",
+        "08-REQ-7.E1"
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "08-PATH-1",
+      "title": "Create new spec from PRD file",
+      "steps": [
+        {
+          "actor": "Developer",
+          "action": "runs 'spec new path/to/prd.md --name my_spec'"
+        },
+        {
+          "actor": "spec binary",
+          "action": "validates that prd.md exists and --name matches [a-z][a-z0-9_]*"
+        },
+        {
+          "actor": "spec binary",
+          "action": "auto-initializes spec directory and campaign.yaml if absent"
+        },
+        {
+          "actor": "Campaign.NewSpec",
+          "action": "creates a new spec entry via NewSpec"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits {\"ok\": true, \"spec_dir\": string, \"state\": string} to stdout"
+        }
+      ]
+    },
+    {
+      "id": "08-PATH-2",
+      "title": "Refine PRD through AI assessment",
+      "steps": [
+        {
+          "actor": "Developer",
+          "action": "runs 'spec refine my_spec'"
+        },
+        {
+          "actor": "spec resolver",
+          "action": "resolves 'my_spec' to a spec directory path"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "loads session state from _session.json"
+        },
+        {
+          "actor": "StatusSpinner",
+          "action": "starts animated spinner on stderr"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_ai)",
+          "action": "calls Assess to run PRD quality assessment against the AI model"
+        },
+        {
+          "actor": "StatusSpinner",
+          "action": "stops spinner"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits assessment result JSON to stdout"
+        }
+      ]
+    },
+    {
+      "id": "08-PATH-3",
+      "title": "Generate artifacts from accepted PRD",
+      "steps": [
+        {
+          "actor": "Developer",
+          "action": "runs 'spec generate my_spec'"
+        },
+        {
+          "actor": "spec resolver",
+          "action": "resolves 'my_spec' to a spec directory path"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_core)",
+          "action": "loads session; calls AcceptPRD if state is ASSESSING or REFINING"
+        },
+        {
+          "actor": "StatusSpinner",
+          "action": "starts animated spinner on stderr"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_ai)",
+          "action": "calls Generate to produce requirements.json, test_spec.json, and tasks.json"
+        },
+        {
+          "actor": "StatusSpinner",
+          "action": "stops spinner"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits {\"ok\": true, \"artifacts\": [string]} to stdout"
+        }
+      ]
+    },
+    {
+      "id": "08-PATH-4",
+      "title": "Validate all specs in multi-spec mode",
+      "steps": [
+        {
+          "actor": "Developer",
+          "action": "runs 'spec validate'"
+        },
+        {
+          "actor": "spec binary",
+          "action": "calls DiscoverSpecs to find all spec directories"
+        },
+        {
+          "actor": "ValidateStructured",
+          "action": "validates each spec's schema and cross-file integrity"
+        },
+        {
+          "actor": "spec binary",
+          "action": "aggregates ValidationResult objects"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits aggregated JSON to stdout; exits 1 if any spec has errors"
+        }
+      ]
+    },
+    {
+      "id": "08-PATH-5",
+      "title": "End-to-end: agent mode spec generation pipeline",
+      "steps": [
+        {
+          "actor": "Automated agent",
+          "action": "sets AF_AGENT=1 and runs 'spec new prd.md'"
+        },
+        {
+          "actor": "spec binary",
+          "action": "detects AF_AGENT=1; suppresses banner and spinner; routes all output to stdout as JSON"
+        },
+        {
+          "actor": "Campaign (agentspec_go_core)",
+          "action": "initializes campaign and creates spec via NewSpec"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits {\"ok\": true, \"spec_dir\": string, \"state\": string} to stdout"
+        },
+        {
+          "actor": "Automated agent",
+          "action": "runs 'spec refine <spec>' with AF_AGENT=1"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_ai)",
+          "action": "calls Assess; result returned via context-cancelled-safe call"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits assessment JSON to stdout"
+        },
+        {
+          "actor": "Automated agent",
+          "action": "runs 'spec generate <spec>' with AF_AGENT=1"
+        },
+        {
+          "actor": "SpecSession (agentspec_go_ai)",
+          "action": "calls Generate to produce all artifact files"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits {\"ok\": true, \"artifacts\": [string]} to stdout"
+        },
+        {
+          "actor": "Automated agent",
+          "action": "runs 'spec validate <spec>' with AF_AGENT=1"
+        },
+        {
+          "actor": "ValidateStructured",
+          "action": "validates the generated artifacts"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits ValidationResult JSON to stdout; exits 0 on success or 1 on errors"
+        }
+      ]
+    },
+    {
+      "id": "08-PATH-6",
+      "title": "Lint specs and report findings",
+      "steps": [
+        {
+          "actor": "Developer",
+          "action": "runs 'spec lint --all'"
+        },
+        {
+          "actor": "StatusSpinner",
+          "action": "starts animated spinner on stderr"
+        },
+        {
+          "actor": "afspec lint package",
+          "action": "scans all specs including fully-implemented ones and produces LintFinding list"
+        },
+        {
+          "actor": "StatusSpinner",
+          "action": "stops spinner"
+        },
+        {
+          "actor": "spec binary",
+          "action": "emits lint findings JSON to stdout; exits 1 if exit_code is non-zero"
+        }
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "id": "08-ERR-1",
+      "condition": "AF_AGENT=1 and an unhandled error occurs in any command",
+      "behavior": "write {\"ok\": false, \"error\": \"<message>\"} to stdout and exit with code 1",
+      "requirement_id": "08-REQ-2.2"
+    },
+    {
+      "id": "08-ERR-2",
+      "condition": "stdout is a broken pipe during emit or emitOK",
+      "behavior": "suppress the broken pipe error silently; do not propagate to the caller or change the exit code",
+      "requirement_id": "08-REQ-3.E2"
+    },
+    {
+      "id": "08-ERR-3",
+      "condition": "spec resolver finds zero matches for the given argument",
+      "behavior": "return a descriptive error naming the argument and the spec directory searched; command exits 1",
+      "requirement_id": "08-REQ-5.E1"
+    },
+    {
+      "id": "08-ERR-4",
+      "condition": "spec resolver finds multiple matches for a numeric prefix",
+      "behavior": "return an error listing all ambiguous directory names; command exits 1",
+      "requirement_id": "08-REQ-5.E2"
+    },
+    {
+      "id": "08-ERR-5",
+      "condition": "SPEC_PATH does not exist when running spec new",
+      "behavior": "return an error before any initialization; exit 1",
+      "requirement_id": "08-REQ-6.E1"
+    },
+    {
+      "id": "08-ERR-6",
+      "condition": "--name does not match [a-z][a-z0-9_]* when running spec new",
+      "behavior": "reject with a validation error describing the required pattern; exit 1",
+      "requirement_id": "08-REQ-6.E2"
+    },
+    {
+      "id": "08-ERR-7",
+      "condition": "Assess, Refine, or Generate is cancelled via SIGINT/SIGTERM",
+      "behavior": "cancel the context, stop the StatusSpinner, exit 1 with cancellation error message",
+      "requirement_id": "08-REQ-8.E1"
+    },
+    {
+      "id": "08-ERR-8",
+      "condition": "Generate fails midway and partial artifact files exist",
+      "behavior": "remove partial artifact files before exiting; exit 1 with error message",
+      "requirement_id": "08-REQ-9.E1"
+    },
+    {
+      "id": "08-ERR-9",
+      "condition": "CreateCampaign returns a CampaignError",
+      "behavior": "print the error message to stderr and exit 1; no campaign.yaml is created",
+      "requirement_id": "08-REQ-14.E1"
+    },
+    {
+      "id": "08-ERR-10",
+      "condition": "RunLintSpecs returns an error",
+      "behavior": "propagate the error and exit 1 without emitting partial findings",
+      "requirement_id": "08-REQ-12.E1"
+    },
+    {
+      "id": "08-ERR-11",
+      "condition": "install.sh detects an unsupported platform",
+      "behavior": "print an unsupported platform error listing supported targets and exit 1",
+      "requirement_id": "08-REQ-15.E1"
+    },
+    {
+      "id": "08-ERR-12",
+      "condition": "a second SIGINT is received before the first cancellation completes",
+      "behavior": "force-exit immediately without waiting for cleanup; exit 1",
+      "requirement_id": "08-REQ-16.E1"
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "agentspec_go_core",
+      "version": "unverified — cross-check against installed library before implementation",
+      "symbols": [
+        {
+          "name": "Campaign",
+          "import_path": "agentspec/core",
+          "signature": "type Campaign struct",
+          "notes": "Manages a collection of specs and their lifecycle; exact fields unverified"
+        },
+        {
+          "name": "NewSpec",
+          "import_path": "agentspec/core",
+          "signature": "func (c *Campaign) NewSpec(name string, prdPath string) (*SpecSession, error)",
+          "notes": "Creates a new spec entry within the campaign; signature unverified"
+        },
+        {
+          "name": "CreateCampaign",
+          "import_path": "agentspec/core",
+          "signature": "func CreateCampaign(path string, name string, description string) (*Campaign, error)",
+          "notes": "Creates a new campaign at the given path; returns CampaignError on conflict"
+        },
+        {
+          "name": "CampaignError",
+          "import_path": "agentspec/core",
+          "signature": "type CampaignError struct{ Message string }",
+          "notes": "Error type returned by campaign operations; exact fields unverified"
+        },
+        {
+          "name": "SpecSession",
+          "import_path": "agentspec/core",
+          "signature": "type SpecSession struct",
+          "notes": "Stateful authoring session for a single spec; exact fields unverified"
+        },
+        {
+          "name": "AcceptPRD",
+          "import_path": "agentspec/core",
+          "signature": "func (s *SpecSession) AcceptPRD(ctx context.Context) error",
+          "notes": "Transitions session from ASSESSING or REFINING to accepted state; signature unverified"
+        },
+        {
+          "name": "PendingQuestions",
+          "import_path": "agentspec/core",
+          "signature": "func (s *SpecSession) PendingQuestions() (any, error)",
+          "notes": "Returns unanswered refinement questions; return type unverified"
+        }
+      ]
+    },
+    {
+      "package": "agentspec_go_ai",
+      "version": "unverified — cross-check against installed library before implementation",
+      "symbols": [
+        {
+          "name": "Assess",
+          "import_path": "agentspec/ai",
+          "signature": "func (s *SpecSession) Assess(ctx context.Context) (Assessment, error)",
+          "notes": "Runs PRD quality assessment against the AI model; signature unverified"
+        },
+        {
+          "name": "Refine",
+          "import_path": "agentspec/ai",
+          "signature": "func (s *SpecSession) Refine(ctx context.Context, answers map[string]any) (any, error)",
+          "notes": "Runs a refinement pass given user answers; signature unverified"
+        },
+        {
+          "name": "Generate",
+          "import_path": "agentspec/ai",
+          "signature": "func (s *SpecSession) Generate(ctx context.Context) ([]string, error)",
+          "notes": "Generates specification artifacts; returns list of artifact file paths; signature unverified"
+        }
+      ]
+    },
+    {
+      "package": "afspec_go_validation",
+      "version": "unverified — cross-check against installed library before implementation",
+      "symbols": [
+        {
+          "name": "ValidateStructured",
+          "import_path": "afspec/validation",
+          "signature": "func ValidateStructured(spec any) (ValidationResult, error)",
+          "notes": "Runs full structured validation on a single spec; signature unverified"
+        },
+        {
+          "name": "ValidateCrossSpec",
+          "import_path": "afspec/validation",
+          "signature": "func ValidateCrossSpec(graph DependencyGraph) (ValidationResult, error)",
+          "notes": "Runs cross-spec interface consistency checks; signature unverified"
+        },
+        {
+          "name": "ValidationResult",
+          "import_path": "afspec/validation",
+          "signature": "type ValidationResult struct",
+          "notes": "Aggregated result of validating one or more specs; exact fields unverified"
+        }
+      ]
+    },
+    {
+      "package": "afspec_go_mutation_lint",
+      "version": "unverified — cross-check against installed library before implementation",
+      "symbols": [
+        {
+          "name": "RunLintSpecs",
+          "import_path": "afspec/lint",
+          "signature": "func RunLintSpecs(specDir string, lintAll bool) ([]LintFinding, int, error)",
+          "notes": "Runs lint checks across the spec directory; returns findings, exit code, and error; signature unverified"
+        },
+        {
+          "name": "LintFinding",
+          "import_path": "afspec/lint",
+          "signature": "type LintFinding struct",
+          "notes": "Represents a single lint finding with severity and message; exact fields unverified"
+        }
+      ]
+    },
+    {
+      "package": "afspec_go",
+      "version": "unverified — cross-check against installed library before implementation",
+      "symbols": [
+        {
+          "name": "DiscoverSpecs",
+          "import_path": "afspec",
+          "signature": "func DiscoverSpecs(dir string) ([]Spec, error)",
+          "notes": "Scans a directory and returns all discovered spec entries; signature unverified"
+        },
+        {
+          "name": "BuildDependencyGraph",
+          "import_path": "afspec",
+          "signature": "func BuildDependencyGraph(specs []Spec) (DependencyGraph, error)",
+          "notes": "Constructs a dependency graph from discovered specs; signature unverified"
+        }
+      ]
+    }
+  ]
+}

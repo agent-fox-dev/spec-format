@@ -1,0 +1,1449 @@
+{
+  "$schema": null,
+  "spec_id": "06",
+  "spec_name": "agentspec_go_core",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "go test ./agentspec/... -count=1 -v",
+    "all_tests": "go test ./... -count=1",
+    "linter": "go vet ./..."
+  },
+  "dependencies": [],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write tests: error types and configuration (REQ-1, REQ-2)",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write tests for AgentSpecError base type and error hierarchy",
+          "details": [
+            "Create agentspec/errors_test.go",
+            "Test that ConfigError, CampaignError, SessionError, AgentError all satisfy errors.As(target, &AgentSpecError{})",
+            "Test Category() returns 'internal' for base, 'config' for ConfigError, 'state' for SessionError",
+            "Test AgentError fields: Detail, ErrorCategory, Retryable, HTTPStatus, Unwrap()"
+          ],
+          "test_spec_refs": [
+            "TS-06-1",
+            "TS-06-2",
+            "TS-06-3",
+            "TS-06-4",
+            "TS-06-5"
+          ],
+          "requirement_refs": [
+            "06-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write tests for LoadConfig local and global search",
+          "details": [
+            "Create agentspec/config_test.go",
+            "Test LoadConfig finds config.toml in .specs/ relative to cwd (local wins)",
+            "Test LoadConfig falls back to ~/.specs/config.toml when local is absent",
+            "Test LoadConfig returns defaults (Model='STANDARD') when no file found",
+            "Test [model] section model key and [provider] section auth_method, vertex_project, vertex_region are parsed"
+          ],
+          "test_spec_refs": [
+            "TS-06-6",
+            "TS-06-7",
+            "TS-06-8"
+          ],
+          "requirement_refs": [
+            "06-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write tests for LoadConfig env override, symlink rejection, and TOML errors",
+          "details": [
+            "Test AF_SPEC_MODEL env var overrides model field from config file",
+            "Test symlinked config file returns ConfigError (resolved path != original path)",
+            "Test invalid TOML syntax returns ConfigError",
+            "Test unknown sections (e.g. [spec_tool], [theme]) are silently ignored"
+          ],
+          "test_spec_refs": [
+            "TS-06-9",
+            "TS-06-10"
+          ],
+          "requirement_refs": [
+            "06-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All test files compile without errors: go build ./agentspec/...",
+          "Test stubs exist and are skippable: go test ./agentspec/... -count=1 -v (tests may fail with 'not implemented' but must compile)",
+          "No linter warnings introduced: go vet ./agentspec/...",
+          "Test IDs TS-06-1 through TS-06-10 have corresponding test functions"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write tests: campaign management (REQ-3, REQ-4, REQ-5, REQ-6)",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write tests for CreateCampaign and OpenCampaign",
+          "details": [
+            "Create agentspec/campaign_test.go",
+            "Test CreateCampaign writes campaign.yaml atomically with correct name, description, created_at, updated_at",
+            "Test CreateCampaign returns CampaignError when campaign.yaml already exists",
+            "Test CreateCampaign returns error when parent directory does not exist",
+            "Test OpenCampaign reads and parses campaign.yaml correctly",
+            "Test OpenCampaign returns CampaignError when file is missing or malformed"
+          ],
+          "test_spec_refs": [
+            "TS-06-11",
+            "TS-06-12",
+            "TS-06-13",
+            "TS-06-14",
+            "TS-06-15",
+            "TS-06-16"
+          ],
+          "requirement_refs": [
+            "06-REQ-3",
+            "06-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for Campaign.Specs() listing",
+          "details": [
+            "Test Specs() returns subdirectories matching {NN}_{snake_case} pattern sorted by numeric prefix",
+            "Test Specs() excludes archive/ subdirectory",
+            "Test Specs() returns empty slice when no matching directories exist",
+            "Use ParseSpecDirName from afspec to validate pattern matching logic"
+          ],
+          "test_spec_refs": [
+            "TS-06-17",
+            "TS-06-18"
+          ],
+          "requirement_refs": [
+            "06-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for Campaign.NewSpec() provisioning",
+          "details": [
+            "Test NewSpec validates spec name against [a-z][a-z0-9_]* pattern, returns CampaignError on invalid name",
+            "Test NewSpec computes next numeric prefix by scanning active specs and archive/ subdirectory",
+            "Test NewSpec creates spec directory and writes prd.md with correct YAML frontmatter fields (spec_id, spec_name, title, status: draft, created_at, updated_at, owner, source, schema_version: 1)",
+            "Test NewSpec copies PRD body from provided file path",
+            "Test NewSpec calls CreateSession and returns a valid *SpecSession"
+          ],
+          "test_spec_refs": [
+            "TS-06-19",
+            "TS-06-20",
+            "TS-06-21"
+          ],
+          "requirement_refs": [
+            "06-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All campaign test functions compile: go build ./agentspec/...",
+          "Test IDs TS-06-11 through TS-06-21 have corresponding test functions in campaign_test.go",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-3, 06-REQ-4, 06-REQ-5, 06-REQ-6 acceptance criteria are covered by test cases"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Write tests: session state machine and persistence (REQ-7, REQ-8)",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write tests for CreateSession and ResumeSession",
+          "details": [
+            "Create agentspec/session_test.go",
+            "Test CreateSession initializes SpecSession in StateInit and writes _session.json",
+            "Test CreateSession _session.json contains state, prd_path, mode, assessment_history, qa_exchanges, generated_artifacts in snake_case",
+            "Test ResumeSession reads _session.json and reconstructs SpecSession with correct state",
+            "Test ResumeSession returns SessionError when _session.json is missing or malformed"
+          ],
+          "test_spec_refs": [
+            "TS-06-22",
+            "TS-06-23",
+            "TS-06-24",
+            "TS-06-25"
+          ],
+          "requirement_refs": [
+            "06-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write tests for session state transitions and accessor methods",
+          "details": [
+            "Test AcceptPRD() transitions from StateAssessing to StatePRDAccepted",
+            "Test AcceptPRD() transitions from StateRefining to StatePRDAccepted",
+            "Test AcceptPRD() returns SessionError when called from StateInit, StateGenerating, or StateGenerated",
+            "Test State(), SpecDir(), Assessment(), PendingQuestions() accessors return correct values",
+            "Test Assessment() returns nil when assessmentHistory is empty, returns most recent when populated",
+            "Test each state transition persists atomically to _session.json via temp-file-and-rename"
+          ],
+          "test_spec_refs": [
+            "TS-06-26",
+            "TS-06-27",
+            "TS-06-28",
+            "TS-06-29",
+            "TS-06-30"
+          ],
+          "requirement_refs": [
+            "06-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "All session test functions compile: go build ./agentspec/...",
+          "Test IDs TS-06-22 through TS-06-30 have corresponding test functions in session_test.go",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-7, 06-REQ-8 acceptance criteria are covered by test cases"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "tests",
+      "title": "Write tests: session validation, rendering, and tool schemas (REQ-9 through REQ-15)",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Write tests for session Validate() and Render()",
+          "details": [
+            "Test Validate() loads spec via afspec.LoadSpec and runs Validate(), categorizes errors as SchemaErrors or IntegrityErrors",
+            "Test Validate() falls back to loading individual JSON artifacts when LoadSpec fails",
+            "Test Render(combined=true) delegates to afspec RenderCombined and returns string",
+            "Test Render(combined=false) delegates to afspec RenderIndividual and returns map[string]string",
+            "Test Render() falls back to available artifacts when some are missing"
+          ],
+          "test_spec_refs": [
+            "TS-06-31",
+            "TS-06-32",
+            "TS-06-33",
+            "TS-06-34",
+            "TS-06-35"
+          ],
+          "requirement_refs": [
+            "06-REQ-9",
+            "06-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Write tests for AssessmentTools and RefinementTools",
+          "details": [
+            "Create agentspec/tools_test.go",
+            "Test AssessmentTools() returns list with submit_assessment tool containing quality enum, summary, gaps, questions schema",
+            "Test RefinementTools() returns list with both submit_prd_update and submit_assessment tools",
+            "Test submit_prd_update has updated_prd string field in input schema"
+          ],
+          "test_spec_refs": [
+            "TS-06-36",
+            "TS-06-37"
+          ],
+          "requirement_refs": [
+            "06-REQ-11",
+            "06-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.3",
+          "title": "Write tests for ArtifactTool, InlineRefs, and CleanSchema",
+          "details": [
+            "Test ArtifactTool('requirements') returns submit_requirements tool with content property embedding resolved afspec JSON Schema",
+            "Test ArtifactTool result has no $ref or $defs keys (all refs resolved inline)",
+            "Test InlineRefs resolves all $ref references against $defs and removes $defs from result",
+            "Test InlineRefs handles nested and recursive $ref chains",
+            "Test CleanSchema strips title fields at all levels, removes default fields, removes top-level $schema field",
+            "Test CleanSchema preserves description fields"
+          ],
+          "test_spec_refs": [
+            "TS-06-38",
+            "TS-06-39",
+            "TS-06-40",
+            "TS-06-41",
+            "TS-06-42",
+            "TS-06-43"
+          ],
+          "requirement_refs": [
+            "06-REQ-13",
+            "06-REQ-14",
+            "06-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "All tool schema and session test functions compile: go build ./agentspec/...",
+          "Test IDs TS-06-31 through TS-06-43 have corresponding test functions",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-9 through 06-REQ-15 acceptance criteria are covered by test cases"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement error types (REQ-1)",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Define AgentSpecError interface and base error struct",
+          "details": [
+            "Create agentspec/errors.go",
+            "Define AgentSpecError interface with Error() string and Category() string methods",
+            "Implement baseAgentSpecError struct embedding error message, Category() returns 'internal'",
+            "Ensure all concrete error types satisfy errors.As matching to AgentSpecError"
+          ],
+          "test_spec_refs": [
+            "TS-06-1"
+          ],
+          "requirement_refs": [
+            "06-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Implement ConfigError, CampaignError, and SessionError",
+          "details": [
+            "Implement ConfigError struct with message field; Category() returns 'config'",
+            "Implement CampaignError struct with message field; Category() returns 'campaign'",
+            "Implement SessionError struct with message field; Category() returns 'state'",
+            "Each type must satisfy AgentSpecError interface and be matchable via errors.As"
+          ],
+          "test_spec_refs": [
+            "TS-06-2",
+            "TS-06-3",
+            "TS-06-4"
+          ],
+          "requirement_refs": [
+            "06-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Implement AgentError with full metadata and Unwrap",
+          "details": [
+            "Implement AgentError struct with Detail (string), ErrorCategory (string), Retryable (bool), HTTPStatus (*int), wrapped error",
+            "ErrorCategory valid values: rate_limit, auth, transient, overloaded, input, internal, validation, refusal, context_window, pause_turn",
+            "Implement Unwrap() error to preserve original error for errors.Is/As chain",
+            "Category() returns ErrorCategory field value"
+          ],
+          "test_spec_refs": [
+            "TS-06-5"
+          ],
+          "requirement_refs": [
+            "06-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "Error type tests pass: go test ./agentspec/... -run TestError -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-1 acceptance criteria met: errors.As works for all error types, Category() returns correct strings"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement configuration loading (REQ-2)",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Define AgentSpecConfig struct and TOML parsing",
+          "details": [
+            "Create agentspec/config.go",
+            "Define AgentSpecConfig struct with Model (string), AuthMethod (string), VertexProject (string), VertexRegion (string)",
+            "Add github.com/BurntSushi/toml dependency if not already present in go.mod",
+            "Parse [model] section for model key and [provider] section for auth_method, vertex_project, vertex_region",
+            "Silently ignore unknown sections (e.g. [spec_tool], [theme])"
+          ],
+          "test_spec_refs": [
+            "TS-06-6",
+            "TS-06-7"
+          ],
+          "requirement_refs": [
+            "06-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement LoadConfig search logic and defaults",
+          "details": [
+            "Search for config.toml in .specs/ relative to cwd first, then ~/.specs/ globally",
+            "First file found wins; files are not merged",
+            "Return AgentSpecConfig with Model='STANDARD' when no config file is found",
+            "Return ConfigError for invalid TOML syntax"
+          ],
+          "test_spec_refs": [
+            "TS-06-8",
+            "TS-06-9"
+          ],
+          "requirement_refs": [
+            "06-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.3",
+          "title": "Implement AF_SPEC_MODEL override and symlink rejection",
+          "details": [
+            "After loading config, check AF_SPEC_MODEL env var; if set, override Model field",
+            "Before reading config file, call os.Lstat and os.Stat; if resolved path differs from original, return ConfigError",
+            "Use filepath.EvalSymlinks to detect symlinks"
+          ],
+          "test_spec_refs": [
+            "TS-06-9",
+            "TS-06-10"
+          ],
+          "requirement_refs": [
+            "06-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "Config tests pass: go test ./agentspec/... -run TestLoadConfig -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-2 acceptance criteria met: env override, symlink rejection, TOML error, defaults all verified"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement campaign management: CreateCampaign and OpenCampaign (REQ-3, REQ-4)",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Define CampaignMetadata and Campaign structs",
+          "details": [
+            "Create agentspec/campaign.go",
+            "Define CampaignMetadata struct with Name, Description, CreatedAt, UpdatedAt (all strings, ISO 8601)",
+            "Define Campaign struct with Path (string) and Metadata (CampaignMetadata)",
+            "Add yaml struct tags matching snake_case field names for go-yaml serialization"
+          ],
+          "test_spec_refs": [
+            "TS-06-11",
+            "TS-06-14"
+          ],
+          "requirement_refs": [
+            "06-REQ-3",
+            "06-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Implement CreateCampaign with atomic write",
+          "details": [
+            "Validate parent directory exists via os.Stat; return error if not",
+            "Check campaign.yaml does not already exist at path; return CampaignError if it does",
+            "Marshal CampaignMetadata to YAML using github.com/goccy/go-yaml Marshal",
+            "Write campaign.yaml atomically: write to temp file in same directory, then os.Rename to target",
+            "Set created_at and updated_at to current UTC time in ISO 8601 format"
+          ],
+          "test_spec_refs": [
+            "TS-06-11",
+            "TS-06-12",
+            "TS-06-13"
+          ],
+          "requirement_refs": [
+            "06-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.3",
+          "title": "Implement OpenCampaign",
+          "details": [
+            "Read campaign.yaml from path using os.ReadFile",
+            "Unmarshal YAML into CampaignMetadata using github.com/goccy/go-yaml Unmarshal",
+            "Return CampaignError if file is missing (os.IsNotExist) or YAML is malformed",
+            "Return *Campaign with Path and parsed Metadata"
+          ],
+          "test_spec_refs": [
+            "TS-06-14",
+            "TS-06-15",
+            "TS-06-16"
+          ],
+          "requirement_refs": [
+            "06-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "Campaign create/open tests pass: go test ./agentspec/... -run TestCreateCampaign -count=1 -v",
+          "go test ./agentspec/... -run TestOpenCampaign -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-3, 06-REQ-4 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "standard",
+      "title": "Implement campaign spec listing and new spec provisioning (REQ-5, REQ-6)",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Implement Campaign.Specs() listing method",
+          "details": [
+            "Read all entries in campaign Path directory using os.ReadDir",
+            "Filter entries using afspec.IsSpecDirName and afspec.ParseSpecDirName",
+            "Exclude archive/ subdirectory from results",
+            "Sort results by numeric prefix extracted via ParseSpecDirName",
+            "Return sorted slice of directory name strings"
+          ],
+          "test_spec_refs": [
+            "TS-06-17",
+            "TS-06-18"
+          ],
+          "requirement_refs": [
+            "06-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Implement Campaign.NewSpec() spec directory creation",
+          "details": [
+            "Validate specName against regexp [a-z][a-z0-9_]*; return CampaignError if invalid",
+            "Compute next numeric prefix by scanning both active specs (Specs()) and archive/ subdirectory using ParseSpecDirName",
+            "Create spec directory named {NN}_{specName} using os.MkdirAll",
+            "Write prd.md with YAML frontmatter: spec_id (zero-padded prefix), spec_name, title (from specName), status: draft, created_at, updated_at, owner: '', source, schema_version: 1"
+          ],
+          "test_spec_refs": [
+            "TS-06-19",
+            "TS-06-20"
+          ],
+          "requirement_refs": [
+            "06-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Implement PRD body copy and session initialization in NewSpec()",
+          "details": [
+            "Read PRD body from prdPath using os.ReadFile",
+            "Append PRD body after YAML frontmatter separator (---) in prd.md",
+            "Call CreateSession(specDir, mode, source) to initialize SpecSession",
+            "Return (*SpecSession, error) from NewSpec"
+          ],
+          "test_spec_refs": [
+            "TS-06-21"
+          ],
+          "requirement_refs": [
+            "06-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "Spec listing and provisioning tests pass: go test ./agentspec/... -run TestSpecs -count=1 -v",
+          "go test ./agentspec/... -run TestNewSpec -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-5, 06-REQ-6 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "standard",
+      "title": "Implement session data structures and CreateSession/ResumeSession (REQ-7)",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Define session data structs and SessionState constants",
+          "details": [
+            "Create agentspec/session.go",
+            "Define SessionState string type with constants: StateInit, StateAssessing, StateRefining, StatePRDAccepted, StateGenerating, StateGenerated",
+            "Define Question struct: ID, Text, Context (strings), Options ([]string), Required (bool)",
+            "Define Assessment struct: Quality (string), Summary (string), Gaps ([]string), Questions ([]Question)",
+            "Define QAExchange struct: AssessmentIndex (int), Answers (map[string]string), Timestamp (string)",
+            "Define LastError struct: Message, Category (strings), Retryable (bool), HTTPStatus (*int), Cause (string)",
+            "Define RepairSuggestion, SessionValidationResult, GenerateResult structs"
+          ],
+          "test_spec_refs": [
+            "TS-06-22",
+            "TS-06-26"
+          ],
+          "requirement_refs": [
+            "06-REQ-7",
+            "06-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Define SpecSession struct and JSON serialization",
+          "details": [
+            "Define SpecSession struct with unexported fields: specDir, state, mode, prdPath, assessmentHistory, qaExchanges, generatedArtifacts, lastError",
+            "Define sessionJSON struct for serialization with snake_case JSON tags: state, prd_path, assessment_history, qa_exchanges, generated_artifacts, mode, last_error (omitempty)",
+            "Implement marshal/unmarshal helpers converting between SpecSession and sessionJSON"
+          ],
+          "test_spec_refs": [
+            "TS-06-23",
+            "TS-06-24"
+          ],
+          "requirement_refs": [
+            "06-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Implement CreateSession and ResumeSession with atomic persistence",
+          "details": [
+            "CreateSession: initialize SpecSession with StateInit, persist to _session.json via temp-file-and-rename using afspec.MarshalJSON",
+            "ResumeSession: read _session.json with os.ReadFile, unmarshal JSON into sessionJSON, reconstruct SpecSession",
+            "Return SessionError from ResumeSession if file is missing or JSON is malformed",
+            "Implement persistSession helper that writes atomically: write to temp file in specDir, then os.Rename"
+          ],
+          "test_spec_refs": [
+            "TS-06-22",
+            "TS-06-23",
+            "TS-06-24",
+            "TS-06-25"
+          ],
+          "requirement_refs": [
+            "06-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "Session creation and resume tests pass: go test ./agentspec/... -run TestCreateSession -count=1 -v",
+          "go test ./agentspec/... -run TestResumeSession -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-7 acceptance criteria met: _session.json uses snake_case, atomic write verified"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "standard",
+      "title": "Implement session state transitions and accessor methods (REQ-8)",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Implement State(), SpecDir(), Assessment(), PendingQuestions() accessors",
+          "details": [
+            "State() returns current state field",
+            "SpecDir() returns specDir field",
+            "Assessment() returns pointer to last element of assessmentHistory, or nil if empty",
+            "PendingQuestions() converts Questions from latest Assessment into []map[string]any with id, text, context, options, required keys"
+          ],
+          "test_spec_refs": [
+            "TS-06-28",
+            "TS-06-29"
+          ],
+          "requirement_refs": [
+            "06-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Implement AcceptPRD() state transition with persistence",
+          "details": [
+            "AcceptPRD() checks current state is StateAssessing or StateRefining; return SessionError otherwise",
+            "Transition state to StatePRDAccepted",
+            "Call persistSession to atomically write updated _session.json",
+            "Return nil on success"
+          ],
+          "test_spec_refs": [
+            "TS-06-26",
+            "TS-06-27",
+            "TS-06-28",
+            "TS-06-30"
+          ],
+          "requirement_refs": [
+            "06-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "State transition tests pass: go test ./agentspec/... -run TestAcceptPRD -count=1 -v",
+          "Accessor tests pass: go test ./agentspec/... -run TestSession -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-8 acceptance criteria met: illegal transitions return SessionError, persistence verified"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "kind": "standard",
+      "title": "Implement session Validate() and Render() (REQ-9, REQ-10)",
+      "subtasks": [
+        {
+          "id": "11.1",
+          "title": "Implement SpecSession.Validate() with afspec integration",
+          "details": [
+            "Call afspec.LoadSpec(specDir) to load the spec",
+            "Call (*Spec).Validate() and categorize ValidationResult entries as SchemaErrors or IntegrityErrors",
+            "Populate RepairSuggestions from validation entries where applicable",
+            "Fall back to loading individual JSON artifact files when LoadSpec fails; return partial SessionValidationResult"
+          ],
+          "test_spec_refs": [
+            "TS-06-31",
+            "TS-06-32"
+          ],
+          "requirement_refs": [
+            "06-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "11.2",
+          "title": "Implement SpecSession.Render() with afspec delegation",
+          "details": [
+            "Accept combined bool parameter",
+            "When combined=true: call (*Spec).RenderCombined() and return string",
+            "When combined=false: call (*Spec).RenderIndividual() and return map[string]string",
+            "Fall back to rendering available artifacts when some are missing (partial spec)",
+            "Return (any, error) — caller type-asserts based on combined flag"
+          ],
+          "test_spec_refs": [
+            "TS-06-33",
+            "TS-06-34",
+            "TS-06-35"
+          ],
+          "requirement_refs": [
+            "06-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "11.V",
+        "checks": [
+          "Validate and Render tests pass: go test ./agentspec/... -run TestValidate -count=1 -v",
+          "go test ./agentspec/... -run TestRender -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-9, 06-REQ-10 acceptance criteria met"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "kind": "standard",
+      "title": "Implement InlineRefs and CleanSchema (REQ-14, REQ-15)",
+      "subtasks": [
+        {
+          "id": "12.1",
+          "title": "Implement InlineRefs recursive $ref resolution",
+          "details": [
+            "Create agentspec/tools.go",
+            "InlineRefs(schema map[string]any) map[string]any: extract $defs from top-level schema",
+            "Recursively walk schema tree; when a $ref key is found, resolve it against $defs and replace the node with the resolved definition",
+            "Handle nested $ref chains by resolving recursively until no $ref remains",
+            "Remove $defs key from the final result",
+            "Return deep copy to avoid mutating input"
+          ],
+          "test_spec_refs": [
+            "TS-06-40",
+            "TS-06-41"
+          ],
+          "requirement_refs": [
+            "06-REQ-14"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "12.2",
+          "title": "Implement CleanSchema metadata stripping",
+          "details": [
+            "CleanSchema(schema map[string]any) map[string]any: recursively walk schema tree",
+            "Remove title key at every level of the schema",
+            "Remove default key at every level of the schema",
+            "Remove top-level $schema key",
+            "Preserve description fields at all levels",
+            "Return deep copy to avoid mutating input"
+          ],
+          "test_spec_refs": [
+            "TS-06-42",
+            "TS-06-43"
+          ],
+          "requirement_refs": [
+            "06-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "12.V",
+        "checks": [
+          "InlineRefs and CleanSchema tests pass: go test ./agentspec/... -run TestInlineRefs -count=1 -v",
+          "go test ./agentspec/... -run TestCleanSchema -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-14, 06-REQ-15 acceptance criteria met: no $ref/$defs remain after InlineRefs, title/default/$schema stripped by CleanSchema"
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "kind": "standard",
+      "title": "Implement tool schema definitions (REQ-11, REQ-12, REQ-13)",
+      "subtasks": [
+        {
+          "id": "13.1",
+          "title": "Implement AssessmentTools() and RefinementTools()",
+          "details": [
+            "AssessmentTools() returns []map[string]any with submit_assessment tool definition",
+            "submit_assessment input schema: quality (enum: ready/needs_refinement/incomplete), summary (string), gaps (array of strings), questions (array of objects with id, text, context, options, required)",
+            "RefinementTools() returns []map[string]any with [submit_prd_update, submit_assessment]",
+            "submit_prd_update input schema: updated_prd (string)"
+          ],
+          "test_spec_refs": [
+            "TS-06-36",
+            "TS-06-37"
+          ],
+          "requirement_refs": [
+            "06-REQ-11",
+            "06-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "13.2",
+          "title": "Implement ArtifactTool() with embedded afspec schema",
+          "details": [
+            "ArtifactTool(artifactName string) []map[string]any: call afspec.Schemas() to get embedded JSON Schema bytes for the artifact type",
+            "Unmarshal schema bytes into map[string]any",
+            "Apply InlineRefs to resolve all $ref/$defs inline",
+            "Apply CleanSchema to strip title, default, $schema metadata while preserving descriptions",
+            "Return tool definition list with submit_{artifactName} tool whose content property embeds the cleaned schema"
+          ],
+          "test_spec_refs": [
+            "TS-06-38",
+            "TS-06-39"
+          ],
+          "requirement_refs": [
+            "06-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "13.V",
+        "checks": [
+          "Tool schema tests pass: go test ./agentspec/... -run TestAssessmentTools -count=1 -v",
+          "go test ./agentspec/... -run TestArtifactTool -count=1 -v",
+          "All existing tests still pass: go test ./... -count=1",
+          "No linter warnings: go vet ./agentspec/...",
+          "Requirements 06-REQ-11, 06-REQ-12, 06-REQ-13 acceptance criteria met: tool schemas contain correct field names and types"
+        ]
+      }
+    },
+    {
+      "id": 14,
+      "kind": "checkpoint",
+      "title": "Integration checkpoint: full package compilation and cross-module wiring",
+      "subtasks": [
+        {
+          "id": "14.1",
+          "title": "Verify package compiles cleanly and all public symbols are exported correctly",
+          "details": [
+            "Run go build ./... and confirm zero errors",
+            "Confirm all public functions (LoadConfig, CreateCampaign, OpenCampaign, CreateSession, ResumeSession, AssessmentTools, RefinementTools, ArtifactTool, InlineRefs, CleanSchema) are exported",
+            "Confirm all error types satisfy the AgentSpecError interface via compile-time assertion: var _ AgentSpecError = (*ConfigError)(nil) etc.",
+            "Confirm context.Context is first parameter on methods that will gain AI calls (NewSpec, Validate, Render)"
+          ],
+          "test_spec_refs": [
+            "TS-06-1",
+            "TS-06-6",
+            "TS-06-11"
+          ],
+          "requirement_refs": [
+            "06-REQ-1",
+            "06-REQ-2",
+            "06-REQ-3",
+            "06-REQ-4",
+            "06-REQ-5",
+            "06-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "14.2",
+          "title": "Verify afspec integration points are correctly wired",
+          "details": [
+            "Confirm LoadSpec, Validate, RenderCombined, RenderIndividual, MarshalJSON, Schemas, ParseSpecDirName, IsSpecDirName are imported from the afspec package at golang/",
+            "Confirm no stub panic(\"not implemented\") or bare return nil remains in Validate() or Render() paths",
+            "Confirm ArtifactTool correctly calls afspec.Schemas() and processes the returned map"
+          ],
+          "test_spec_refs": [
+            "TS-06-31",
+            "TS-06-38"
+          ],
+          "requirement_refs": [
+            "06-REQ-9",
+            "06-REQ-10",
+            "06-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "14.3",
+          "title": "Run full test suite and confirm all spec tests pass",
+          "details": [
+            "Run go test ./agentspec/... -count=1 -v and confirm all 43 test cases pass",
+            "Run go test ./... -count=1 to confirm no regressions in afspec or other packages",
+            "Run go vet ./... and confirm zero warnings"
+          ],
+          "test_spec_refs": [
+            "TS-06-22",
+            "TS-06-36",
+            "TS-06-40",
+            "TS-06-42"
+          ],
+          "requirement_refs": [
+            "06-REQ-1",
+            "06-REQ-7",
+            "06-REQ-11",
+            "06-REQ-14",
+            "06-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "14.V",
+        "checks": [
+          "go build ./... exits with code 0",
+          "go test ./agentspec/... -count=1 -v shows all tests passing",
+          "go test ./... -count=1 shows no regressions",
+          "go vet ./... shows zero warnings",
+          "Compile-time interface assertions for all error types are present in errors.go"
+        ]
+      }
+    },
+    {
+      "id": 15,
+      "kind": "wiring_verification",
+      "title": "Wiring verification: end-to-end integration and stub audit",
+      "subtasks": [
+        {
+          "id": "15.1",
+          "title": "Trace execution paths from Campaign.NewSpec through CreateSession to _session.json",
+          "details": [
+            "Verify NewSpec() calls CreateSession() and CreateSession() calls persistSession()",
+            "Verify persistSession() performs atomic temp-file-and-rename (not direct write)",
+            "Verify ResumeSession() reads the same _session.json written by CreateSession()",
+            "Confirm no panic(\"not implemented\") or // TODO stubs remain in the NewSpec → CreateSession → persistSession call chain"
+          ],
+          "test_spec_refs": [
+            "TS-06-21",
+            "TS-06-22",
+            "TS-06-23"
+          ],
+          "requirement_refs": [
+            "06-REQ-6",
+            "06-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "15.2",
+          "title": "Verify return value propagation across module boundaries",
+          "details": [
+            "Confirm LoadConfig return value (AgentSpecConfig, error) is consumed by callers — no discarded errors",
+            "Confirm CreateCampaign and OpenCampaign return (*Campaign, error) and callers check both values",
+            "Confirm AcceptPRD() error return is not silently discarded in any call site",
+            "Confirm ArtifactTool return value includes the fully resolved and cleaned schema (not raw bytes)"
+          ],
+          "test_spec_refs": [
+            "TS-06-6",
+            "TS-06-11",
+            "TS-06-26",
+            "TS-06-38"
+          ],
+          "requirement_refs": [
+            "06-REQ-2",
+            "06-REQ-3",
+            "06-REQ-4",
+            "06-REQ-8",
+            "06-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "15.3",
+          "title": "Stub and dead-code audit across all implemented files",
+          "details": [
+            "Search for panic(\"not implemented\") in agentspec/: grep -r 'not implemented' agentspec/",
+            "Search for bare return nil in non-trivial function bodies that should return data",
+            "Search for // TODO comments indicating deferred implementation",
+            "Confirm all functions defined by requirements have real implementations, not stubs"
+          ],
+          "test_spec_refs": [
+            "TS-06-1",
+            "TS-06-6",
+            "TS-06-11",
+            "TS-06-22",
+            "TS-06-36"
+          ],
+          "requirement_refs": [
+            "06-REQ-1",
+            "06-REQ-2",
+            "06-REQ-3",
+            "06-REQ-4",
+            "06-REQ-5",
+            "06-REQ-6",
+            "06-REQ-7",
+            "06-REQ-8",
+            "06-REQ-9",
+            "06-REQ-10",
+            "06-REQ-11",
+            "06-REQ-12",
+            "06-REQ-13",
+            "06-REQ-14",
+            "06-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "15.4",
+          "title": "Run smoke tests and verify cross-spec entry points",
+          "details": [
+            "Run go test ./agentspec/... -count=1 -v -run Smoke to execute any smoke tests",
+            "Verify afspec symbols (LoadSpec, Validate, RenderCombined, RenderIndividual, Schemas, ParseSpecDirName) are called from production code paths, not just test helpers",
+            "Confirm agentspec_go_ai spec (cross-spec dependency) can import and use SpecSession, CreateSession, ResumeSession, AssessmentTools, RefinementTools, ArtifactTool without modification",
+            "Confirm spec_cli_go spec can import Campaign, CreateCampaign, OpenCampaign, LoadConfig"
+          ],
+          "test_spec_refs": [
+            "TS-06-19",
+            "TS-06-22",
+            "TS-06-36",
+            "TS-06-37",
+            "TS-06-38",
+            "TS-06-SMOKE-1",
+            "TS-06-SMOKE-2",
+            "TS-06-SMOKE-3",
+            "TS-06-SMOKE-4",
+            "TS-06-SMOKE-5",
+            "TS-06-SMOKE-6"
+          ],
+          "requirement_refs": [
+            "06-REQ-6",
+            "06-REQ-7",
+            "06-REQ-11",
+            "06-REQ-12",
+            "06-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "15.5",
+          "title": "Final full test suite run and linter clean pass",
+          "details": [
+            "Run go test ./... -count=1 and confirm all tests pass with no failures",
+            "Run go vet ./... and confirm zero warnings",
+            "Run go build ./... and confirm zero compilation errors",
+            "Confirm test coverage for agentspec/ covers all 15 requirements"
+          ],
+          "test_spec_refs": [
+            "TS-06-1",
+            "TS-06-6",
+            "TS-06-11",
+            "TS-06-17",
+            "TS-06-22",
+            "TS-06-26",
+            "TS-06-31",
+            "TS-06-36",
+            "TS-06-40",
+            "TS-06-42"
+          ],
+          "requirement_refs": [
+            "06-REQ-1",
+            "06-REQ-2",
+            "06-REQ-3",
+            "06-REQ-4",
+            "06-REQ-5",
+            "06-REQ-6",
+            "06-REQ-7",
+            "06-REQ-8",
+            "06-REQ-9",
+            "06-REQ-10",
+            "06-REQ-11",
+            "06-REQ-12",
+            "06-REQ-13",
+            "06-REQ-14",
+            "06-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "15.V",
+        "checks": [
+          "go test ./... -count=1 passes with zero failures",
+          "go vet ./... reports zero warnings",
+          "grep -r 'not implemented' agentspec/ returns no results (stub audit clean)",
+          "grep -r 'TODO' agentspec/ returns no deferred implementation TODOs",
+          "All 43 test cases (TS-06-1 through TS-06-43) pass",
+          "afspec.LoadSpec, afspec.Schemas, afspec.ParseSpecDirName are called from production code (not only tests)",
+          "SpecSession, Campaign, AgentSpecConfig types are importable by downstream specs (agentspec_go_ai, spec_cli_go)"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "06-REQ-1.1",
+      "test_spec_id": "TS-06-1",
+      "task_id": "5.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-1.1",
+      "test_spec_id": "TS-06-2",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-1.1",
+      "test_spec_id": "TS-06-3",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-1.1",
+      "test_spec_id": "TS-06-4",
+      "task_id": "5.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-1.1",
+      "test_spec_id": "TS-06-5",
+      "task_id": "5.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-2.1",
+      "test_spec_id": "TS-06-6",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-2.1",
+      "test_spec_id": "TS-06-7",
+      "task_id": "6.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-2.1",
+      "test_spec_id": "TS-06-8",
+      "task_id": "6.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-2.1",
+      "test_spec_id": "TS-06-9",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-2.1",
+      "test_spec_id": "TS-06-10",
+      "task_id": "6.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-3.1",
+      "test_spec_id": "TS-06-11",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-3.1",
+      "test_spec_id": "TS-06-12",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-3.1",
+      "test_spec_id": "TS-06-13",
+      "task_id": "7.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-4.1",
+      "test_spec_id": "TS-06-14",
+      "task_id": "7.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-4.1",
+      "test_spec_id": "TS-06-15",
+      "task_id": "7.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-4.1",
+      "test_spec_id": "TS-06-16",
+      "task_id": "7.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-5.1",
+      "test_spec_id": "TS-06-17",
+      "task_id": "8.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-5.1",
+      "test_spec_id": "TS-06-18",
+      "task_id": "8.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-6.1",
+      "test_spec_id": "TS-06-19",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-6.1",
+      "test_spec_id": "TS-06-20",
+      "task_id": "8.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-6.1",
+      "test_spec_id": "TS-06-21",
+      "task_id": "8.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-7.1",
+      "test_spec_id": "TS-06-22",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-7.1",
+      "test_spec_id": "TS-06-23",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-7.1",
+      "test_spec_id": "TS-06-24",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-7.1",
+      "test_spec_id": "TS-06-25",
+      "task_id": "9.3",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-8.1",
+      "test_spec_id": "TS-06-26",
+      "task_id": "10.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-8.1",
+      "test_spec_id": "TS-06-27",
+      "task_id": "10.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-8.1",
+      "test_spec_id": "TS-06-28",
+      "task_id": "10.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-8.1",
+      "test_spec_id": "TS-06-29",
+      "task_id": "10.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-8.1",
+      "test_spec_id": "TS-06-30",
+      "task_id": "10.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-9.1",
+      "test_spec_id": "TS-06-31",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-9.1",
+      "test_spec_id": "TS-06-32",
+      "task_id": "11.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-10.1",
+      "test_spec_id": "TS-06-33",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-10.1",
+      "test_spec_id": "TS-06-34",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-10.1",
+      "test_spec_id": "TS-06-35",
+      "task_id": "11.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-11.1",
+      "test_spec_id": "TS-06-36",
+      "task_id": "13.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-12.1",
+      "test_spec_id": "TS-06-37",
+      "task_id": "13.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-13.1",
+      "test_spec_id": "TS-06-38",
+      "task_id": "13.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-13.1",
+      "test_spec_id": "TS-06-39",
+      "task_id": "13.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-14.1",
+      "test_spec_id": "TS-06-40",
+      "task_id": "12.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-14.1",
+      "test_spec_id": "TS-06-41",
+      "task_id": "12.1",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-15.1",
+      "test_spec_id": "TS-06-42",
+      "task_id": "12.2",
+      "test_path": null
+    },
+    {
+      "requirement_id": "06-REQ-15.1",
+      "test_spec_id": "TS-06-43",
+      "task_id": "12.2",
+      "test_path": null
+    }
+  ]
+}

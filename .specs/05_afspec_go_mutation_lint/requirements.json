@@ -1,0 +1,973 @@
+{
+  "$schema": null,
+  "spec_id": "05",
+  "spec_name": "afspec_go_mutation_lint",
+  "schema_version": 1,
+  "introduction": "The `afspec_go_mutation_lint` module extends the Go `afspec` library with collection mutation functions for all spec entity types, sequential ID generation helpers, a lint module for spec validation and reporting, and a `LoadDependentInterfaces` helper for cross-spec context loading.",
+  "glossary": {
+    "BuildDependencyGraph": "Existing afspec function that constructs a dependency graph from a list of SpecMeta entries.",
+    "CorrectnessProperty": "A correctness invariant entry within a RequirementsV1Json.",
+    "Criterion": "A single acceptance criterion or edge case entry within a Requirement.",
+    "DependencyGraph": "Graph struct returned by BuildDependencyGraph representing inter-spec dependencies.",
+    "DiscoverLintSpecs": "The function that scans a specs directory and returns LintSpecInfo entries for folders containing requirements.json.",
+    "DiscoverSpecs": "Existing afspec function that scans a root directory and returns SpecMeta entries for all discovered specs.",
+    "EdgeCaseTest": "An edge case test entry within a TestSpecV1Json.",
+    "ErrorHandlingEntry": "An error handling mapping entry within a RequirementsV1Json.",
+    "ExecutionPath": "An execution path entry within a RequirementsV1Json.",
+    "LintFinding": "A single lint diagnostic result with severity, rule, message, and location metadata.",
+    "LintResult": "The aggregate output of a lint run, containing all findings and an exit code.",
+    "LintSpecInfo": "Metadata about a discovered spec folder eligible for linting.",
+    "LoadDependentInterfaces": "The function that loads interface summaries from upstream dependency specs for cross-spec context.",
+    "LoadSpec": "Existing afspec function that loads a spec from a directory path into a Spec struct.",
+    "ParseSpecDirName": "Existing afspec function that parses a spec directory name into its numeric prefix, spec name, and a validity boolean.",
+    "PropertyTest": "A property-based test entry within a TestSpecV1Json.",
+    "Requirement": "A single requirement entry within a RequirementsV1Json, identified by a unique ID.",
+    "RequirementsV1Json": "The Go struct representing the top-level requirements artifact (requirements.json) in the afspec format.",
+    "SmokeTest": "A smoke test entry within a TestSpecV1Json.",
+    "SpecMeta": "Metadata struct returned by DiscoverSpecs describing a discovered spec's ID, name, and path.",
+    "Subtask": "A single task item within a TaskGroup.",
+    "SubtaskState": "The lifecycle state of a subtask (e.g. todo, in_progress, done, dropped).",
+    "TaskDependency": "A dependency declaration between specs within a TasksV1Json.",
+    "TaskGroup": "A group of subtasks within a TasksV1Json.",
+    "TasksV1Json": "The Go struct representing the top-level tasks artifact (tasks.json) in the afspec format.",
+    "TestCase": "A standard test case entry within a TestSpecV1Json.",
+    "TestSpecV1Json": "The Go struct representing the top-level test specification artifact (test_spec.json) in the afspec format.",
+    "TraceabilityEntry": "A traceability mapping between a requirement ID and a test spec ID within a TasksV1Json.",
+    "Validate": "Existing afspec method on Spec that runs all validation rules and returns a ValidationResult.",
+    "ValidationResult": "The struct returned by Validate containing a list of ValidationEntry findings.",
+    "filterSpec": "An optional spec name string passed to DiscoverLintSpecs to restrict linting to a single named spec.",
+    "immutable-copy pattern": "The convention in afspec where mutation functions return a new struct with the change applied and never modify the input in place.",
+    "lintAll": "A boolean flag passed to RunLintSpecs; when false, fully-implemented specs (all subtasks done or dropped) are skipped.",
+    "spec_id": "The numeric string prefix identifying a spec (e.g. '05'), used as a namespace in all entity IDs.",
+    "specsDir": "The root directory path that contains numbered spec subdirectories (e.g. 01-my_spec/)."
+  },
+  "requirements": [
+    {
+      "id": "05-REQ-1",
+      "title": "Requirements-level collection mutation functions",
+      "user_story": {
+        "role": "library consumer (agentspec)",
+        "goal": "add, retrieve, and remove top-level entities in a RequirementsV1Json using pure functions that return new copies",
+        "benefit": "programmatically build and edit spec artifacts without mutating shared state"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-1.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new RequirementsV1Json with the requirement appended and leave the original unchanged",
+          "return_contract": "returns (RequirementsV1Json, nil)",
+          "trigger": "a caller invokes AddRequirement with a RequirementsV1Json and a Requirement whose ID does not already exist in the collection"
+        },
+        {
+          "id": "05-REQ-1.2",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a pointer to the matching Requirement and true",
+          "return_contract": "returns (*Requirement, true)",
+          "trigger": "a caller invokes GetRequirement with a RequirementsV1Json and an ID that exists"
+        },
+        {
+          "id": "05-REQ-1.3",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return nil and false",
+          "return_contract": "returns (nil, false)",
+          "trigger": "a caller invokes GetRequirement with a RequirementsV1Json and an ID that does not exist"
+        },
+        {
+          "id": "05-REQ-1.4",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new RequirementsV1Json with that requirement omitted and true",
+          "return_contract": "returns (RequirementsV1Json, true)",
+          "trigger": "a caller invokes RemoveRequirement with a RequirementsV1Json and an ID that exists"
+        },
+        {
+          "id": "05-REQ-1.5",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new RequirementsV1Json with the glossary map entry inserted or overwritten; the original is not modified",
+          "return_contract": "returns RequirementsV1Json",
+          "trigger": "a caller invokes SetGlossaryEntry with a term and definition"
+        },
+        {
+          "id": "05-REQ-1.6",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new RequirementsV1Json with the term removed and true",
+          "return_contract": "returns (RequirementsV1Json, true)",
+          "trigger": "a caller invokes RemoveGlossaryEntry with a term that exists in the glossary"
+        },
+        {
+          "id": "05-REQ-1.7",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new RequirementsV1Json with the item appended and leave the original unchanged",
+          "return_contract": "returns (RequirementsV1Json, nil)",
+          "trigger": "a caller invokes AddCorrectnessProperty, AddExecutionPath, or AddErrorHandling with an item whose ID does not already exist"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-1.E1",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original RequirementsV1Json unchanged and a non-nil error describing the duplicate",
+          "return_contract": "returns (RequirementsV1Json, error) where error message contains the duplicate ID",
+          "error_condition": "AddRequirement is called with a Requirement whose ID already exists in the collection"
+        },
+        {
+          "id": "05-REQ-1.E2",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original RequirementsV1Json unchanged and a non-nil error describing the duplicate",
+          "return_contract": "returns (RequirementsV1Json, error) where error message contains the duplicate ID",
+          "error_condition": "AddCorrectnessProperty, AddExecutionPath, or AddErrorHandling is called with an item whose ID already exists"
+        },
+        {
+          "id": "05-REQ-1.E3",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original RequirementsV1Json unchanged and false",
+          "return_contract": "returns (RequirementsV1Json, false)",
+          "error_condition": "RemoveRequirement is called with an ID that does not exist in the collection"
+        },
+        {
+          "id": "05-REQ-1.E4",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original RequirementsV1Json unchanged and false",
+          "return_contract": "returns (RequirementsV1Json, false)",
+          "error_condition": "RemoveGlossaryEntry is called with a term that does not exist in the glossary"
+        },
+        {
+          "id": "05-REQ-1.E5",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec mutation package",
+          "action": "all mutation functions must never modify the input RequirementsV1Json; they must deep-copy all slice and map fields before returning",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-2",
+      "title": "Criterion-level mutation functions",
+      "user_story": {
+        "role": "library consumer (agentspec)",
+        "goal": "add acceptance criteria and edge cases to a Requirement and retrieve them by ID",
+        "benefit": "build requirement entries incrementally without mutating shared structs"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-2.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new Requirement with the Criterion appended to acceptance_criteria and the original unchanged",
+          "return_contract": "returns (Requirement, nil)",
+          "trigger": "a caller invokes AddCriterion with a Requirement and a Criterion whose ID does not exist in acceptance_criteria"
+        },
+        {
+          "id": "05-REQ-2.2",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new Requirement with the Criterion appended to edge_cases and the original unchanged",
+          "return_contract": "returns (Requirement, nil)",
+          "trigger": "a caller invokes AddEdgeCase with a Requirement and a Criterion whose ID does not exist in edge_cases"
+        },
+        {
+          "id": "05-REQ-2.3",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "search both acceptance_criteria and edge_cases slices and return a pointer to the first match and true",
+          "return_contract": "returns (*Criterion, true) if found; returns (nil, false) if not found in either slice",
+          "trigger": "a caller invokes GetCriterion with a Requirement and an ID"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-2.E1",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original Requirement unchanged and a non-nil error",
+          "return_contract": "returns (Requirement, error) where error message contains the duplicate ID",
+          "error_condition": "AddCriterion is called with a Criterion whose ID already exists in acceptance_criteria"
+        },
+        {
+          "id": "05-REQ-2.E2",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original Requirement unchanged and a non-nil error",
+          "return_contract": "returns (Requirement, error) where error message contains the duplicate ID",
+          "error_condition": "AddEdgeCase is called with a Criterion whose ID already exists in edge_cases"
+        },
+        {
+          "id": "05-REQ-2.E3",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "initialize the slice before appending so the returned Requirement has a valid non-nil slice",
+          "return_contract": "returns (Requirement, nil) with a non-nil slice containing exactly the new Criterion",
+          "error_condition": "AddCriterion or AddEdgeCase is called with a Requirement that has nil slices"
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-3",
+      "title": "Test spec collection mutation functions",
+      "user_story": {
+        "role": "library consumer (agentspec)",
+        "goal": "add test cases, property tests, edge case tests, and smoke tests to a TestSpecV1Json",
+        "benefit": "programmatically populate test specifications without mutating shared state"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-3.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TestSpecV1Json with the TestCase appended and the original unchanged",
+          "return_contract": "returns (TestSpecV1Json, nil)",
+          "trigger": "a caller invokes AddTestCase with a TestSpecV1Json and a TestCase whose ID does not already exist"
+        },
+        {
+          "id": "05-REQ-3.2",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TestSpecV1Json with the PropertyTest appended and the original unchanged",
+          "return_contract": "returns (TestSpecV1Json, nil)",
+          "trigger": "a caller invokes AddPropertyTest with a TestSpecV1Json and a PropertyTest whose ID does not already exist"
+        },
+        {
+          "id": "05-REQ-3.3",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TestSpecV1Json with the EdgeCaseTest appended and the original unchanged",
+          "return_contract": "returns (TestSpecV1Json, nil)",
+          "trigger": "a caller invokes AddEdgeCaseTest with a TestSpecV1Json and an EdgeCaseTest whose ID does not already exist"
+        },
+        {
+          "id": "05-REQ-3.4",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TestSpecV1Json with the SmokeTest appended and the original unchanged",
+          "return_contract": "returns (TestSpecV1Json, nil)",
+          "trigger": "a caller invokes AddSmokeTest with a TestSpecV1Json and a SmokeTest whose ID does not already exist"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-3.E1",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original TestSpecV1Json unchanged and a non-nil error describing the duplicate",
+          "return_contract": "returns (TestSpecV1Json, error) where error message contains the duplicate ID",
+          "error_condition": "any Add* function for TestSpecV1Json is called with an item whose ID already exists in the corresponding collection"
+        },
+        {
+          "id": "05-REQ-3.E2",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "initialize the slice before appending so the returned TestSpecV1Json has a valid non-nil slice",
+          "return_contract": "returns (TestSpecV1Json, nil) with a non-nil slice containing exactly the new item",
+          "error_condition": "any Add* function for TestSpecV1Json is called with a TestSpecV1Json that has a nil target slice"
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-4",
+      "title": "Tasks collection mutation functions",
+      "user_story": {
+        "role": "library consumer (agentspec)",
+        "goal": "add task groups, subtasks, traceability entries, and dependencies to a TasksV1Json",
+        "benefit": "programmatically construct task artifacts without mutating shared state"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-4.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TasksV1Json with the TaskGroup appended and the original unchanged",
+          "return_contract": "returns (TasksV1Json, nil)",
+          "trigger": "a caller invokes AddTaskGroup with a TasksV1Json and a TaskGroup whose ID does not already exist"
+        },
+        {
+          "id": "05-REQ-4.2",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TaskGroup with the Subtask appended and the original unchanged",
+          "return_contract": "returns (TaskGroup, nil)",
+          "trigger": "a caller invokes AddSubtask with a TaskGroup and a Subtask whose ID does not already exist in that group"
+        },
+        {
+          "id": "05-REQ-4.3",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TasksV1Json with the TraceabilityEntry appended and the original unchanged",
+          "return_contract": "returns (TasksV1Json, nil)",
+          "trigger": "a caller invokes AddTraceabilityEntry with a TasksV1Json and a TraceabilityEntry whose (requirement_id, test_spec_id) pair does not already exist"
+        },
+        {
+          "id": "05-REQ-4.4",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return a new TasksV1Json with the TaskDependency appended unconditionally and the original unchanged",
+          "return_contract": "returns TasksV1Json",
+          "trigger": "a caller invokes AddDependency with a TasksV1Json and a TaskDependency"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-4.E1",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original TasksV1Json unchanged and a non-nil error describing the duplicate",
+          "return_contract": "returns (TasksV1Json, error) where error message contains the duplicate ID",
+          "error_condition": "AddTaskGroup is called with a TaskGroup whose ID already exists in the TasksV1Json"
+        },
+        {
+          "id": "05-REQ-4.E2",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original TaskGroup unchanged and a non-nil error describing the duplicate",
+          "return_contract": "returns (TaskGroup, error) where error message contains the duplicate ID",
+          "error_condition": "AddSubtask is called with a Subtask whose ID already exists in the TaskGroup"
+        },
+        {
+          "id": "05-REQ-4.E3",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return the original TasksV1Json unchanged and a non-nil error describing the duplicate pair",
+          "return_contract": "returns (TasksV1Json, error) where error message contains the duplicate requirement_id and test_spec_id",
+          "error_condition": "AddTraceabilityEntry is called with a (requirement_id, test_spec_id) pair that already exists in the TasksV1Json"
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-5",
+      "title": "Sequential ID generation helpers",
+      "user_story": {
+        "role": "library consumer (agentspec)",
+        "goal": "obtain the next valid ID for any entity type without manually scanning existing IDs",
+        "benefit": "generate collision-free IDs that follow the correct format pattern for each entity type"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-5.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "scan all requirement IDs, extract the trailing numeric suffix using a compiled regex, find the maximum, and return a new ID formatted as {spec_id}-REQ-{max+1}",
+          "return_contract": "returns string in the format '{spec_id}-REQ-{N}' where N = max existing suffix + 1, or 1 if the collection is empty",
+          "trigger": "a caller invokes NextRequirementID with a RequirementsV1Json"
+        },
+        {
+          "id": "05-REQ-5.2",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "scan all acceptance_criteria IDs, extract the trailing numeric suffix, find the maximum, and return a new ID formatted as {requirement_id}.{max+1}",
+          "return_contract": "returns string in the format '{requirement_id}.{N}'",
+          "trigger": "a caller invokes NextCriterionID with a Requirement"
+        },
+        {
+          "id": "05-REQ-5.3",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "scan all edge_cases IDs, extract the trailing numeric suffix after the 'E' prefix, find the maximum, and return a new ID formatted as {requirement_id}.E{max+1}",
+          "return_contract": "returns string in the format '{requirement_id}.E{N}'",
+          "trigger": "a caller invokes NextEdgeCaseID with a Requirement"
+        },
+        {
+          "id": "05-REQ-5.4",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "scan the corresponding collection, extract trailing numeric suffixes, find the maximum, and return the next ID in the correct format ({spec_id}-PROP-{N}, {spec_id}-PATH-{N}, or {spec_id}-ERR-{N})",
+          "return_contract": "returns string in the respective format with N = max + 1, or 1 if empty",
+          "trigger": "a caller invokes NextCorrectnessPropertyID, NextExecutionPathID, or NextErrorHandlingID with a RequirementsV1Json"
+        },
+        {
+          "id": "05-REQ-5.5",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "scan the corresponding collection, extract trailing numeric suffixes using compiled regex patterns, find the maximum, and return the next ID in the correct format (TS-{spec_id}-{N}, TS-{spec_id}-P{N}, TS-{spec_id}-E{N}, or TS-{spec_id}-SMOKE-{N})",
+          "return_contract": "returns string in the respective format with N = max + 1, or 1 if empty",
+          "trigger": "a caller invokes NextTestCaseID, NextPropertyTestID, NextEdgeCaseTestID, or NextSmokeTestID with a TestSpecV1Json"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-5.E1",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return the ID with numeric suffix 1",
+          "return_contract": "returns string with suffix 1 (e.g. '05-REQ-1', 'TS-05-1')",
+          "trigger": "any Next*ID function is called with an empty collection"
+        },
+        {
+          "id": "05-REQ-5.E2",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "return max + 1 (e.g. 8) without filling gaps",
+          "return_contract": "returns string with suffix equal to the maximum existing suffix plus 1",
+          "trigger": "any Next*ID function is called with a non-contiguous collection (e.g. IDs 1, 3, 7 exist but 2, 4-6 are absent)"
+        },
+        {
+          "id": "05-REQ-5.E3",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "skip that ID when computing the maximum so that malformed IDs do not cause a panic or incorrect result",
+          "return_contract": "returns a valid next ID string based on the remaining well-formed IDs, or suffix 1 if none are well-formed",
+          "error_condition": "an ID in the collection does not match the expected format pattern and the regex finds no numeric suffix"
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-6",
+      "title": "Lint module — data structures",
+      "user_story": {
+        "role": "spec CLI operator",
+        "goal": "have well-typed structs for lint findings, spec info, and lint results",
+        "benefit": "consume lint output in a structured way for display and exit code computation"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-6.1",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec lint package",
+          "action": "export a LintFinding struct with fields SpecName (string), File (string), Rule (string), Severity (string — one of 'error', 'warning', 'hint'), Message (string), and Line (int, zero meaning absent)",
+          "return_contract": null
+        },
+        {
+          "id": "05-REQ-6.2",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec lint package",
+          "action": "export a LintSpecInfo struct with fields Name (string), Prefix (int), Path (string), HasTasks (bool), and HasPRD (bool)",
+          "return_contract": null
+        },
+        {
+          "id": "05-REQ-6.3",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec lint package",
+          "action": "export a LintResult struct with fields Findings ([]LintFinding) and ExitCode (int)",
+          "return_contract": null
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-6.E1",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec lint package",
+          "action": "the Severity field of LintFinding must only accept the values 'error', 'warning', or 'hint'; any other value is considered a programming error and callers should treat it as 'hint'",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-7",
+      "title": "DiscoverLintSpecs — spec folder discovery",
+      "user_story": {
+        "role": "spec CLI operator",
+        "goal": "discover all spec folders in a directory that contain requirements.json, optionally filtered to a single spec",
+        "benefit": "know which specs are eligible for linting before running validation"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-7.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "scan specsDir for subdirectories whose names are valid spec directory names (using IsSpecDirName), check each for the presence of requirements.json, and return a LintSpecInfo slice for all matching directories with HasTasks and HasPRD set based on the presence of tasks.json and prd.md respectively",
+          "return_contract": "returns ([]LintSpecInfo, nil) with one entry per qualifying spec directory",
+          "trigger": "a caller invokes DiscoverLintSpecs with a valid specsDir and an empty filterSpec"
+        },
+        {
+          "id": "05-REQ-7.2",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "return only the LintSpecInfo entry whose Name matches filterSpec exactly",
+          "return_contract": "returns ([]LintSpecInfo, nil) with at most one entry; returns (nil, error) if no spec with that name is found",
+          "trigger": "a caller invokes DiscoverLintSpecs with a non-empty filterSpec"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-7.E1",
+          "ears_pattern": "unwanted",
+          "system": "afspec lint package",
+          "action": "return nil and a descriptive error",
+          "return_contract": "returns (nil, error) where error describes the missing or invalid directory",
+          "error_condition": "specsDir does not exist or is not a directory"
+        },
+        {
+          "id": "05-REQ-7.E2",
+          "ears_pattern": "unwanted",
+          "system": "afspec lint package",
+          "action": "return nil and a descriptive error indicating no specs were found",
+          "return_contract": "returns (nil, error) with message indicating zero specs discovered",
+          "error_condition": "specsDir exists but contains no subdirectories with requirements.json"
+        },
+        {
+          "id": "05-REQ-7.E3",
+          "ears_pattern": "unwanted",
+          "system": "afspec lint package",
+          "action": "skip that directory and continue scanning remaining entries without returning an error",
+          "return_contract": "returns ([]LintSpecInfo, nil) omitting the unparseable directory",
+          "error_condition": "a subdirectory name passes IsSpecDirName but ParseSpecDirName returns ok=false"
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-8",
+      "title": "SortFindings and ComputeExitCode",
+      "user_story": {
+        "role": "spec CLI operator",
+        "goal": "receive lint findings in a deterministic order and a process exit code reflecting the severity of findings",
+        "benefit": "display findings consistently and integrate lint into CI pipelines"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-8.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "return a new slice sorted primarily by SpecName ascending, then by File ascending, then by Severity in the order error < warning < hint",
+          "return_contract": "returns []LintFinding in the specified sort order; the input slice is not modified",
+          "trigger": "a caller invokes SortFindings with a slice of LintFinding"
+        },
+        {
+          "id": "05-REQ-8.2",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "return 1",
+          "return_contract": "returns int value 1",
+          "trigger": "a caller invokes ComputeExitCode with a slice of LintFinding that contains at least one finding with Severity 'error'"
+        },
+        {
+          "id": "05-REQ-8.3",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "return 0",
+          "return_contract": "returns int value 0",
+          "trigger": "a caller invokes ComputeExitCode with a slice of LintFinding that contains no findings with Severity 'error'"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-8.E1",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "return an empty slice without panicking",
+          "return_contract": "returns []LintFinding{} or nil",
+          "trigger": "SortFindings is called with an empty slice"
+        },
+        {
+          "id": "05-REQ-8.E2",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "return 0",
+          "return_contract": "returns int value 0",
+          "trigger": "ComputeExitCode is called with an empty slice"
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-9",
+      "title": "RunLintSpecs — full lint execution",
+      "user_story": {
+        "role": "spec CLI operator",
+        "goal": "run lint validation across all (or non-fully-implemented) specs in a directory and receive a structured result",
+        "benefit": "catch spec integrity issues in CI and during development without writing custom discovery logic"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-9.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec lint package",
+          "action": "call DiscoverLintSpecs to find all specs, call LoadSpec and then Validate on each, collect all ValidationResult findings as LintFinding entries, sort them with SortFindings, compute the exit code with ComputeExitCode, and return a LintResult",
+          "return_contract": "returns (LintResult, nil) with Findings populated and ExitCode set to 0 or 1",
+          "trigger": "a caller invokes RunLintSpecs with a valid specsDir and lintAll=true"
+        },
+        {
+          "id": "05-REQ-9.2",
+          "ears_pattern": "complex_event",
+          "system": "afspec lint package",
+          "action": "skip that spec and exclude it from validation",
+          "return_contract": "returns (LintResult, nil) with the fully-implemented spec absent from Findings",
+          "trigger": "a caller invokes RunLintSpecs with lintAll=false",
+          "condition": "a spec's TasksV1Json exists and all subtasks across all groups have SubtaskState 'done' or 'dropped'"
+        },
+        {
+          "id": "05-REQ-9.3",
+          "ears_pattern": "complex_event",
+          "system": "afspec lint package",
+          "action": "include that spec in the lint run",
+          "return_contract": "returns (LintResult, nil) with that spec's findings included",
+          "trigger": "a caller invokes RunLintSpecs with lintAll=false",
+          "condition": "a spec has no tasks.json or has at least one subtask not in state 'done' or 'dropped'"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-9.E1",
+          "ears_pattern": "unwanted",
+          "system": "afspec lint package",
+          "action": "propagate the error to the caller without returning a partial LintResult",
+          "return_contract": "returns (LintResult{}, error)",
+          "error_condition": "DiscoverLintSpecs returns an error (e.g. specsDir does not exist)"
+        },
+        {
+          "id": "05-REQ-9.E2",
+          "ears_pattern": "unwanted",
+          "system": "afspec lint package",
+          "action": "record a LintFinding with Severity 'error' and Rule 'load-failure' for that spec and continue processing remaining specs",
+          "return_contract": "returns (LintResult, nil) with a load-failure finding included for the failing spec",
+          "error_condition": "LoadSpec fails for a specific spec during RunLintSpecs"
+        },
+        {
+          "id": "05-REQ-9.E3",
+          "ears_pattern": "ubiquitous",
+          "system": "afspec lint package",
+          "action": "RunLintSpecs must never call os.Exit directly; all errors must be returned to the caller via the error return value",
+          "return_contract": null
+        }
+      ]
+    },
+    {
+      "id": "05-REQ-10",
+      "title": "LoadDependentInterfaces — cross-spec context loading",
+      "user_story": {
+        "role": "library consumer (agentspec)",
+        "goal": "load interface summaries from upstream dependency specs given a spec ID and root directory",
+        "benefit": "provide cross-spec context (glossary, external APIs, return contracts) to artifact generation without manual file traversal"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "05-REQ-10.1",
+          "ears_pattern": "event_driven",
+          "system": "afspec mutation package",
+          "action": "call DiscoverSpecs to find all specs, call BuildDependencyGraph to resolve upstream dependencies of the given specID, load each upstream spec with LoadSpec, and extract glossary entries, external API symbols, and criterion return contracts into a map[string]any per upstream spec",
+          "return_contract": "returns []map[string]any with one entry per upstream dependency; returns an empty slice if specID has no upstream dependencies",
+          "trigger": "a caller invokes LoadDependentInterfaces with a valid specID and specRoot"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "05-REQ-10.E1",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "log the error internally and return an empty slice without propagating the error to the caller",
+          "return_contract": "returns []map[string]any{} (empty slice, no error)",
+          "error_condition": "DiscoverSpecs or BuildDependencyGraph returns an error"
+        },
+        {
+          "id": "05-REQ-10.E2",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "skip that dependency and continue loading remaining upstream specs; do not return an error",
+          "return_contract": "returns []map[string]any with entries for all successfully loaded upstream specs",
+          "error_condition": "LoadSpec fails for one upstream dependency during LoadDependentInterfaces"
+        },
+        {
+          "id": "05-REQ-10.E3",
+          "ears_pattern": "unwanted",
+          "system": "afspec mutation package",
+          "action": "return an empty slice without panicking",
+          "return_contract": "returns []map[string]any{} (empty slice)",
+          "error_condition": "specRoot does not exist or is not accessible"
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [
+    {
+      "id": "05-PROP-1",
+      "title": "Immutability of mutation inputs",
+      "for_any": "any mutation function in the afspec mutation package called with an input struct and any item",
+      "invariant": "the input struct passed to the mutation function is byte-for-byte identical after the call returns, regardless of whether the call succeeds or returns an error",
+      "validates": [
+        "05-REQ-1.1",
+        "05-REQ-1.E5",
+        "05-REQ-2.1",
+        "05-REQ-3.1",
+        "05-REQ-4.1"
+      ]
+    },
+    {
+      "id": "05-PROP-2",
+      "title": "Duplicate ID rejection",
+      "for_any": "any Add* mutation function called twice with items sharing the same ID",
+      "invariant": "the second call always returns a non-nil error and the returned collection is identical to the input collection",
+      "validates": [
+        "05-REQ-1.E1",
+        "05-REQ-1.E2",
+        "05-REQ-2.E1",
+        "05-REQ-2.E2",
+        "05-REQ-3.E1",
+        "05-REQ-4.E1",
+        "05-REQ-4.E2",
+        "05-REQ-4.E3"
+      ]
+    },
+    {
+      "id": "05-PROP-3",
+      "title": "Next ID monotonicity",
+      "for_any": "any Next*ID function called on a collection, then the returned ID is used to add an item, then Next*ID is called again on the resulting collection",
+      "invariant": "the second call returns an ID with a strictly greater numeric suffix than the first call",
+      "validates": [
+        "05-REQ-5.1",
+        "05-REQ-5.2",
+        "05-REQ-5.3",
+        "05-REQ-5.4",
+        "05-REQ-5.5"
+      ]
+    },
+    {
+      "id": "05-PROP-4",
+      "title": "Next ID on empty collection returns suffix 1",
+      "for_any": "any Next*ID function called on an empty collection",
+      "invariant": "the returned ID always has numeric suffix 1",
+      "validates": [
+        "05-REQ-5.E1"
+      ]
+    },
+    {
+      "id": "05-PROP-5",
+      "title": "SortFindings determinism",
+      "for_any": "any permutation of the same set of LintFinding values passed to SortFindings",
+      "invariant": "the returned slice is always identical regardless of the input ordering",
+      "validates": [
+        "05-REQ-8.1"
+      ]
+    },
+    {
+      "id": "05-PROP-6",
+      "title": "ComputeExitCode correctness",
+      "for_any": "any slice of LintFinding values passed to ComputeExitCode",
+      "invariant": "the return value is 1 if and only if at least one finding has Severity equal to 'error', and 0 otherwise",
+      "validates": [
+        "05-REQ-8.2",
+        "05-REQ-8.3"
+      ]
+    },
+    {
+      "id": "05-PROP-7",
+      "title": "LoadDependentInterfaces graceful degradation",
+      "for_any": "any call to LoadDependentInterfaces regardless of whether upstream specs exist or are loadable",
+      "invariant": "the function never returns an error and never panics; it always returns a slice (possibly empty)",
+      "validates": [
+        "05-REQ-10.E1",
+        "05-REQ-10.E2",
+        "05-REQ-10.E3"
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "05-PATH-1",
+      "title": "Programmatic requirement addition via agentspec",
+      "steps": [
+        {
+          "actor": "agentspec caller",
+          "action": "calls NextRequirementID with a RequirementsV1Json to obtain the next available requirement ID"
+        },
+        {
+          "actor": "afspec mutation package",
+          "action": "scans existing requirement IDs using a compiled regex, computes max+1, and returns the formatted ID string"
+        },
+        {
+          "actor": "agentspec caller",
+          "action": "constructs a Requirement struct using the returned ID and calls AddRequirement"
+        },
+        {
+          "actor": "afspec mutation package",
+          "action": "checks for duplicate ID, deep-copies the RequirementsV1Json, appends the new Requirement, and returns the new copy with nil error"
+        },
+        {
+          "actor": "agentspec caller",
+          "action": "receives the updated RequirementsV1Json and serializes it to requirements.json"
+        }
+      ]
+    },
+    {
+      "id": "05-PATH-2",
+      "title": "spec lint CLI command execution",
+      "steps": [
+        {
+          "actor": "spec CLI",
+          "action": "parses the 'lint' subcommand arguments including specsDir and lintAll flag, then calls RunLintSpecs"
+        },
+        {
+          "actor": "afspec lint package",
+          "action": "calls DiscoverLintSpecs to enumerate spec folders containing requirements.json"
+        },
+        {
+          "actor": "afspec lint package",
+          "action": "for each discovered spec, calls LoadSpec to load the spec from disk"
+        },
+        {
+          "actor": "afspec lint package",
+          "action": "calls Validate on each loaded Spec to obtain a ValidationResult"
+        },
+        {
+          "actor": "afspec lint package",
+          "action": "converts ValidationResult entries to LintFinding structs, skipping fully-implemented specs when lintAll is false"
+        },
+        {
+          "actor": "afspec lint package",
+          "action": "calls SortFindings to order all collected findings, then calls ComputeExitCode"
+        },
+        {
+          "actor": "afspec lint package",
+          "action": "returns LintResult with sorted Findings and ExitCode to the CLI"
+        },
+        {
+          "actor": "spec CLI",
+          "action": "prints each finding to stdout and calls os.Exit with the ExitCode"
+        }
+      ]
+    },
+    {
+      "id": "05-PATH-3",
+      "title": "Cross-spec interface loading for artifact generation",
+      "steps": [
+        {
+          "actor": "agentspec caller",
+          "action": "calls LoadDependentInterfaces with the current specID and specRoot"
+        },
+        {
+          "actor": "afspec mutation package",
+          "action": "calls DiscoverSpecs to enumerate all specs under specRoot"
+        },
+        {
+          "actor": "afspec mutation package",
+          "action": "calls BuildDependencyGraph with the discovered SpecMeta slice and specRoot to resolve upstream dependencies"
+        },
+        {
+          "actor": "afspec mutation package",
+          "action": "for each upstream dependency, calls LoadSpec to load the upstream spec"
+        },
+        {
+          "actor": "afspec mutation package",
+          "action": "extracts glossary entries, external API symbols, and criterion return contracts from each loaded spec into a map[string]any"
+        },
+        {
+          "actor": "afspec mutation package",
+          "action": "returns the slice of interface maps to the caller; returns an empty slice if any step fails"
+        }
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "id": "05-ERR-1",
+      "condition": "AddRequirement, AddCorrectnessProperty, AddExecutionPath, or AddErrorHandling is called with a duplicate ID",
+      "behavior": "return the original RequirementsV1Json unchanged and a non-nil error whose message contains the duplicate ID string",
+      "requirement_id": "05-REQ-1.E1"
+    },
+    {
+      "id": "05-ERR-2",
+      "condition": "AddCriterion or AddEdgeCase is called with a duplicate ID",
+      "behavior": "return the original Requirement unchanged and a non-nil error whose message contains the duplicate ID string",
+      "requirement_id": "05-REQ-2.E1"
+    },
+    {
+      "id": "05-ERR-3",
+      "condition": "any Add* function for TestSpecV1Json is called with a duplicate ID",
+      "behavior": "return the original TestSpecV1Json unchanged and a non-nil error whose message contains the duplicate ID string",
+      "requirement_id": "05-REQ-3.E1"
+    },
+    {
+      "id": "05-ERR-4",
+      "condition": "AddTaskGroup or AddSubtask is called with a duplicate ID",
+      "behavior": "return the original TasksV1Json or TaskGroup unchanged and a non-nil error whose message contains the duplicate ID string",
+      "requirement_id": "05-REQ-4.E1"
+    },
+    {
+      "id": "05-ERR-5",
+      "condition": "AddTraceabilityEntry is called with a duplicate (requirement_id, test_spec_id) pair",
+      "behavior": "return the original TasksV1Json unchanged and a non-nil error whose message contains both the requirement_id and test_spec_id of the duplicate pair",
+      "requirement_id": "05-REQ-4.E3"
+    },
+    {
+      "id": "05-ERR-6",
+      "condition": "DiscoverLintSpecs is called with a specsDir that does not exist or is not a directory",
+      "behavior": "return nil and a descriptive error; do not panic",
+      "requirement_id": "05-REQ-7.E1"
+    },
+    {
+      "id": "05-ERR-7",
+      "condition": "DiscoverLintSpecs is called with a filterSpec that matches no discovered spec",
+      "behavior": "return nil and an error indicating no spec with that name was found",
+      "requirement_id": "05-REQ-7.2"
+    },
+    {
+      "id": "05-ERR-8",
+      "condition": "LoadSpec fails for a specific spec during RunLintSpecs",
+      "behavior": "record a LintFinding with Severity 'error' and Rule 'load-failure' for that spec and continue processing remaining specs without returning an error",
+      "requirement_id": "05-REQ-9.E2"
+    },
+    {
+      "id": "05-ERR-9",
+      "condition": "DiscoverSpecs or BuildDependencyGraph returns an error inside LoadDependentInterfaces",
+      "behavior": "log the error internally and return an empty slice; do not propagate the error to the caller",
+      "requirement_id": "05-REQ-10.E1"
+    },
+    {
+      "id": "05-ERR-10",
+      "condition": "a regex match finds no numeric suffix in an ID during Next*ID computation",
+      "behavior": "skip that ID when computing the maximum; do not panic or return an error",
+      "requirement_id": "05-REQ-5.E3"
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "afspec (Go, in-repo at golang/)",
+      "version": "in-repo",
+      "symbols": [
+        {
+          "name": "LoadSpec",
+          "import_path": "golang/afspec",
+          "signature": "LoadSpec(dir string) (*Spec, error)",
+          "notes": "Loads a spec from a directory path into a Spec struct."
+        },
+        {
+          "name": "Validate",
+          "import_path": "golang/afspec",
+          "signature": "(*Spec).Validate() ValidationResult",
+          "notes": "Runs all validation rules on the loaded Spec and returns a ValidationResult."
+        },
+        {
+          "name": "ParseSpecDirName",
+          "import_path": "golang/afspec",
+          "signature": "ParseSpecDirName(name string) (int, string, bool)",
+          "notes": "Returns the numeric prefix, spec name, and a validity boolean for a spec directory name."
+        },
+        {
+          "name": "IsSpecDirName",
+          "import_path": "golang/afspec",
+          "signature": "IsSpecDirName(name string) bool",
+          "notes": "Returns true if the given directory name matches the spec directory naming convention."
+        },
+        {
+          "name": "TransitionSubtask",
+          "import_path": "golang/afspec",
+          "signature": "(*TasksV1Json).TransitionSubtask(id string, target SubtaskState) (*TasksV1Json, error)",
+          "notes": "Existing mutation pattern — returns a new TasksV1Json with the subtask state updated."
+        },
+        {
+          "name": "CompleteSubtaskStates",
+          "import_path": "golang/afspec",
+          "signature": "(*TasksV1Json).CompleteSubtaskStates(groupIDs []int) *TasksV1Json",
+          "notes": "Existing mutation pattern — returns a new TasksV1Json with specified groups' subtasks marked complete."
+        },
+        {
+          "name": "BuildDependencyGraph",
+          "import_path": "golang/afspec",
+          "signature": "BuildDependencyGraph(metas []SpecMeta, root string) (*DependencyGraph, error)",
+          "notes": "Constructs a dependency graph from a list of SpecMeta entries; used by LoadDependentInterfaces."
+        },
+        {
+          "name": "DiscoverSpecs",
+          "import_path": "golang/afspec",
+          "signature": "DiscoverSpecs(root string) ([]SpecMeta, error)",
+          "notes": "Scans a root directory and returns SpecMeta entries for all discovered specs."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1400 @@
+{
+  "$schema": null,
+  "spec_id": "08",
+  "spec_name": "spec_cli_go",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-08-1",
+      "requirement_id": "08-REQ-1.1",
+      "kind": "unit",
+      "description": "Verify that all global flags are registered with correct defaults and that --version prints the embedded version string and exits 0.",
+      "preconditions": [
+        "spec binary is compiled with CGO_ENABLED=0 and -ldflags '-X main.version=1.2.3'",
+        "SPEC_DIR environment variable is unset",
+        "current working directory exists"
+      ],
+      "input": "spec --version",
+      "expected": "exit code 0; stdout contains '1.2.3'; --spec-dir default is '.specs'; --source default is '.'; --quiet flag is registered; --help flag is registered",
+      "assertion_pseudocode": "result = exec('spec --version'); assert result.exit_code == 0; assert result.stdout contains '1.2.3'; cmd = newRootCmd(); assert cmd.Flag('spec-dir').DefValue == '.specs'; assert cmd.Flag('source').DefValue == '.'; assert cmd.Flag('quiet') != nil; assert cmd.Flag('help') != nil"
+    },
+    {
+      "id": "TS-08-2",
+      "requirement_id": "08-REQ-1.2",
+      "kind": "unit",
+      "description": "Verify that invoking the spec binary without a subcommand displays cobra help text and exits 0.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH"
+      ],
+      "input": "spec (no subcommand)",
+      "expected": "exit code 0; stdout contains usage/help text listing available subcommands",
+      "assertion_pseudocode": "result = exec('spec'); assert result.exit_code == 0; assert result.stdout contains 'Usage:'; assert result.stdout contains 'Available Commands:'"
+    },
+    {
+      "id": "TS-08-3",
+      "requirement_id": "08-REQ-1.3",
+      "kind": "unit",
+      "description": "Verify that the ASCII art banner is written to stderr (not stdout) when a subcommand executes without suppression conditions.",
+      "preconditions": [
+        "spec binary is compiled with embedded version",
+        "AF_AGENT is unset",
+        "--quiet is not passed",
+        "subcommand is not validate/status/list",
+        "--json is not in arguments"
+      ],
+      "input": "spec new /tmp/test_prd.md (with a valid PRD file present)",
+      "expected": "stderr contains ASCII art banner with tool name, version, and current working directory; stdout does not contain banner text",
+      "assertion_pseudocode": "result = execWithSeparateStreams('spec new /tmp/test_prd.md'); assert result.stderr contains 'spec'; assert result.stderr contains version_string; assert result.stderr contains cwd; assert result.stdout does not contain banner_text"
+    },
+    {
+      "id": "TS-08-4",
+      "requirement_id": "08-REQ-1.4",
+      "kind": "unit",
+      "description": "Verify that passing a non-existent path to --source causes the binary to exit 1 with a descriptive error on stderr.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "path '/nonexistent/path/xyz' does not exist on the filesystem"
+      ],
+      "input": "spec --source /nonexistent/path/xyz list",
+      "expected": "exit code 1; stderr contains descriptive error message referencing the invalid path",
+      "assertion_pseudocode": "result = exec('spec --source /nonexistent/path/xyz list'); assert result.exit_code == 1; assert result.stderr contains '/nonexistent/path/xyz'; assert result.stderr contains 'not' or 'exist' or 'directory'"
+    },
+    {
+      "id": "TS-08-5",
+      "requirement_id": "08-REQ-2.1",
+      "kind": "integration",
+      "description": "Verify that with AF_AGENT=1 set, the banner is suppressed, quiet mode is forced, and all structured output goes to stdout as valid JSON with no progress text on stdout.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "AF_AGENT=1 is set in the environment",
+        "spec directory '.specs' does not exist (will be auto-created)",
+        "a valid PRD file exists at /tmp/agent_prd.md"
+      ],
+      "input": "AF_AGENT=1 spec new /tmp/agent_prd.md",
+      "expected": "exit code 0; stdout is valid JSON containing 'ok: true'; stderr contains no spinner or progress text; no banner on stdout or stderr",
+      "assertion_pseudocode": "result = execWithEnv({'AF_AGENT': '1'}, 'spec new /tmp/agent_prd.md'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert result.stderr does not contain spinner_chars; assert result.stdout does not contain 'spec' + banner_marker"
+    },
+    {
+      "id": "TS-08-6",
+      "requirement_id": "08-REQ-2.2",
+      "kind": "unit",
+      "description": "Verify that an unhandled error in agent mode writes {ok: false, error: string} to stdout and exits with code 1.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "AF_AGENT=1 is set in the environment",
+        "SPEC_PATH '/nonexistent/prd.md' does not exist"
+      ],
+      "input": "AF_AGENT=1 spec new /nonexistent/prd.md",
+      "expected": "exit code 1; stdout is valid JSON with shape {\"ok\": false, \"error\": \"<non-empty string>\"}; stderr is empty or contains no structured output",
+      "assertion_pseudocode": "result = execWithEnv({'AF_AGENT': '1'}, 'spec new /nonexistent/prd.md'); assert result.exit_code == 1; parsed = parseJSON(result.stdout); assert parsed.ok == false; assert typeof parsed.error == 'string'; assert len(parsed.error) > 0"
+    },
+    {
+      "id": "TS-08-7",
+      "requirement_id": "08-REQ-3.1",
+      "kind": "unit",
+      "description": "Verify that the emit helper writes pretty-printed JSON with 2-space indentation to stdout and handles broken pipe silently.",
+      "preconditions": [
+        "emit function is accessible in the golang/cmd/spec package",
+        "a valid Go struct or map is available as test data"
+      ],
+      "input": "emit(map[string]any{\"ok\": true, \"value\": 42})",
+      "expected": "stdout contains valid JSON with 2-space indentation; no error returned; broken pipe scenario returns nil error",
+      "assertion_pseudocode": "buf = captureStdout(); err = emit(map{'ok': true, 'value': 42}); assert err == nil; output = buf.String(); assert output contains '  \"ok\": true'; parsed = parseJSON(output); assert parsed.ok == true; assert parsed.value == 42"
+    },
+    {
+      "id": "TS-08-8",
+      "requirement_id": "08-REQ-3.2",
+      "kind": "unit",
+      "description": "Verify that emitOK merges provided fields with {ok: true} and writes valid indented JSON to stdout.",
+      "preconditions": [
+        "emitOK function is accessible in the golang/cmd/spec package"
+      ],
+      "input": "emitOK('spec_dir', '.specs', 'state', 'INIT')",
+      "expected": "stdout contains valid JSON with ok: true merged with provided fields; output is 2-space indented",
+      "assertion_pseudocode": "buf = captureStdout(); err = emitOK('spec_dir', '.specs', 'state', 'INIT'); assert err == nil; parsed = parseJSON(buf.String()); assert parsed.ok == true; assert parsed.spec_dir == '.specs'; assert parsed.state == 'INIT'"
+    },
+    {
+      "id": "TS-08-9",
+      "requirement_id": "08-REQ-4.1",
+      "kind": "unit",
+      "description": "Verify that StatusSpinner writes animated spinner output to stderr only and does not write to stdout.",
+      "preconditions": [
+        "StatusSpinner type is accessible in the golang/cmd/spec package",
+        "stderr is a TTY (or mocked as one)",
+        "--quiet is not set",
+        "AF_AGENT is unset"
+      ],
+      "input": "spinner = NewStatusSpinner('Processing...'); spinner.Start(); sleep(100ms); spinner.Update('Still going...'); spinner.Stop()",
+      "expected": "stderr contains spinner animation characters and message text; stdout is empty",
+      "assertion_pseudocode": "stdoutBuf = captureStdout(); stderrBuf = captureStderr(asTTY=true); s = NewStatusSpinner('Processing...'); s.Start(); sleep(100ms); s.Update('Still going...'); s.Stop(); assert len(stdoutBuf.String()) == 0; assert stderrBuf.String() contains 'Processing' or spinner_chars"
+    },
+    {
+      "id": "TS-08-10",
+      "requirement_id": "08-REQ-4.2",
+      "kind": "unit",
+      "description": "Verify that StatusSpinner falls back to plain text lines on stderr when stderr is not a TTY.",
+      "preconditions": [
+        "StatusSpinner type is accessible in the golang/cmd/spec package",
+        "stderr is redirected to a pipe (not a TTY)",
+        "--quiet is not set"
+      ],
+      "input": "spinner = NewStatusSpinner('Processing...'); spinner.Start(); spinner.Update('Step 2'); spinner.Stop()",
+      "expected": "stderr contains plain text lines with the message; no ANSI escape codes or cursor movement sequences",
+      "assertion_pseudocode": "stderrBuf = captureStderr(asTTY=false); s = NewStatusSpinner('Processing...'); s.Start(); s.Update('Step 2'); s.Stop(); output = stderrBuf.String(); assert output contains 'Processing' or 'Step 2'; assert output does not contain '\\x1b[' (ANSI escape)"
+    },
+    {
+      "id": "TS-08-11",
+      "requirement_id": "08-REQ-4.3",
+      "kind": "unit",
+      "description": "Verify that all StatusSpinner methods are no-ops and produce no output when --quiet is set or AF_AGENT=1.",
+      "preconditions": [
+        "StatusSpinner type is accessible in the golang/cmd/spec package",
+        "--quiet flag is set to true"
+      ],
+      "input": "spinner = NewStatusSpinner('Processing...', quiet=true); spinner.Start(); spinner.Update('msg'); spinner.Log('log'); spinner.Stop()",
+      "expected": "stderr is empty; stdout is empty; no panic or error",
+      "assertion_pseudocode": "stdoutBuf = captureStdout(); stderrBuf = captureStderr(); s = NewStatusSpinner('Processing...', quiet=true); s.Start(); s.Update('msg'); s.Log('log'); s.Stop(); assert len(stdoutBuf.String()) == 0; assert len(stderrBuf.String()) == 0"
+    },
+    {
+      "id": "TS-08-12",
+      "requirement_id": "08-REQ-5.1",
+      "kind": "unit",
+      "description": "Verify that the spec resolver matches a spec by numeric prefix when the argument is purely numeric.",
+      "preconditions": [
+        "spec directory '.specs' exists",
+        "subdirectory '.specs/08_my_spec' exists",
+        "no other subdirectory starts with '08'"
+      ],
+      "input": "resolveSpec('.specs', '08')",
+      "expected": "returns path '.specs/08_my_spec' with nil error",
+      "assertion_pseudocode": "path, err = resolveSpec('.specs', '08'); assert err == nil; assert path == '.specs/08_my_spec'"
+    },
+    {
+      "id": "TS-08-13",
+      "requirement_id": "08-REQ-5.2",
+      "kind": "unit",
+      "description": "Verify that the spec resolver matches a spec by exact directory name when the argument is a non-numeric string.",
+      "preconditions": [
+        "spec directory '.specs' exists",
+        "subdirectory '.specs/my_spec' exists"
+      ],
+      "input": "resolveSpec('.specs', 'my_spec')",
+      "expected": "returns path '.specs/my_spec' with nil error",
+      "assertion_pseudocode": "path, err = resolveSpec('.specs', 'my_spec'); assert err == nil; assert path == '.specs/my_spec'"
+    },
+    {
+      "id": "TS-08-14",
+      "requirement_id": "08-REQ-6.1",
+      "kind": "integration",
+      "description": "Verify that spec new with a valid PRD file auto-initializes the spec directory and campaign.yaml, creates the spec, and emits JSON with spec_dir and state.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "PRD file exists at /tmp/test_prd.md",
+        "spec directory '.specs' does not exist",
+        "campaign.yaml does not exist"
+      ],
+      "input": "spec new /tmp/test_prd.md --name my_spec",
+      "expected": "exit code 0; '.specs' directory is created; '.specs/campaign.yaml' is created with name 'default'; stdout is valid JSON with {\"ok\": true, \"spec_dir\": \".specs\", \"state\": string}",
+      "assertion_pseudocode": "result = exec('spec new /tmp/test_prd.md --name my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.spec_dir == '.specs'; assert typeof parsed.state == 'string'; assert dirExists('.specs'); assert fileExists('.specs/campaign.yaml')"
+    },
+    {
+      "id": "TS-08-15",
+      "requirement_id": "08-REQ-6.2",
+      "kind": "unit",
+      "description": "Verify that spec new uses the provided --name value as the spec name when it matches [a-z][a-z0-9_]*.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "PRD file exists at /tmp/test_prd.md",
+        "spec directory '.specs' exists with a valid campaign.yaml"
+      ],
+      "input": "spec new /tmp/test_prd.md --name my_spec_01",
+      "expected": "exit code 0; spec is created with name 'my_spec_01'; stdout JSON contains spec_dir and state",
+      "assertion_pseudocode": "result = exec('spec new /tmp/test_prd.md --name my_spec_01'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert dirExists('.specs/my_spec_01') or parsed.state != ''"
+    },
+    {
+      "id": "TS-08-16",
+      "requirement_id": "08-REQ-6.3",
+      "kind": "unit",
+      "description": "Verify that spec new derives a snake_case spec name from the PRD filename when --name is omitted.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "PRD file exists at /tmp/MySpecPRD.md",
+        "spec directory '.specs' exists with a valid campaign.yaml"
+      ],
+      "input": "spec new /tmp/MySpecPRD.md (no --name flag)",
+      "expected": "exit code 0; spec is created with a snake_case name derived from 'MySpecPRD' (e.g. 'my_spec_prd'); stdout JSON contains ok: true",
+      "assertion_pseudocode": "result = exec('spec new /tmp/MySpecPRD.md'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; derived_name = toSnakeCase('MySpecPRD'); assert dirExists('.specs/' + derived_name) or parsed.state != ''"
+    },
+    {
+      "id": "TS-08-17",
+      "requirement_id": "08-REQ-7.1",
+      "kind": "integration",
+      "description": "Verify that spec list scans the spec directory, reads _session.json state for each spec, and emits the correct JSON structure.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' exists",
+        "'.specs/08_my_spec/_session.json' exists with content {\"state\": \"ASSESSING\"}",
+        "'.specs/09_other_spec/_session.json' exists with content {\"state\": \"DONE\"}"
+      ],
+      "input": "spec list",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"spec_dir\": \".specs\", \"specs\": [{\"name\": \"08_my_spec\", \"state\": \"ASSESSING\"}, {\"name\": \"09_other_spec\", \"state\": \"DONE\"}]}",
+      "assertion_pseudocode": "result = exec('spec list'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.spec_dir == '.specs'; assert len(parsed.specs) == 2; names = [s.name for s in parsed.specs]; assert '08_my_spec' in names; assert '09_other_spec' in names"
+    },
+    {
+      "id": "TS-08-18",
+      "requirement_id": "08-REQ-8.1",
+      "kind": "integration",
+      "description": "Verify that spec refine without --answers runs Assess on the session with a spinner and emits assessment result JSON when the session needs assessment.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with session state requiring assessment",
+        "AI model is accessible (or mocked)",
+        "AF_AGENT is unset"
+      ],
+      "input": "spec refine 08_my_spec",
+      "expected": "exit code 0; stdout is valid JSON with ok: true and assessment result fields; stderr shows spinner activity",
+      "assertion_pseudocode": "result = exec('spec refine 08_my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed contains assessment fields (e.g. 'questions' or 'score')"
+    },
+    {
+      "id": "TS-08-19",
+      "requirement_id": "08-REQ-8.2",
+      "kind": "integration",
+      "description": "Verify that spec refine without --answers calls PendingQuestions and emits the result when the session does not need assessment.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with session state past assessment (e.g. REFINING)",
+        "PendingQuestions returns a non-empty list"
+      ],
+      "input": "spec refine 08_my_spec (session already assessed)",
+      "expected": "exit code 0; stdout is valid JSON with ok: true and pending questions data",
+      "assertion_pseudocode": "result = exec('spec refine 08_my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed contains 'questions' or similar pending questions field"
+    },
+    {
+      "id": "TS-08-20",
+      "requirement_id": "08-REQ-8.3",
+      "kind": "integration",
+      "description": "Verify that spec refine with --answers pointing to a JSON file parses answers, runs Refine, and emits refinement result JSON.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in REFINING state",
+        "answers file '/tmp/answers.json' exists with content {\"q1\": \"answer1\"}",
+        "AI model is accessible (or mocked)"
+      ],
+      "input": "spec refine 08_my_spec --answers /tmp/answers.json",
+      "expected": "exit code 0; stdout is valid JSON with ok: true and refinement result",
+      "assertion_pseudocode": "result = exec('spec refine 08_my_spec --answers /tmp/answers.json'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true"
+    },
+    {
+      "id": "TS-08-21",
+      "requirement_id": "08-REQ-8.4",
+      "kind": "integration",
+      "description": "Verify that spec refine with --answers - reads answers JSON from stdin, runs Refine, and emits refinement result JSON.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in REFINING state",
+        "AI model is accessible (or mocked)"
+      ],
+      "input": "echo '{\"q1\": \"answer1\"}' | spec refine 08_my_spec --answers -",
+      "expected": "exit code 0; stdout is valid JSON with ok: true and refinement result",
+      "assertion_pseudocode": "result = execWithStdin('{\"q1\": \"answer1\"}', 'spec refine 08_my_spec --answers -'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true"
+    },
+    {
+      "id": "TS-08-22",
+      "requirement_id": "08-REQ-8.5",
+      "kind": "integration",
+      "description": "Verify that spec refine --force deletes artifact files, resets session state to INIT, and clears assessment history before proceeding.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with existing artifact files and session state ASSESSING",
+        "'.specs/08_my_spec/requirements.json' exists",
+        "'.specs/08_my_spec/_session.json' has assessment history"
+      ],
+      "input": "spec refine 08_my_spec --force",
+      "expected": "exit code 0; artifact files are deleted; _session.json state is reset to INIT; assessment history is cleared; subsequent behavior follows no-answers path",
+      "assertion_pseudocode": "result = exec('spec refine 08_my_spec --force'); assert result.exit_code == 0; assert not fileExists('.specs/08_my_spec/requirements.json'); session = readJSON('.specs/08_my_spec/_session.json'); assert session.state == 'INIT'; assert session.assessment_history == [] or session.qa_exchanges == []"
+    },
+    {
+      "id": "TS-08-23",
+      "requirement_id": "08-REQ-9.1",
+      "kind": "integration",
+      "description": "Verify that spec generate auto-accepts the PRD via AcceptPRD before running Generate when session state is ASSESSING or REFINING.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with session state ASSESSING",
+        "AI model is accessible (or mocked)"
+      ],
+      "input": "spec generate 08_my_spec",
+      "expected": "exit code 0; AcceptPRD is called transitioning session to accepted state; Generate proceeds; stdout contains {\"ok\": true, \"artifacts\": [string]}",
+      "assertion_pseudocode": "result = exec('spec generate 08_my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert typeof parsed.artifacts == 'array'; session = readJSON('.specs/08_my_spec/_session.json'); assert session.state not in ['ASSESSING', 'REFINING']"
+    },
+    {
+      "id": "TS-08-24",
+      "requirement_id": "08-REQ-9.2",
+      "kind": "integration",
+      "description": "Verify that spec generate runs Generate with a spinner and emits JSON listing generated artifacts for a spec in accepted state.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "AI model is accessible (or mocked)"
+      ],
+      "input": "spec generate 08_my_spec",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"artifacts\": [string]}; artifacts list includes requirements.json, test_spec.json, tasks.json paths",
+      "assertion_pseudocode": "result = exec('spec generate 08_my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert len(parsed.artifacts) >= 1; assert any('requirements.json' in a for a in parsed.artifacts)"
+    },
+    {
+      "id": "TS-08-25",
+      "requirement_id": "08-REQ-9.3",
+      "kind": "integration",
+      "description": "Verify that spec generate --force deletes existing artifact files before running Generate.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "'.specs/08_my_spec/requirements.json' exists with old content",
+        "AI model is accessible (or mocked)"
+      ],
+      "input": "spec generate 08_my_spec --force",
+      "expected": "exit code 0; old artifact files are deleted before generation; fresh artifacts are generated; stdout contains {\"ok\": true, \"artifacts\": [string]}",
+      "assertion_pseudocode": "old_mtime = getMtime('.specs/08_my_spec/requirements.json'); result = exec('spec generate 08_my_spec --force'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; new_mtime = getMtime('.specs/08_my_spec/requirements.json'); assert new_mtime > old_mtime"
+    },
+    {
+      "id": "TS-08-26",
+      "requirement_id": "08-REQ-10.1",
+      "kind": "unit",
+      "description": "Verify that spec render without --json and without --combined prints raw markdown for each artifact separated by '---'.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with all artifact files present",
+        "AF_AGENT is unset"
+      ],
+      "input": "spec render 08_my_spec",
+      "expected": "exit code 0; stdout contains markdown sections separated by '---'; no JSON envelope",
+      "assertion_pseudocode": "result = exec('spec render 08_my_spec'); assert result.exit_code == 0; assert result.stdout contains '---'; assert not result.stdout.startsWith('{'); sections = result.stdout.split('---'); assert len(sections) >= 2"
+    },
+    {
+      "id": "TS-08-27",
+      "requirement_id": "08-REQ-10.2",
+      "kind": "unit",
+      "description": "Verify that spec render --combined without --json prints a single concatenated markdown document to stdout.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with all artifact files present",
+        "AF_AGENT is unset"
+      ],
+      "input": "spec render 08_my_spec --combined",
+      "expected": "exit code 0; stdout contains a single combined markdown document; no JSON envelope",
+      "assertion_pseudocode": "result = exec('spec render 08_my_spec --combined'); assert result.exit_code == 0; assert not result.stdout.startsWith('{'); assert len(result.stdout) > 0"
+    },
+    {
+      "id": "TS-08-28",
+      "requirement_id": "08-REQ-10.3",
+      "kind": "unit",
+      "description": "Verify that spec render --json --combined emits {ok: true, format: 'combined', content: string}.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with all artifact files present"
+      ],
+      "input": "spec render 08_my_spec --json --combined",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"format\": \"combined\", \"content\": string}",
+      "assertion_pseudocode": "result = exec('spec render 08_my_spec --json --combined'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.format == 'combined'; assert typeof parsed.content == 'string'; assert len(parsed.content) > 0"
+    },
+    {
+      "id": "TS-08-29",
+      "requirement_id": "08-REQ-10.4",
+      "kind": "unit",
+      "description": "Verify that spec render --json without --combined emits {ok: true, format: 'individual', artifacts: object}.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with all artifact files present"
+      ],
+      "input": "spec render 08_my_spec --json",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"format\": \"individual\", \"artifacts\": {\"requirements\": string, ...}}",
+      "assertion_pseudocode": "result = exec('spec render 08_my_spec --json'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.format == 'individual'; assert typeof parsed.artifacts == 'object'; assert 'requirements' in parsed.artifacts"
+    },
+    {
+      "id": "TS-08-30",
+      "requirement_id": "08-REQ-10.5",
+      "kind": "unit",
+      "description": "Verify that spec render auto-enables --json mode when AF_AGENT=1 is active.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "AF_AGENT=1 is set in the environment",
+        "spec '08_my_spec' exists in '.specs' with all artifact files present"
+      ],
+      "input": "AF_AGENT=1 spec render 08_my_spec (no --json flag)",
+      "expected": "exit code 0; stdout is valid JSON following the --json contract (format: individual or combined)",
+      "assertion_pseudocode": "result = execWithEnv({'AF_AGENT': '1'}, 'spec render 08_my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.format in ['individual', 'combined']"
+    },
+    {
+      "id": "TS-08-31",
+      "requirement_id": "08-REQ-10.6",
+      "kind": "unit",
+      "description": "Verify that spec render falls back to rendering only available artifacts when some artifact files are missing.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs'",
+        "'.specs/08_my_spec/requirements.json' exists",
+        "'.specs/08_my_spec/test_spec.json' does not exist",
+        "'.specs/08_my_spec/tasks.json' does not exist"
+      ],
+      "input": "spec render 08_my_spec --json",
+      "expected": "exit code 0; stdout is valid JSON with artifacts containing only the available artifact (requirements); missing artifacts are omitted",
+      "assertion_pseudocode": "result = exec('spec render 08_my_spec --json'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert 'requirements' in parsed.artifacts; assert 'test_spec' not in parsed.artifacts or parsed.artifacts.test_spec == ''"
+    },
+    {
+      "id": "TS-08-32",
+      "requirement_id": "08-REQ-11.1",
+      "kind": "integration",
+      "description": "Verify that spec validate with a SPEC argument checks required files, runs ValidateStructured, and emits ValidationResult JSON; exits 1 on errors.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with all required files (prd.md, requirements.json, test_spec.json, tasks.json)",
+        "all JSON files are valid"
+      ],
+      "input": "spec validate 08_my_spec",
+      "expected": "exit code 0 if no errors; stdout is valid JSON containing ValidationResult; exit code 1 if validation errors present",
+      "assertion_pseudocode": "result = exec('spec validate 08_my_spec'); parsed = parseJSON(result.stdout); assert parsed contains validation result fields; if parsed.error_count > 0: assert result.exit_code == 1 else: assert result.exit_code == 0"
+    },
+    {
+      "id": "TS-08-33",
+      "requirement_id": "08-REQ-11.2",
+      "kind": "integration",
+      "description": "Verify that spec validate without a SPEC argument discovers all specs, validates each, aggregates results, and exits 1 if any spec has errors.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' contains two specs: '08_spec_a' and '09_spec_b'",
+        "'08_spec_a' has all required files and is valid",
+        "'09_spec_b' is missing tasks.json"
+      ],
+      "input": "spec validate",
+      "expected": "exit code 1; stdout is valid JSON with aggregated ValidationResult containing errors for '09_spec_b'",
+      "assertion_pseudocode": "result = exec('spec validate'); assert result.exit_code == 1; parsed = parseJSON(result.stdout); assert parsed contains results for both specs; assert any result has error for missing tasks.json"
+    },
+    {
+      "id": "TS-08-34",
+      "requirement_id": "08-REQ-11.3",
+      "kind": "integration",
+      "description": "Verify that spec validate --cross discovers specs, builds dependency graph, runs ValidateCrossSpec, and emits merged ValidationResult JSON.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' contains specs with cross-spec dependencies",
+        "all required files are present"
+      ],
+      "input": "spec validate --cross",
+      "expected": "exit code 0 if no cross-spec errors; exit code 1 if errors; stdout is valid JSON with merged ValidationResult",
+      "assertion_pseudocode": "result = exec('spec validate --cross'); parsed = parseJSON(result.stdout); assert parsed contains cross-spec validation results; if any cross-spec error: assert result.exit_code == 1 else: assert result.exit_code == 0"
+    },
+    {
+      "id": "TS-08-35",
+      "requirement_id": "08-REQ-11.4",
+      "kind": "unit",
+      "description": "Verify that spec validate --short emits condensed output with only valid, error_count, and warning_count fields.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with all required files"
+      ],
+      "input": "spec validate 08_my_spec --short",
+      "expected": "exit code 0 or 1; stdout is valid JSON with exactly {\"ok\": bool, \"valid\": bool, \"error_count\": int, \"warning_count\": int}",
+      "assertion_pseudocode": "result = exec('spec validate 08_my_spec --short'); parsed = parseJSON(result.stdout); assert 'ok' in parsed; assert 'valid' in parsed; assert 'error_count' in parsed; assert 'warning_count' in parsed; assert typeof parsed.error_count == 'number'; assert typeof parsed.warning_count == 'number'"
+    },
+    {
+      "id": "TS-08-36",
+      "requirement_id": "08-REQ-12.1",
+      "kind": "integration",
+      "description": "Verify that spec lint runs RunLintSpecs with a spinner, emits LintFinding list as JSON, and exits 1 if exit_code from lint is non-zero.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' contains specs with lint findings",
+        "RunLintSpecs returns non-zero exit_code"
+      ],
+      "input": "spec lint",
+      "expected": "exit code 1; stdout is valid JSON with lint findings; stderr shows spinner activity",
+      "assertion_pseudocode": "result = exec('spec lint'); assert result.exit_code == 1; parsed = parseJSON(result.stdout); assert parsed.ok == false or parsed contains 'findings'; assert typeof parsed.findings == 'array'"
+    },
+    {
+      "id": "TS-08-37",
+      "requirement_id": "08-REQ-12.2",
+      "kind": "unit",
+      "description": "Verify that spec lint --all passes lintAll=true to RunLintSpecs to include fully-implemented specs.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' contains both in-progress and fully-implemented specs"
+      ],
+      "input": "spec lint --all",
+      "expected": "exit code 0 or 1; lint findings include fully-implemented specs; RunLintSpecs is called with lintAll=true",
+      "assertion_pseudocode": "capturedArgs = interceptRunLintSpecs(); result = exec('spec lint --all'); assert capturedArgs.lintAll == true; parsed = parseJSON(result.stdout); assert parsed contains findings from fully-implemented specs"
+    },
+    {
+      "id": "TS-08-38",
+      "requirement_id": "08-REQ-13.1",
+      "kind": "integration",
+      "description": "Verify that spec status emits JSON with state, has_assessment, generated_artifacts, and optional last_error/quality fields.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs'",
+        "'.specs/08_my_spec/_session.json' contains state, has_assessment, generated_artifacts, and quality fields"
+      ],
+      "input": "spec status 08_my_spec",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"state\": string, \"has_assessment\": bool, \"generated_artifacts\": [string]} and optional last_error/quality",
+      "assertion_pseudocode": "result = exec('spec status 08_my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert typeof parsed.state == 'string'; assert typeof parsed.has_assessment == 'boolean'; assert typeof parsed.generated_artifacts == 'array'"
+    },
+    {
+      "id": "TS-08-39",
+      "requirement_id": "08-REQ-14.1",
+      "kind": "integration",
+      "description": "Verify that spec campaign --path --name --description calls CreateCampaign and prints a confirmation message to stderr on success.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "target path '/tmp/test_campaign' does not contain a campaign.yaml"
+      ],
+      "input": "spec campaign --path /tmp/test_campaign --name my_campaign --description 'Test campaign'",
+      "expected": "exit code 0; campaign.yaml is created at '/tmp/test_campaign'; stderr contains confirmation message",
+      "assertion_pseudocode": "result = exec('spec campaign --path /tmp/test_campaign --name my_campaign --description \"Test campaign\"'); assert result.exit_code == 0; assert fileExists('/tmp/test_campaign/campaign.yaml'); assert result.stderr contains 'campaign' or 'created' or 'my_campaign'"
+    },
+    {
+      "id": "TS-08-40",
+      "requirement_id": "08-REQ-15.1",
+      "kind": "unit",
+      "description": "Verify that the build system produces four static binaries for all supported platforms with the correct embedded version.",
+      "preconditions": [
+        "Go 1.26.5 toolchain is installed",
+        "CGO_ENABLED=0 is set",
+        "build script or Makefile targets darwin/arm64, darwin/amd64, linux/arm64, linux/amd64"
+      ],
+      "input": "make build (or equivalent cross-compilation command with -ldflags '-X main.version=1.0.0')",
+      "expected": "four binary files are produced; each binary reports '1.0.0' when run with --version; each binary is statically linked (no dynamic library dependencies)",
+      "assertion_pseudocode": "for platform in ['darwin/arm64', 'darwin/amd64', 'linux/arm64', 'linux/amd64']: binary = buildBinary(platform, version='1.0.0'); assert fileExists(binary); result = exec(binary + ' --version'); assert result.stdout contains '1.0.0'; assert isStaticBinary(binary)"
+    },
+    {
+      "id": "TS-08-41",
+      "requirement_id": "08-REQ-15.2",
+      "kind": "integration",
+      "description": "Verify that install.sh downloads and installs the Go binary for the detected platform instead of using uv tool install.",
+      "preconditions": [
+        "install.sh script is updated for Go binary distribution",
+        "a mock download server serves the Go binary for the test platform",
+        "uv is not installed or not on PATH"
+      ],
+      "input": "bash install.sh (on a supported platform)",
+      "expected": "spec binary is downloaded and installed; binary is executable; no uv tool install command is invoked",
+      "assertion_pseudocode": "result = execScript('install.sh'); assert result.exit_code == 0; assert fileExists(install_path + '/spec'); assert isExecutable(install_path + '/spec'); assert 'uv tool install' not in result.stdout + result.stderr"
+    },
+    {
+      "id": "TS-08-42",
+      "requirement_id": "08-REQ-16.1",
+      "kind": "unit",
+      "description": "Verify that all AI-calling commands receive a context.Context with SIGINT/SIGTERM signal handling and that the context is cancelled on signal receipt.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "AI model call is mocked to block indefinitely"
+      ],
+      "input": "spec generate 08_my_spec (then send SIGINT after 100ms)",
+      "expected": "exit code 1; context is cancelled; binary exits cleanly without hanging",
+      "assertion_pseudocode": "proc = startProcess('spec generate 08_my_spec'); sleep(100ms); proc.sendSignal(SIGINT); result = proc.wait(timeout=2s); assert result.exit_code == 1; assert result did not timeout"
+    },
+    {
+      "id": "TS-08-43",
+      "requirement_id": "08-REQ-16.2",
+      "kind": "integration",
+      "description": "Verify that receiving SIGINT during an AI operation cancels the context, stops the StatusSpinner, and exits with code 1.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "AI model call is mocked to block for 5 seconds"
+      ],
+      "input": "spec generate 08_my_spec (SIGINT sent after 200ms)",
+      "expected": "exit code 1; spinner is stopped (no dangling cursor); no goroutine leak detected; binary exits within 1 second of signal",
+      "assertion_pseudocode": "proc = startProcess('spec generate 08_my_spec'); sleep(200ms); proc.sendSignal(SIGINT); result = proc.wait(timeout=1500ms); assert result.exit_code == 1; assert result did not timeout; assert terminal cursor is in clean state"
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-08-P1",
+      "property_id": "08-PROP-1",
+      "validates": [
+        "08-REQ-2.1",
+        "08-REQ-2.2"
+      ],
+      "description": "For any command executed with AF_AGENT=1, every byte written to stdout must be part of a valid JSON object with no banner, spinner, or plain-text diagnostics.",
+      "for_any_strategy": "Sample all 9 CLI commands (new, list, refine, generate, render, validate, lint, status, campaign) with AF_AGENT=1 set; use minimal valid inputs for each command; capture stdout for each invocation",
+      "invariant_check": "for each command result: assert isValidJSON(result.stdout); parsed = parseJSON(result.stdout); assert 'ok' in parsed; assert result.stdout does not contain banner_text; assert result.stdout does not contain spinner_chars (e.g. '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' or '...')"
+    },
+    {
+      "id": "TS-08-P2",
+      "property_id": "08-PROP-2",
+      "validates": [
+        "08-REQ-3.2"
+      ],
+      "description": "For any call to emitOK with any data fields, the JSON written to stdout must contain ok: true merged with the provided fields and be valid indented JSON.",
+      "for_any_strategy": "Generate random maps of string keys to primitive values (strings, ints, bools, null) using Go's testing/quick or a table of 50+ varied inputs; call emitOK with each",
+      "invariant_check": "for each input fields map: buf = captureStdout(); emitOK(fields...); output = buf.String(); parsed = parseJSON(output); assert parsed.ok == true; for each key in fields: assert parsed[key] == fields[key]; assert output contains '  ' (2-space indent)"
+    },
+    {
+      "id": "TS-08-P3",
+      "property_id": "08-PROP-3",
+      "validates": [
+        "08-REQ-5.1",
+        "08-REQ-5.2"
+      ],
+      "description": "For any spec directory with exactly one entry matching a given name or numeric prefix, the resolver always returns the same path and never returns an error.",
+      "for_any_strategy": "Generate spec directories with 1 to 20 uniquely-named subdirectories following the spec naming pattern; for each directory, pick one entry and resolve it by name and by numeric prefix; repeat 100 times with different directory configurations",
+      "invariant_check": "for each (specDir, argument) pair with exactly one match: path1, err1 = resolveSpec(specDir, argument); path2, err2 = resolveSpec(specDir, argument); assert err1 == nil; assert err2 == nil; assert path1 == path2"
+    },
+    {
+      "id": "TS-08-P4",
+      "property_id": "08-PROP-4",
+      "validates": [
+        "08-REQ-11.1",
+        "08-REQ-11.2",
+        "08-REQ-11.3"
+      ],
+      "description": "For any invocation of spec validate in any mode, the exit code is 1 if and only if the emitted ValidationResult contains at least one error-level finding.",
+      "for_any_strategy": "Generate spec directories with varying combinations of valid and invalid specs (missing files, malformed JSON, schema violations); run spec validate in single-spec, multi-spec, and cross-spec modes; sample at least 30 combinations",
+      "invariant_check": "for each invocation: result = exec('spec validate ...'); parsed = parseJSON(result.stdout); error_count = countErrors(parsed); if error_count > 0: assert result.exit_code == 1 else: assert result.exit_code == 0; assert (result.exit_code == 1) == (error_count > 0)"
+    },
+    {
+      "id": "TS-08-P5",
+      "property_id": "08-PROP-5",
+      "validates": [
+        "08-REQ-4.1",
+        "08-REQ-4.3"
+      ],
+      "description": "For any invocation of StatusSpinner methods, no bytes are written to stdout; all output goes to stderr or is suppressed in quiet/agent mode.",
+      "for_any_strategy": "Invoke StatusSpinner with all combinations of: quiet=true/false, agentMode=true/false, tty=true/false; call Start, Update (with 5 random messages), Log (with 3 random messages), Stop; capture both stdout and stderr",
+      "invariant_check": "for each combination: stdoutBuf = captureStdout(); stderrBuf = captureStderr(); runSpinnerSequence(quiet, agentMode, tty); assert len(stdoutBuf.String()) == 0; if quiet or agentMode: assert len(stderrBuf.String()) == 0"
+    },
+    {
+      "id": "TS-08-P6",
+      "property_id": "08-PROP-6",
+      "validates": [
+        "08-REQ-1.3"
+      ],
+      "description": "For any command invocation where --quiet is set, AF_AGENT=1, the subcommand is validate/status/list, or --json appears in arguments, no banner text is written to stderr.",
+      "for_any_strategy": "For each of the 4 suppression conditions, run all 9 CLI commands with minimal valid inputs; also test combinations of multiple suppression conditions active simultaneously",
+      "invariant_check": "for each (command, suppressionCondition) pair: result = execWithCondition(command, suppressionCondition); assert result.stderr does not contain banner_marker (e.g. the ASCII art tool name string)"
+    },
+    {
+      "id": "TS-08-P7",
+      "property_id": "08-PROP-7",
+      "validates": [
+        "08-REQ-16.1",
+        "08-REQ-16.2"
+      ],
+      "description": "For any SIGINT or SIGTERM received during any AI-calling command, the context is cancelled, the StatusSpinner is stopped, and the binary exits with code 1 without goroutine leaks.",
+      "for_any_strategy": "For each AI-calling command (refine, generate), send SIGINT at random intervals between 50ms and 500ms after process start; repeat 20 times per command; also test SIGTERM; mock AI calls to block for 10 seconds",
+      "invariant_check": "for each (command, signal, delay) triple: proc = startProcess(command); sleep(delay); proc.sendSignal(signal); result = proc.wait(timeout=2s); assert result.exit_code == 1; assert result did not timeout; goroutines_after = measureGoroutines(); assert goroutines_after == goroutines_before"
+    },
+    {
+      "id": "TS-08-P8",
+      "property_id": "08-PROP-8",
+      "validates": [
+        "08-REQ-7.1",
+        "08-REQ-7.E1"
+      ],
+      "description": "For any invocation of spec list regardless of spec directory state, the exit code is always 0 and the specs array is empty rather than an error when no specs exist.",
+      "for_any_strategy": "Run spec list with: non-existent spec directory, empty spec directory, directory with 0-50 valid specs, directory with malformed _session.json files, directory with mixed valid/malformed entries; sample 40 combinations",
+      "invariant_check": "for each invocation: result = exec('spec list'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert typeof parsed.specs == 'array'"
+    }
+  ],
+  "edge_case_tests": [
+    {
+      "id": "TS-08-E1",
+      "requirement_id": "08-REQ-1.E1",
+      "kind": "unit",
+      "description": "Verify that when SPEC_DIR is set to an empty string, the spec-dir flag falls back to the default value '.specs'.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "SPEC_DIR environment variable is set to empty string ''"
+      ],
+      "input": "SPEC_DIR='' spec list",
+      "expected": "spec-dir resolves to '.specs'; command proceeds using '.specs' as the spec directory",
+      "assertion_pseudocode": "result = execWithEnv({'SPEC_DIR': ''}, 'spec list'); parsed = parseJSON(result.stdout); assert parsed.spec_dir == '.specs'"
+    },
+    {
+      "id": "TS-08-E2",
+      "requirement_id": "08-REQ-1.E2",
+      "kind": "unit",
+      "description": "Verify that --spec-dir flag value takes precedence over SPEC_DIR environment variable when both are set.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "SPEC_DIR environment variable is set to '/env/specs'",
+        "--spec-dir flag is set to '/flag/specs'"
+      ],
+      "input": "SPEC_DIR=/env/specs spec --spec-dir /flag/specs list",
+      "expected": "spec-dir resolves to '/flag/specs'; SPEC_DIR env var is ignored",
+      "assertion_pseudocode": "result = execWithEnv({'SPEC_DIR': '/env/specs'}, 'spec --spec-dir /flag/specs list'); parsed = parseJSON(result.stdout); assert parsed.spec_dir == '/flag/specs'"
+    },
+    {
+      "id": "TS-08-E3",
+      "requirement_id": "08-REQ-1.E3",
+      "kind": "unit",
+      "description": "Verify that passing an unknown flag causes cobra to print an error and exit 1.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH"
+      ],
+      "input": "spec --unknown-flag list",
+      "expected": "exit code 1; stderr contains cobra's unknown flag error message",
+      "assertion_pseudocode": "result = exec('spec --unknown-flag list'); assert result.exit_code == 1; assert result.stderr contains 'unknown flag' or 'unknown shorthand flag'"
+    },
+    {
+      "id": "TS-08-E4",
+      "requirement_id": "08-REQ-2.E1",
+      "kind": "unit",
+      "description": "Verify that AF_AGENT=1 combined with explicit --quiet behaves identically to AF_AGENT=1 alone (no conflict).",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "AF_AGENT=1 is set in the environment",
+        "a valid PRD file exists at /tmp/test_prd.md"
+      ],
+      "input": "AF_AGENT=1 spec --quiet new /tmp/test_prd.md",
+      "expected": "exit code 0; stdout is valid JSON with ok: true; stderr is silent; behavior identical to AF_AGENT=1 without --quiet",
+      "assertion_pseudocode": "result_agent_only = execWithEnv({'AF_AGENT': '1'}, 'spec new /tmp/test_prd.md'); result_agent_quiet = execWithEnv({'AF_AGENT': '1'}, 'spec --quiet new /tmp/test_prd.md'); assert result_agent_quiet.exit_code == result_agent_only.exit_code; assert parseJSON(result_agent_quiet.stdout).ok == true; assert len(result_agent_quiet.stderr) == 0"
+    },
+    {
+      "id": "TS-08-E5",
+      "requirement_id": "08-REQ-2.E2",
+      "kind": "unit",
+      "description": "Verify that a broken pipe on stdout during JSON output in agent mode is suppressed and the binary exits cleanly.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "AF_AGENT=1 is set in the environment",
+        "stdout is connected to a pipe that is closed immediately"
+      ],
+      "input": "AF_AGENT=1 spec list | head -c 0 (pipe closed immediately)",
+      "expected": "exit code 0 or 1 based on command result; no panic; no 'broken pipe' error message on stderr",
+      "assertion_pseudocode": "result = execWithBrokenPipe({'AF_AGENT': '1'}, 'spec list'); assert result did not panic; assert result.stderr does not contain 'broken pipe'; assert result.exit_code in [0, 1]"
+    },
+    {
+      "id": "TS-08-E6",
+      "requirement_id": "08-REQ-3.E1",
+      "kind": "unit",
+      "description": "Verify that emit returns a non-nil error when the data cannot be marshalled to JSON (e.g. contains a channel).",
+      "preconditions": [
+        "emit function is accessible in the golang/cmd/spec package"
+      ],
+      "input": "emit(chan int) (an unmarshallable Go channel value)",
+      "expected": "returns non-nil error; stdout is unchanged (no partial output written)",
+      "assertion_pseudocode": "stdoutBefore = captureStdout(); ch = make(chan int); err = emit(ch); assert err != nil; assert captureStdout() == stdoutBefore"
+    },
+    {
+      "id": "TS-08-E7",
+      "requirement_id": "08-REQ-3.E2",
+      "kind": "unit",
+      "description": "Verify that emit suppresses broken pipe errors and returns nil to the caller.",
+      "preconditions": [
+        "emit function is accessible in the golang/cmd/spec package",
+        "stdout is replaced with a writer that returns a broken pipe error on Write"
+      ],
+      "input": "emit(map[string]any{\"ok\": true}) with stdout producing EPIPE on write",
+      "expected": "returns nil error; no panic",
+      "assertion_pseudocode": "stdout = newBrokenPipeWriter(); err = emitTo(stdout, map{'ok': true}); assert err == nil"
+    },
+    {
+      "id": "TS-08-E8",
+      "requirement_id": "08-REQ-4.E1",
+      "kind": "unit",
+      "description": "Verify that StatusSpinner stops the spinner goroutine and cleans up when the operation completes, leaving no goroutine leak.",
+      "preconditions": [
+        "StatusSpinner type is accessible in the golang/cmd/spec package",
+        "goroutine count can be measured via runtime.NumGoroutine()"
+      ],
+      "input": "spinner = NewStatusSpinner('msg'); spinner.Start(); sleep(50ms); spinner.Stop()",
+      "expected": "goroutine count after Stop() equals goroutine count before Start(); terminal cursor is in clean state",
+      "assertion_pseudocode": "before = runtime.NumGoroutine(); s = NewStatusSpinner('msg'); s.Start(); sleep(50ms); s.Stop(); after = runtime.NumGoroutine(); assert after <= before"
+    },
+    {
+      "id": "TS-08-E9",
+      "requirement_id": "08-REQ-4.E2",
+      "kind": "unit",
+      "description": "Verify that StatusSpinner suppresses stderr write errors and does not propagate them to the caller.",
+      "preconditions": [
+        "StatusSpinner type is accessible in the golang/cmd/spec package",
+        "stderr is replaced with a writer that returns an error on Write"
+      ],
+      "input": "spinner = NewStatusSpinner('msg', stderr=errorWriter); spinner.Start(); sleep(50ms); spinner.Update('new msg'); spinner.Stop()",
+      "expected": "no error returned; no panic; spinner silently stops updating",
+      "assertion_pseudocode": "errWriter = newErrorWriter(); s = NewStatusSpinnerWithStderr('msg', errWriter); s.Start(); sleep(50ms); s.Update('new msg'); s.Stop(); assert no panic occurred"
+    },
+    {
+      "id": "TS-08-E10",
+      "requirement_id": "08-REQ-5.E1",
+      "kind": "unit",
+      "description": "Verify that the spec resolver returns a descriptive error naming the argument and spec directory when no entries match.",
+      "preconditions": [
+        "spec directory '.specs' exists",
+        "no subdirectory named 'nonexistent_spec' exists in '.specs'"
+      ],
+      "input": "resolveSpec('.specs', 'nonexistent_spec')",
+      "expected": "returns (nil, error) where error message contains 'nonexistent_spec' and '.specs'",
+      "assertion_pseudocode": "path, err = resolveSpec('.specs', 'nonexistent_spec'); assert path == nil; assert err != nil; assert 'nonexistent_spec' in err.Error(); assert '.specs' in err.Error()"
+    },
+    {
+      "id": "TS-08-E11",
+      "requirement_id": "08-REQ-5.E2",
+      "kind": "unit",
+      "description": "Verify that the spec resolver returns an error listing all ambiguous matches when multiple entries match a numeric prefix.",
+      "preconditions": [
+        "spec directory '.specs' exists",
+        "subdirectories '.specs/08_spec_a' and '.specs/08_spec_b' both exist"
+      ],
+      "input": "resolveSpec('.specs', '08')",
+      "expected": "returns (nil, error) where error message lists both '08_spec_a' and '08_spec_b'",
+      "assertion_pseudocode": "path, err = resolveSpec('.specs', '08'); assert path == nil; assert err != nil; assert '08_spec_a' in err.Error(); assert '08_spec_b' in err.Error()"
+    },
+    {
+      "id": "TS-08-E12",
+      "requirement_id": "08-REQ-5.E3",
+      "kind": "unit",
+      "description": "Verify that the spec resolver returns an error with the underlying OS error when the spec directory cannot be read.",
+      "preconditions": [
+        "spec directory '/unreadable_specs' exists but has no read permission (chmod 000)"
+      ],
+      "input": "resolveSpec('/unreadable_specs', 'my_spec')",
+      "expected": "returns (nil, error) where error message contains the OS-level permission denied message",
+      "assertion_pseudocode": "path, err = resolveSpec('/unreadable_specs', 'my_spec'); assert path == nil; assert err != nil; assert 'permission denied' in err.Error() or 'cannot read' in err.Error()"
+    },
+    {
+      "id": "TS-08-E13",
+      "requirement_id": "08-REQ-6.E1",
+      "kind": "unit",
+      "description": "Verify that spec new exits 1 with an error when SPEC_PATH does not exist, before any initialization.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "'/nonexistent/prd.md' does not exist",
+        "spec directory '.specs' does not exist"
+      ],
+      "input": "spec new /nonexistent/prd.md --name my_spec",
+      "expected": "exit code 1; error message on stderr (or JSON error on stdout in agent mode); '.specs' directory is NOT created",
+      "assertion_pseudocode": "result = exec('spec new /nonexistent/prd.md --name my_spec'); assert result.exit_code == 1; assert result.stderr contains '/nonexistent/prd.md' or 'not found' or 'does not exist'; assert not dirExists('.specs')"
+    },
+    {
+      "id": "TS-08-E14",
+      "requirement_id": "08-REQ-6.E2",
+      "kind": "unit",
+      "description": "Verify that spec new rejects a --name value that does not match [a-z][a-z0-9_]* with a descriptive validation error.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "PRD file exists at /tmp/test_prd.md"
+      ],
+      "input": "spec new /tmp/test_prd.md --name 'Invalid-Name'",
+      "expected": "exit code 1; error message describes the required pattern [a-z][a-z0-9_]*",
+      "assertion_pseudocode": "result = exec('spec new /tmp/test_prd.md --name Invalid-Name'); assert result.exit_code == 1; assert result.stderr contains '[a-z][a-z0-9_]*' or 'invalid name' or 'pattern'"
+    },
+    {
+      "id": "TS-08-E15",
+      "requirement_id": "08-REQ-6.E3",
+      "kind": "unit",
+      "description": "Verify that spec new propagates a NewSpec error without leaving partial state when the spec already exists.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "PRD file exists at /tmp/test_prd.md",
+        "spec directory '.specs' exists with campaign.yaml",
+        "spec 'my_spec' already exists in '.specs'"
+      ],
+      "input": "spec new /tmp/test_prd.md --name my_spec (spec already exists)",
+      "expected": "exit code 1; error message indicates spec already exists; no duplicate or corrupted spec directory created",
+      "assertion_pseudocode": "result = exec('spec new /tmp/test_prd.md --name my_spec'); assert result.exit_code == 1; assert result.stderr contains 'already exists' or 'conflict'; assert dirCount('.specs/my_spec') == 1"
+    },
+    {
+      "id": "TS-08-E16",
+      "requirement_id": "08-REQ-6.E4",
+      "kind": "unit",
+      "description": "Verify that spec new returns an OS-level error when the spec directory cannot be created due to filesystem permissions.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "PRD file exists at /tmp/test_prd.md",
+        "parent directory '/readonly_parent' exists with no write permission (chmod 555)"
+      ],
+      "input": "spec new /tmp/test_prd.md --name my_spec --spec-dir /readonly_parent/specs",
+      "expected": "exit code 1; error message identifies the path and permission issue",
+      "assertion_pseudocode": "result = exec('spec new /tmp/test_prd.md --name my_spec --spec-dir /readonly_parent/specs'); assert result.exit_code == 1; assert result.stderr contains 'permission denied' or '/readonly_parent'"
+    },
+    {
+      "id": "TS-08-E17",
+      "requirement_id": "08-REQ-7.E1",
+      "kind": "unit",
+      "description": "Verify that spec list emits an empty specs array and exits 0 when the spec directory does not exist.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' does not exist"
+      ],
+      "input": "spec list",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"spec_dir\": \".specs\", \"specs\": []}",
+      "assertion_pseudocode": "result = exec('spec list'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.specs == []"
+    },
+    {
+      "id": "TS-08-E18",
+      "requirement_id": "08-REQ-7.E2",
+      "kind": "unit",
+      "description": "Verify that spec list defaults state to 'no_session' for a spec with malformed _session.json and continues listing.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' exists",
+        "'.specs/08_my_spec/_session.json' contains invalid JSON '{not valid json}'"
+      ],
+      "input": "spec list",
+      "expected": "exit code 0; stdout JSON contains '08_my_spec' with state 'no_session'",
+      "assertion_pseudocode": "result = exec('spec list'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); spec_entry = find(parsed.specs, name='08_my_spec'); assert spec_entry.state == 'no_session'"
+    },
+    {
+      "id": "TS-08-E19",
+      "requirement_id": "08-REQ-7.E3",
+      "kind": "unit",
+      "description": "Verify that spec list emits an empty specs array when the spec directory exists but contains no matching subdirectories.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' exists but contains no spec subdirectories (only files or non-matching dirs)"
+      ],
+      "input": "spec list",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"spec_dir\": \".specs\", \"specs\": []}",
+      "assertion_pseudocode": "result = exec('spec list'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.specs == []"
+    },
+    {
+      "id": "TS-08-E20",
+      "requirement_id": "08-REQ-8.E1",
+      "kind": "unit",
+      "description": "Verify that cancelling spec refine via SIGINT stops the spinner and exits 1 without goroutine leaks.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' requiring assessment",
+        "AI model call is mocked to block indefinitely"
+      ],
+      "input": "spec refine 08_my_spec (SIGINT sent after 200ms)",
+      "expected": "exit code 1; error message indicates cancellation; spinner is stopped; binary exits within 1 second of signal",
+      "assertion_pseudocode": "proc = startProcess('spec refine 08_my_spec'); sleep(200ms); proc.sendSignal(SIGINT); result = proc.wait(timeout=1500ms); assert result.exit_code == 1; assert result did not timeout"
+    },
+    {
+      "id": "TS-08-E21",
+      "requirement_id": "08-REQ-8.E2",
+      "kind": "unit",
+      "description": "Verify that spec refine exits 1 with a file-not-found error when the --answers file does not exist.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs'",
+        "'/nonexistent/answers.json' does not exist"
+      ],
+      "input": "spec refine 08_my_spec --answers /nonexistent/answers.json",
+      "expected": "exit code 1; error message contains file path and indicates file not found or permission error; Refine is not called",
+      "assertion_pseudocode": "result = exec('spec refine 08_my_spec --answers /nonexistent/answers.json'); assert result.exit_code == 1; assert result.stderr contains '/nonexistent/answers.json' or 'no such file'"
+    },
+    {
+      "id": "TS-08-E22",
+      "requirement_id": "08-REQ-8.E3",
+      "kind": "unit",
+      "description": "Verify that spec refine exits 1 with a JSON parse error when the --answers content is not valid JSON.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs'",
+        "'/tmp/bad_answers.json' contains 'not valid json'"
+      ],
+      "input": "spec refine 08_my_spec --answers /tmp/bad_answers.json",
+      "expected": "exit code 1; error message describes the JSON parse error; Refine is not called",
+      "assertion_pseudocode": "result = exec('spec refine 08_my_spec --answers /tmp/bad_answers.json'); assert result.exit_code == 1; assert result.stderr contains 'invalid' or 'parse' or 'JSON'"
+    },
+    {
+      "id": "TS-08-E23",
+      "requirement_id": "08-REQ-8.E4",
+      "kind": "unit",
+      "description": "Verify that when Refine returns an AI layer error, spec refine exits 1 with the error message and stops the spinner cleanly.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in REFINING state",
+        "Refine is mocked to return an error 'AI service unavailable'",
+        "answers file '/tmp/answers.json' is valid"
+      ],
+      "input": "spec refine 08_my_spec --answers /tmp/answers.json",
+      "expected": "exit code 1; error message contains 'AI service unavailable'; spinner is stopped before exit",
+      "assertion_pseudocode": "result = exec('spec refine 08_my_spec --answers /tmp/answers.json'); assert result.exit_code == 1; assert result.stderr contains 'AI service unavailable' or 'error'"
+    },
+    {
+      "id": "TS-08-E24",
+      "requirement_id": "08-REQ-9.E1",
+      "kind": "unit",
+      "description": "Verify that when Generate is cancelled via SIGINT, partial artifact files are removed and the binary exits 1.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "Generate is mocked to write a partial requirements.json then block"
+      ],
+      "input": "spec generate 08_my_spec (SIGINT sent after partial write)",
+      "expected": "exit code 1; partial artifact files are removed from '.specs/08_my_spec/'; spinner is stopped",
+      "assertion_pseudocode": "proc = startProcess('spec generate 08_my_spec'); sleep(200ms); proc.sendSignal(SIGINT); result = proc.wait(timeout=2s); assert result.exit_code == 1; assert not fileExists('.specs/08_my_spec/requirements.json') or fileSize('.specs/08_my_spec/requirements.json') == 0"
+    },
+    {
+      "id": "TS-08-E25",
+      "requirement_id": "08-REQ-9.E2",
+      "kind": "unit",
+      "description": "Verify that when Generate returns an AI layer error, spec generate exits 1 with the error message and stops the spinner.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "Generate is mocked to return error 'model quota exceeded'"
+      ],
+      "input": "spec generate 08_my_spec",
+      "expected": "exit code 1; error message contains 'model quota exceeded'; spinner is stopped before exit",
+      "assertion_pseudocode": "result = exec('spec generate 08_my_spec'); assert result.exit_code == 1; assert result.stderr contains 'model quota exceeded' or 'error'"
+    },
+    {
+      "id": "TS-08-E26",
+      "requirement_id": "08-REQ-9.E3",
+      "kind": "unit",
+      "description": "Verify that spec generate --force exits 1 with an OS-level error when an artifact file cannot be deleted due to permissions.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "'.specs/08_my_spec/requirements.json' exists with no write permission (chmod 444)"
+      ],
+      "input": "spec generate 08_my_spec --force",
+      "expected": "exit code 1; error message identifies the file and permission issue; generation is not attempted",
+      "assertion_pseudocode": "result = exec('spec generate 08_my_spec --force'); assert result.exit_code == 1; assert result.stderr contains 'requirements.json' or 'permission denied'"
+    },
+    {
+      "id": "TS-08-E27",
+      "requirement_id": "08-REQ-10.E1",
+      "kind": "unit",
+      "description": "Verify that spec render exits 1 with an error when all artifact files are missing.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' but has no artifact files"
+      ],
+      "input": "spec render 08_my_spec",
+      "expected": "exit code 1; error message indicates no renderable artifacts were found",
+      "assertion_pseudocode": "result = exec('spec render 08_my_spec'); assert result.exit_code == 1; assert result.stderr contains 'no' and ('artifact' or 'renderable')"
+    },
+    {
+      "id": "TS-08-E28",
+      "requirement_id": "08-REQ-10.E2",
+      "kind": "unit",
+      "description": "Verify that spec render exits 1 with an OS-level error identifying an unreadable artifact file.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs'",
+        "'.specs/08_my_spec/requirements.json' exists but has no read permission (chmod 000)"
+      ],
+      "input": "spec render 08_my_spec",
+      "expected": "exit code 1; error message identifies 'requirements.json' and the permission issue",
+      "assertion_pseudocode": "result = exec('spec render 08_my_spec'); assert result.exit_code == 1; assert result.stderr contains 'requirements.json' or 'permission denied'"
+    },
+    {
+      "id": "TS-08-E29",
+      "requirement_id": "08-REQ-11.E1",
+      "kind": "unit",
+      "description": "Verify that spec validate reports a missing required file as a validation error in the result rather than a command failure.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs'",
+        "'.specs/08_my_spec/prd.md' exists",
+        "'.specs/08_my_spec/tasks.json' does not exist"
+      ],
+      "input": "spec validate 08_my_spec",
+      "expected": "exit code 1; stdout is valid JSON ValidationResult with tasks.json listed as a missing file error",
+      "assertion_pseudocode": "result = exec('spec validate 08_my_spec'); assert result.exit_code == 1; parsed = parseJSON(result.stdout); assert any('tasks.json' in str(entry) for entry in parsed.errors or parsed.findings)"
+    },
+    {
+      "id": "TS-08-E30",
+      "requirement_id": "08-REQ-11.E2",
+      "kind": "unit",
+      "description": "Verify that spec validate reports a JSON parse error as a validation error in the result when an artifact file contains malformed JSON.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' with all required files",
+        "'.specs/08_my_spec/requirements.json' contains '{invalid json}'"
+      ],
+      "input": "spec validate 08_my_spec",
+      "expected": "exit code 1; stdout is valid JSON ValidationResult with parse error listed for requirements.json",
+      "assertion_pseudocode": "result = exec('spec validate 08_my_spec'); assert result.exit_code == 1; parsed = parseJSON(result.stdout); assert any('requirements.json' in str(e) or 'parse' in str(e) for e in parsed.errors or parsed.findings)"
+    },
+    {
+      "id": "TS-08-E31",
+      "requirement_id": "08-REQ-11.E3",
+      "kind": "unit",
+      "description": "Verify that spec validate exits 1 with an error on stderr without emitting a partial result when DiscoverSpecs returns an error.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '/unreadable_specs' exists but has no read permission (chmod 000)"
+      ],
+      "input": "spec validate --spec-dir /unreadable_specs",
+      "expected": "exit code 1; error message on stderr; no partial JSON result on stdout",
+      "assertion_pseudocode": "result = exec('spec validate --spec-dir /unreadable_specs'); assert result.exit_code == 1; assert result.stderr contains 'permission denied' or 'cannot read'; assert result.stdout == '' or not isValidJSON(result.stdout)"
+    },
+    {
+      "id": "TS-08-E32",
+      "requirement_id": "08-REQ-12.E1",
+      "kind": "unit",
+      "description": "Verify that spec lint exits 1 with an error message without emitting partial findings when RunLintSpecs returns an error.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "RunLintSpecs is mocked to return an error 'spec directory unreadable'"
+      ],
+      "input": "spec lint",
+      "expected": "exit code 1; error message on stderr contains 'spec directory unreadable'; stdout does not contain partial findings",
+      "assertion_pseudocode": "result = exec('spec lint'); assert result.exit_code == 1; assert result.stderr contains 'unreadable' or 'error'; assert result.stdout == '' or not isValidJSON(result.stdout)"
+    },
+    {
+      "id": "TS-08-E33",
+      "requirement_id": "08-REQ-12.E2",
+      "kind": "unit",
+      "description": "Verify that spec lint emits an empty findings array and exits 0 when the spec directory is empty or contains no lintable specs.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' exists but contains no spec subdirectories"
+      ],
+      "input": "spec lint",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"findings\": []}",
+      "assertion_pseudocode": "result = exec('spec lint'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.findings == []"
+    },
+    {
+      "id": "TS-08-E34",
+      "requirement_id": "08-REQ-13.E1",
+      "kind": "unit",
+      "description": "Verify that spec status exits 1 with an error identifying the spec when the spec cannot be resolved.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec directory '.specs' exists but contains no spec named 'nonexistent'"
+      ],
+      "input": "spec status nonexistent",
+      "expected": "exit code 1; error message on stderr identifies 'nonexistent' as the unresolvable spec",
+      "assertion_pseudocode": "result = exec('spec status nonexistent'); assert result.exit_code == 1; assert result.stderr contains 'nonexistent'"
+    },
+    {
+      "id": "TS-08-E35",
+      "requirement_id": "08-REQ-13.E2",
+      "kind": "unit",
+      "description": "Verify that spec status reports state as 'no_session' with has_assessment false and empty generated_artifacts when _session.json is missing.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' but '_session.json' does not exist"
+      ],
+      "input": "spec status 08_my_spec",
+      "expected": "exit code 0; stdout is valid JSON with {\"ok\": true, \"state\": \"no_session\", \"has_assessment\": false, \"generated_artifacts\": []}",
+      "assertion_pseudocode": "result = exec('spec status 08_my_spec'); assert result.exit_code == 0; parsed = parseJSON(result.stdout); assert parsed.ok == true; assert parsed.state == 'no_session'; assert parsed.has_assessment == false; assert parsed.generated_artifacts == []"
+    },
+    {
+      "id": "TS-08-E36",
+      "requirement_id": "08-REQ-14.E1",
+      "kind": "unit",
+      "description": "Verify that spec campaign exits 1 with a CampaignError message on stderr when CreateCampaign fails.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "CreateCampaign is mocked to return a CampaignError with message 'campaign already exists'"
+      ],
+      "input": "spec campaign --path /tmp/existing_campaign --name my_campaign",
+      "expected": "exit code 1; stderr contains 'campaign already exists'; no campaign.yaml is created",
+      "assertion_pseudocode": "result = exec('spec campaign --path /tmp/existing_campaign --name my_campaign'); assert result.exit_code == 1; assert result.stderr contains 'campaign already exists' or 'CampaignError'"
+    },
+    {
+      "id": "TS-08-E37",
+      "requirement_id": "08-REQ-14.E2",
+      "kind": "unit",
+      "description": "Verify that spec campaign exits 1 with cobra's required-flag error when --path or --name is missing.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH"
+      ],
+      "input": "spec campaign --name my_campaign (missing --path)",
+      "expected": "exit code 1; stderr contains cobra's required flag error message mentioning '--path'",
+      "assertion_pseudocode": "result = exec('spec campaign --name my_campaign'); assert result.exit_code == 1; assert result.stderr contains 'required' and '--path'"
+    },
+    {
+      "id": "TS-08-E38",
+      "requirement_id": "08-REQ-14.E3",
+      "kind": "unit",
+      "description": "Verify that spec campaign exits 1 with a CampaignError describing the conflict when the target path already contains a campaign.yaml.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "'/tmp/existing_campaign/campaign.yaml' already exists"
+      ],
+      "input": "spec campaign --path /tmp/existing_campaign --name my_campaign",
+      "expected": "exit code 1; stderr contains error message describing the existing campaign conflict",
+      "assertion_pseudocode": "result = exec('spec campaign --path /tmp/existing_campaign --name my_campaign'); assert result.exit_code == 1; assert result.stderr contains 'already' or 'exists' or 'conflict'"
+    },
+    {
+      "id": "TS-08-E39",
+      "requirement_id": "08-REQ-15.E1",
+      "kind": "unit",
+      "description": "Verify that install.sh prints an unsupported platform error and exits 1 when the detected platform is not supported.",
+      "preconditions": [
+        "install.sh script is available",
+        "platform detection returns 'windows/amd64' (unsupported)"
+      ],
+      "input": "bash install.sh (on windows/amd64 or mocked unsupported platform)",
+      "expected": "exit code 1; error message lists supported platforms (darwin/arm64, darwin/amd64, linux/arm64, linux/amd64)",
+      "assertion_pseudocode": "result = execScript('install.sh', env={'MOCK_PLATFORM': 'windows/amd64'}); assert result.exit_code == 1; assert result.stderr contains 'unsupported' or 'not supported'; assert result.stderr contains 'darwin' or 'linux'"
+    },
+    {
+      "id": "TS-08-E40",
+      "requirement_id": "08-REQ-15.E2",
+      "kind": "unit",
+      "description": "Verify that install.sh prints a download error and exits 1 without leaving a partial binary when the download fails.",
+      "preconditions": [
+        "install.sh script is available",
+        "download URL returns a 404 or network error"
+      ],
+      "input": "bash install.sh (with download server returning 404)",
+      "expected": "exit code 1; error message describes the download failure; no partial binary file left on disk at the install path",
+      "assertion_pseudocode": "result = execScript('install.sh', mockDownload=404); assert result.exit_code == 1; assert result.stderr contains 'download' or '404' or 'failed'; assert not fileExists(install_path + '/spec')"
+    },
+    {
+      "id": "TS-08-E41",
+      "requirement_id": "08-REQ-16.E1",
+      "kind": "unit",
+      "description": "Verify that a second SIGINT received before the first cancellation completes causes the binary to force-exit immediately with code 1.",
+      "preconditions": [
+        "spec binary is compiled and available on PATH",
+        "spec '08_my_spec' exists in '.specs' in accepted state",
+        "Generate is mocked to block even after context cancellation"
+      ],
+      "input": "spec generate 08_my_spec (first SIGINT at 200ms, second SIGINT at 400ms)",
+      "expected": "exit code 1; binary exits immediately on second SIGINT without waiting for cleanup",
+      "assertion_pseudocode": "proc = startProcess('spec generate 08_my_spec'); sleep(200ms); proc.sendSignal(SIGINT); sleep(200ms); proc.sendSignal(SIGINT); result = proc.wait(timeout=500ms); assert result.exit_code == 1; assert result did not timeout"
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "TS-08-SMOKE-1",
+      "execution_path_id": "08-PATH-1",
+      "description": "End-to-end smoke test for creating a new spec from a PRD file, verifying auto-initialization of spec directory and campaign.yaml, and correct JSON output.",
+      "trigger": "Developer runs 'spec new path/to/prd.md --name my_spec' with a valid PRD file",
+      "real_components": [
+        "spec binary (golang/cmd/spec/)",
+        "Campaign (agentspec_go_core)",
+        "NewSpec method (agentspec_go_core)",
+        "spec directory filesystem"
+      ],
+      "mockable": [
+        "filesystem (for isolated test environments)"
+      ],
+      "expected_effects": [
+        "'.specs' directory is created if it did not exist",
+        "'.specs/campaign.yaml' is created with name 'default' and description 'default campaign'",
+        "spec subdirectory is created under '.specs'",
+        "stdout contains valid JSON: {\"ok\": true, \"spec_dir\": \".specs\", \"state\": string}",
+        "exit code is 0"
+      ]
+    },
+    {
+      "id": "TS-08-SMOKE-2",
+      "execution_path_id": "08-PATH-2",
+      "description": "End-to-end smoke test for refining a PRD through AI assessment, verifying spec resolution, session loading, spinner display, and assessment JSON output.",
+      "trigger": "Developer runs 'spec refine my_spec' with a spec in assessment-needed state",
+      "real_components": [
+        "spec binary (golang/cmd/spec/)",
+        "spec resolver",
+        "SpecSession (agentspec_go_core)",
+        "StatusSpinner",
+        "Assess method (agentspec_go_ai)"
+      ],
+      "mockable": [
+        "AI model API (network call to Anthropic or configured LLM provider)"
+      ],
+      "expected_effects": [
+        "spec resolver successfully resolves 'my_spec' to a directory path",
+        "session state is loaded from '.specs/my_spec/_session.json'",
+        "spinner animation appears on stderr during AI call",
+        "spinner stops after AI call completes",
+        "stdout contains valid JSON with ok: true and assessment result fields",
+        "exit code is 0"
+      ]
+    },
+    {
+      "id": "TS-08-SMOKE-3",
+      "execution_path_id": "08-PATH-3",
+      "description": "End-to-end smoke test for generating specification artifacts from an accepted PRD, verifying AcceptPRD auto-call, spinner, and artifact list JSON output.",
+      "trigger": "Developer runs 'spec generate my_spec' with a spec in ASSESSING state",
+      "real_components": [
+        "spec binary (golang/cmd/spec/)",
+        "spec resolver",
+        "SpecSession (agentspec_go_core)",
+        "AcceptPRD method (agentspec_go_core)",
+        "StatusSpinner",
+        "Generate method (agentspec_go_ai)"
+      ],
+      "mockable": [
+        "AI model API (network call to Anthropic or configured LLM provider)"
+      ],
+      "expected_effects": [
+        "AcceptPRD is called transitioning session from ASSESSING to accepted state",
+        "spinner animation appears on stderr during Generate call",
+        "requirements.json, test_spec.json, and tasks.json are created in the spec directory",
+        "stdout contains valid JSON: {\"ok\": true, \"artifacts\": [string]}",
+        "exit code is 0"
+      ]
+    },
+    {
+      "id": "TS-08-SMOKE-4",
+      "execution_path_id": "08-PATH-4",
+      "description": "End-to-end smoke test for validating all specs in multi-spec mode, verifying DiscoverSpecs, ValidateStructured aggregation, and correct exit code.",
+      "trigger": "Developer runs 'spec validate' with multiple specs in the spec directory",
+      "real_components": [
+        "spec binary (golang/cmd/spec/)",
+        "DiscoverSpecs (afspec_go)",
+        "ValidateStructured (afspec_go_validation)",
+        "spec directory filesystem"
+      ],
+      "mockable": [
+        "filesystem (for isolated test environments)"
+      ],
+      "expected_effects": [
+        "DiscoverSpecs finds all spec subdirectories in '.specs'",
+        "ValidateStructured is called for each discovered spec",
+        "ValidationResult objects are aggregated",
+        "stdout contains valid JSON with aggregated validation results",
+        "exit code is 1 if any spec has errors, 0 otherwise"
+      ]
+    },
+    {
+      "id": "TS-08-SMOKE-5",
+      "execution_path_id": "08-PATH-5",
+      "description": "End-to-end smoke test for the full agent mode spec generation pipeline: new, refine, generate, validate with AF_AGENT=1.",
+      "trigger": "Automated agent sets AF_AGENT=1 and runs spec new, spec refine, spec generate, spec validate in sequence",
+      "real_components": [
+        "spec binary (golang/cmd/spec/)",
+        "Campaign (agentspec_go_core)",
+        "NewSpec method (agentspec_go_core)",
+        "SpecSession (agentspec_go_core)",
+        "Assess method (agentspec_go_ai)",
+        "Generate method (agentspec_go_ai)",
+        "ValidateStructured (afspec_go_validation)"
+      ],
+      "mockable": [
+        "AI model API (network call to Anthropic or configured LLM provider)"
+      ],
+      "expected_effects": [
+        "All commands produce only valid JSON on stdout with no banner or spinner text",
+        "spec new emits {\"ok\": true, \"spec_dir\": string, \"state\": string}",
+        "spec refine emits assessment JSON with ok: true",
+        "spec generate emits {\"ok\": true, \"artifacts\": [string]}",
+        "spec validate emits ValidationResult JSON; exits 0 on success",
+        "stderr is silent throughout the pipeline",
+        "all exit codes are 0 on success"
+      ]
+    },
+    {
+      "id": "TS-08-SMOKE-6",
+      "execution_path_id": "08-PATH-6",
+      "description": "End-to-end smoke test for linting all specs with --all flag, verifying spinner display, RunLintSpecs invocation, and findings JSON output.",
+      "trigger": "Developer runs 'spec lint --all' with specs in the spec directory",
+      "real_components": [
+        "spec binary (golang/cmd/spec/)",
+        "StatusSpinner",
+        "RunLintSpecs (afspec_go_mutation_lint)",
+        "spec directory filesystem"
+      ],
+      "mockable": [
+        "filesystem (for isolated test environments)"
+      ],
+      "expected_effects": [
+        "spinner animation appears on stderr during lint run",
+        "RunLintSpecs is called with lintAll=true",
+        "spinner stops after lint completes",
+        "stdout contains valid JSON with lint findings including fully-implemented specs",
+        "exit code is 1 if RunLintSpecs returns non-zero exit_code, 0 otherwise"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}

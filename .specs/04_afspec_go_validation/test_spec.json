@@ -1,0 +1,2404 @@
+{
+  "$schema": null,
+  "spec_id": "04",
+  "spec_name": "afspec_go_validation",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-04-1",
+      "requirement_id": "04-REQ-1.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error per uncovered correctness_property when property_tests are missing or mismatched by property_id.",
+      "preconditions": [
+        "A *Spec is constructed in memory with two correctness_properties (ids: '04-PROP-A', '04-PROP-B')",
+        "The test_spec contains one property_test with property_id='04-PROP-A' and no entry for '04-PROP-B'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "correctness_properties": [
+            {
+              "id": "04-PROP-A"
+            },
+            {
+              "id": "04-PROP-B"
+            }
+          ],
+          "test_spec": {
+            "property_tests": [
+              {
+                "id": "TS-04-P1",
+                "property_id": "04-PROP-A"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "non-empty string identifying the uncovered property",
+          "RequirementID": "04-PROP-B"
+        },
+        "result": "[]ValidationEntry with exactly one entry"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); assert len(entries) >= 1; uncovered = [e for e in entries if e.RequirementID == '04-PROP-B' and e.Category == 'integrity']; assert len(uncovered) == 1; assert uncovered[0].Message != ''"
+    },
+    {
+      "id": "TS-04-2",
+      "requirement_id": "04-REQ-1.2",
+      "kind": "unit",
+      "description": "Each property-coverage ValidationEntry has a Path field set to the JSON path of the uncovered correctness_property within the requirements artifact.",
+      "preconditions": [
+        "A *Spec is constructed with one correctness_property (id: '04-PROP-X') and no matching property_test",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "correctness_properties": [
+            {
+              "id": "04-PROP-X"
+            }
+          ],
+          "test_spec": {
+            "property_tests": []
+          }
+        }
+      },
+      "expected": {
+        "path_example": "requirements.correctness_properties[0] or similar JSON path",
+        "result": "ValidationEntry with non-empty Path field referencing the correctness_property location"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); prop_errors = [e for e in entries if e.RequirementID == '04-PROP-X']; assert len(prop_errors) == 1; assert prop_errors[0].Path != ''"
+    },
+    {
+      "id": "TS-04-3",
+      "requirement_id": "04-REQ-2.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error per uncovered execution_path when smoke_tests are missing or mismatched by execution_path_id.",
+      "preconditions": [
+        "A *Spec is constructed with two execution_paths (ids: '04-PATH-A', '04-PATH-B')",
+        "The test_spec contains one smoke_test with execution_path_id='04-PATH-A' and no entry for '04-PATH-B'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "execution_paths": [
+            {
+              "id": "04-PATH-A"
+            },
+            {
+              "id": "04-PATH-B"
+            }
+          ],
+          "test_spec": {
+            "smoke_tests": [
+              {
+                "execution_path_id": "04-PATH-A",
+                "id": "TS-04-SMOKE-1"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "non-empty string identifying '04-PATH-B'"
+        },
+        "result": "[]ValidationEntry with exactly one entry for '04-PATH-B'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); path_errors = [e for e in entries if '04-PATH-B' in e.Message and e.Category == 'integrity']; assert len(path_errors) == 1"
+    },
+    {
+      "id": "TS-04-4",
+      "requirement_id": "04-REQ-3.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error per unresolvable test_spec_id found in traceability entries or subtask test_spec_refs.",
+      "preconditions": [
+        "A *Spec is constructed with a traceability entry referencing 'TS-04-NONEXISTENT' and a subtask test_spec_refs containing 'TS-04-ALSO-MISSING'",
+        "The test_spec contains no entries with those IDs",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "subtasks": [
+                {
+                  "test_spec_refs": [
+                    "TS-04-ALSO-MISSING"
+                  ]
+                }
+              ]
+            }
+          ],
+          "test_spec": {
+            "edge_case_tests": [],
+            "property_tests": [],
+            "smoke_tests": [],
+            "test_cases": []
+          },
+          "traceability": [
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-NONEXISTENT"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entries": [
+          {
+            "Category": "integrity",
+            "Message": "contains 'TS-04-NONEXISTENT'"
+          },
+          {
+            "Category": "integrity",
+            "Message": "contains 'TS-04-ALSO-MISSING'"
+          }
+        ],
+        "result": "[]ValidationEntry with two entries, one per unresolvable ID"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); integrity_errors = [e for e in entries if e.Category == 'integrity']; ids_in_messages = [e.Message for e in integrity_errors]; assert any('TS-04-NONEXISTENT' in m for m in ids_in_messages); assert any('TS-04-ALSO-MISSING' in m for m in ids_in_messages)"
+    },
+    {
+      "id": "TS-04-5",
+      "requirement_id": "04-REQ-4.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile extracts backtick-wrapped terms from criterion and property fields and produces one integrity error per term not present in the glossary (after applying exclusion rules).",
+      "preconditions": [
+        "A *Spec is constructed with one acceptance criterion whose action field contains backtick-wrapped MyTerm and backtick-wrapped -1",
+        "The spec glossary does not contain 'MyTerm'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "glossary": {},
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "call `MyTerm` with value `-1`"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "contains 'MyTerm'"
+        },
+        "result": "One integrity error for 'MyTerm'; no error for '-1' (numeric exclusion)"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); term_errors = [e for e in entries if e.Category == 'integrity' and 'MyTerm' in e.Message]; assert len(term_errors) == 1; numeric_errors = [e for e in entries if '-1' in e.Message]; assert len(numeric_errors) == 0"
+    },
+    {
+      "id": "TS-04-6",
+      "requirement_id": "04-REQ-4.2",
+      "kind": "unit",
+      "description": "The backtick extraction regex is compiled at package initialization time, not inside the ValidateCrossFile function body.",
+      "preconditions": [
+        "The golang/ afspec package source code is available for inspection",
+        "The package compiles without errors"
+      ],
+      "input": {},
+      "expected": {
+        "result": "Package-level var or init() block declares the backtick regex; no regexp.Compile or regexp.MustCompile call inside ValidateCrossFile function body"
+      },
+      "assertion_pseudocode": "// Static analysis check: grep validate.go for regexp.MustCompile or regexp.Compile; assert the backtick regex variable is declared at package scope (var backtickRe = regexp.MustCompile(...)); assert ValidateCrossFile body does not contain regexp.Compile calls for the backtick pattern"
+    },
+    {
+      "id": "TS-04-7",
+      "requirement_id": "04-REQ-5.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error per duplicate (requirement_id, test_spec_id) pair beyond the first occurrence in traceability entries.",
+      "preconditions": [
+        "A *Spec is constructed with three traceability entries all sharing requirement_id='04-REQ-1' and test_spec_id='TS-04-1'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "traceability": [
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-1"
+            },
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-1"
+            },
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-1"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entries": "Two ValidationEntry values with Category='integrity' identifying the pair ('04-REQ-1', 'TS-04-1')",
+        "result": "Exactly two integrity errors (N-1 = 3-1 = 2) for the duplicate pair"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); dup_errors = [e for e in entries if e.Category == 'integrity' and '04-REQ-1' in e.Message and 'TS-04-1' in e.Message]; assert len(dup_errors) == 2"
+    },
+    {
+      "id": "TS-04-8",
+      "requirement_id": "04-REQ-6.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error per subtask requirement_refs entry that does not resolve to a known requirement ID, criterion ID, or edge case ID.",
+      "preconditions": [
+        "A *Spec is constructed with requirements containing IDs '04-REQ-1', '04-REQ-1.1', '04-REQ-1.E1'",
+        "A subtask has requirement_refs: ['04-REQ-1', '04-REQ-UNKNOWN', '04-REQ-1.E1']",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "id": "04-REQ-1.1"
+                }
+              ],
+              "edge_cases": [
+                {
+                  "id": "04-REQ-1.E1"
+                }
+              ],
+              "id": "04-REQ-1"
+            }
+          ],
+          "tasks": [
+            {
+              "subtasks": [
+                {
+                  "requirement_refs": [
+                    "04-REQ-1",
+                    "04-REQ-UNKNOWN",
+                    "04-REQ-1.E1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "contains '04-REQ-UNKNOWN'"
+        },
+        "result": "Exactly one integrity error for '04-REQ-UNKNOWN'; no errors for '04-REQ-1' or '04-REQ-1.E1'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); ref_errors = [e for e in entries if e.Category == 'integrity' and '04-REQ-UNKNOWN' in e.Message]; assert len(ref_errors) == 1; valid_ref_errors = [e for e in entries if '04-REQ-1' in e.Message and 'UNKNOWN' not in e.Message]; assert len(valid_ref_errors) == 0"
+    },
+    {
+      "id": "TS-04-9",
+      "requirement_id": "04-REQ-7.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error for each criterion with ears_pattern='unwanted' that has a null or empty return_contract.",
+      "preconditions": [
+        "A *Spec is constructed with two criteria: one with ears_pattern='unwanted' and return_contract=null, one with ears_pattern='unwanted' and return_contract='returns error'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "ears_pattern": "unwanted",
+                  "id": "04-REQ-X.1",
+                  "return_contract": null
+                },
+                {
+                  "ears_pattern": "unwanted",
+                  "id": "04-REQ-X.2",
+                  "return_contract": "returns error"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "contains '04-REQ-X.1'"
+        },
+        "result": "Exactly one integrity error for '04-REQ-X.1'; no error for '04-REQ-X.2'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); unwanted_errors = [e for e in entries if e.Category == 'integrity' and '04-REQ-X.1' in e.Message]; assert len(unwanted_errors) == 1; no_error = [e for e in entries if '04-REQ-X.2' in e.Message]; assert len(no_error) == 0"
+    },
+    {
+      "id": "TS-04-10",
+      "requirement_id": "04-REQ-8.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns a schema-category error when the first task group does not have kind='tests'.",
+      "preconditions": [
+        "A *Spec is constructed with two task groups: first has kind='implementation', last has kind='wiring_verification'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "implementation",
+              "subtasks": []
+            },
+            {
+              "kind": "wiring_verification",
+              "subtasks": []
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "schema",
+          "Message": "non-empty string mentioning 'tests' or 'first group'"
+        },
+        "result": "At least one ValidationEntry with Category='schema' identifying the first group's incorrect kind"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); schema_errors = [e for e in entries if e.Category == 'schema']; first_group_errors = [e for e in schema_errors if 'tests' in e.Message.lower() or 'first' in e.Message.lower()]; assert len(first_group_errors) >= 1"
+    },
+    {
+      "id": "TS-04-11",
+      "requirement_id": "04-REQ-8.2",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns a schema-category error when the last task group does not have kind='wiring_verification'.",
+      "preconditions": [
+        "A *Spec is constructed with two task groups: first has kind='tests', last has kind='implementation'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": []
+            },
+            {
+              "kind": "implementation",
+              "subtasks": []
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "schema",
+          "Message": "non-empty string mentioning 'wiring_verification' or 'last group'"
+        },
+        "result": "At least one ValidationEntry with Category='schema' identifying the last group's incorrect kind"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); schema_errors = [e for e in entries if e.Category == 'schema']; last_group_errors = [e for e in schema_errors if 'wiring_verification' in e.Message.lower() or 'last' in e.Message.lower()]; assert len(last_group_errors) >= 1"
+    },
+    {
+      "id": "TS-04-12",
+      "requirement_id": "04-REQ-9.1",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error when all subtasks in the wiring_verification group have empty test_spec_refs.",
+      "preconditions": [
+        "A *Spec is constructed with a wiring_verification task group containing two subtasks, both with empty test_spec_refs",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": []
+            },
+            {
+              "kind": "wiring_verification",
+              "subtasks": [
+                {
+                  "test_spec_refs": [],
+                  "title": "subtask A"
+                },
+                {
+                  "test_spec_refs": [],
+                  "title": "subtask B"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "non-empty string about empty test_spec_refs in wiring group"
+        },
+        "result": "Exactly one integrity error indicating no subtask has test_spec_refs"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); wiring_ref_errors = [e for e in entries if e.Category == 'integrity' and 'test_spec_refs' in e.Message.lower()]; assert len(wiring_ref_errors) >= 1"
+    },
+    {
+      "id": "TS-04-13",
+      "requirement_id": "04-REQ-9.2",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error when no test_spec_refs entry in the wiring_verification group matches the pattern TS-*-SMOKE-*.",
+      "preconditions": [
+        "A *Spec is constructed with a wiring_verification group whose subtasks have test_spec_refs=['TS-04-1', 'TS-04-2'] (no SMOKE entries)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": []
+            },
+            {
+              "kind": "wiring_verification",
+              "subtasks": [
+                {
+                  "test_spec_refs": [
+                    "TS-04-1",
+                    "TS-04-2"
+                  ],
+                  "title": "verify"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "non-empty string about missing SMOKE reference"
+        },
+        "result": "Exactly one integrity error indicating no smoke test reference found"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); smoke_errors = [e for e in entries if e.Category == 'integrity' and 'smoke' in e.Message.lower()]; assert len(smoke_errors) >= 1"
+    },
+    {
+      "id": "TS-04-14",
+      "requirement_id": "04-REQ-9.3",
+      "kind": "unit",
+      "description": "ValidateCrossFile returns one integrity error when no subtask in the wiring_verification group mentions 'stub' or 'dead' in its title or details.",
+      "preconditions": [
+        "A *Spec is constructed with a wiring_verification group whose subtasks have titles and details that do not contain 'stub' or 'dead'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": []
+            },
+            {
+              "kind": "wiring_verification",
+              "subtasks": [
+                {
+                  "details": "Execute all integration tests",
+                  "test_spec_refs": [
+                    "TS-04-SMOKE-1"
+                  ],
+                  "title": "Run smoke tests"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "non-empty string about missing stub or dead-code audit"
+        },
+        "result": "Exactly one integrity error indicating no stub/dead-code audit subtask found"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); stub_errors = [e for e in entries if e.Category == 'integrity' and ('stub' in e.Message.lower() or 'dead' in e.Message.lower())]; assert len(stub_errors) >= 1"
+    },
+    {
+      "id": "TS-04-15",
+      "requirement_id": "04-REQ-10.1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec returns one integrity error per mismatched API symbol signature between two specs connected by a DependencyEdge.",
+      "preconditions": [
+        "Two *Spec values are constructed: specA declares external API symbol 'Foo' with signature 'func Foo() int', specB declares 'Foo' with signature 'func Foo() string'",
+        "A DependencyGraph is constructed with an edge from specA to specB",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "DependencyGraph with edge specA -> specB",
+        "specs": {
+          "specA": {
+            "external_apis": [
+              {
+                "symbols": [
+                  {
+                    "name": "Foo",
+                    "signature": "func Foo() int"
+                  }
+                ]
+              }
+            ]
+          },
+          "specB": {
+            "external_apis": [
+              {
+                "symbols": [
+                  {
+                    "name": "Foo",
+                    "signature": "func Foo() string"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "contains 'Foo' and both signature values"
+        },
+        "result": "Exactly one integrity error identifying symbol 'Foo', both spec IDs, and the differing signatures"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); mismatch_errors = [e for e in entries if e.Category == 'integrity' and 'Foo' in e.Message]; assert len(mismatch_errors) == 1; assert 'func Foo() int' in mismatch_errors[0].Message or 'func Foo() string' in mismatch_errors[0].Message"
+    },
+    {
+      "id": "TS-04-16",
+      "requirement_id": "04-REQ-11.1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec returns one integrity error per depends_on_spec value that does not match a key in the provided spec map.",
+      "preconditions": [
+        "A spec map contains one spec with id='specA'",
+        "specA has a task dependency with depends_on_spec='specZ' (not in the map)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "empty DependencyGraph",
+        "specs": {
+          "specA": {
+            "tasks": [
+              {
+                "depends_on_spec": "specZ"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "contains 'specZ'"
+        },
+        "result": "Exactly one integrity error identifying 'specZ' as unknown and 'specA' as the referencing spec"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); unknown_errors = [e for e in entries if e.Category == 'integrity' and 'specZ' in e.Message]; assert len(unknown_errors) == 1"
+    },
+    {
+      "id": "TS-04-17",
+      "requirement_id": "04-REQ-12.1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec returns one integrity error when a downstream spec's criterion references a symbol with a different return_contract than the upstream spec's definition.",
+      "preconditions": [
+        "specA (upstream) has a criterion with action containing backtick-wrapped Foo and return_contract='returns int'",
+        "specB (downstream) has a criterion with action containing backtick-wrapped Foo and return_contract='returns string'",
+        "A DependencyGraph has an edge specA -> specB",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "DependencyGraph with edge specA -> specB",
+        "specs": {
+          "specA": {
+            "requirements": [
+              {
+                "acceptance_criteria": [
+                  {
+                    "action": "call `Foo`",
+                    "return_contract": "returns int"
+                  }
+                ]
+              }
+            ]
+          },
+          "specB": {
+            "requirements": [
+              {
+                "acceptance_criteria": [
+                  {
+                    "action": "call `Foo`",
+                    "return_contract": "returns string"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "contains 'Foo' and contract mismatch details"
+        },
+        "result": "Exactly one integrity error identifying 'Foo', both specs, and the differing contracts"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); contract_errors = [e for e in entries if e.Category == 'integrity' and 'Foo' in e.Message]; assert len(contract_errors) == 1"
+    },
+    {
+      "id": "TS-04-18",
+      "requirement_id": "04-REQ-13.1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec returns one integrity error per execution_path whose actor matches a spec_id in the DependencyGraph but lacks a corresponding smoke_test.",
+      "preconditions": [
+        "specA has an execution_path with id='04-PATH-X' whose steps include actor='specB'",
+        "specB is present in the spec map and DependencyGraph",
+        "specA's test_spec has no smoke_test with execution_path_id='04-PATH-X' or actor reference to specB",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "DependencyGraph containing specA and specB",
+        "specs": {
+          "specA": {
+            "execution_paths": [
+              {
+                "id": "04-PATH-X",
+                "steps": [
+                  {
+                    "action": "do something",
+                    "actor": "specB"
+                  }
+                ]
+              }
+            ],
+            "test_spec": {
+              "smoke_tests": []
+            }
+          },
+          "specB": {}
+        }
+      },
+      "expected": {
+        "entry": {
+          "Category": "integrity",
+          "Message": "contains '04-PATH-X' or 'specB'"
+        },
+        "result": "Exactly one integrity error identifying '04-PATH-X' and actor 'specB' as missing boundary coverage"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); boundary_errors = [e for e in entries if e.Category == 'integrity' and ('04-PATH-X' in e.Message or 'specB' in e.Message)]; assert len(boundary_errors) >= 1"
+    },
+    {
+      "id": "TS-04-19",
+      "requirement_id": "04-REQ-14.1",
+      "kind": "unit",
+      "description": "Validate appends a warning when a task group's total test_spec_refs count across all subtasks exceeds 15.",
+      "preconditions": [
+        "A *Spec is constructed with one task group containing three subtasks with test_spec_refs counts of 6, 6, and 5 (total=17)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": [
+                {
+                  "test_spec_refs": [
+                    "a",
+                    "b",
+                    "c",
+                    "d",
+                    "e",
+                    "f"
+                  ]
+                },
+                {
+                  "test_spec_refs": [
+                    "g",
+                    "h",
+                    "i",
+                    "j",
+                    "k",
+                    "l"
+                  ]
+                },
+                {
+                  "test_spec_refs": [
+                    "m",
+                    "n",
+                    "o",
+                    "p",
+                    "q"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "ValidationResult.Warnings contains at least one entry mentioning the group and count 17",
+        "warning": {
+          "Message": "non-empty string identifying the group and count > 15"
+        }
+      },
+      "assertion_pseudocode": "result = spec.Validate(); warnings = result.Warnings; group_warnings = [w for w in warnings if '17' in w.Message or 'test_spec_refs' in w.Message.lower()]; assert len(group_warnings) >= 1"
+    },
+    {
+      "id": "TS-04-20",
+      "requirement_id": "04-REQ-15.1",
+      "kind": "unit",
+      "description": "Validate appends a warning when a task group has more than 6 non-verification subtasks.",
+      "preconditions": [
+        "A *Spec is constructed with one task group containing 7 non-verification subtasks",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": [
+                {
+                  "title": "s1"
+                },
+                {
+                  "title": "s2"
+                },
+                {
+                  "title": "s3"
+                },
+                {
+                  "title": "s4"
+                },
+                {
+                  "title": "s5"
+                },
+                {
+                  "title": "s6"
+                },
+                {
+                  "title": "s7"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "ValidationResult.Warnings contains at least one entry mentioning the group and subtask count",
+        "warning": {
+          "Message": "non-empty string identifying the group with count > 6"
+        }
+      },
+      "assertion_pseudocode": "result = spec.Validate(); warnings = result.Warnings; count_warnings = [w for w in warnings if '7' in w.Message or 'subtask' in w.Message.lower()]; assert len(count_warnings) >= 1"
+    },
+    {
+      "id": "TS-04-21",
+      "requirement_id": "04-REQ-16.1",
+      "kind": "unit",
+      "description": "Validate appends a warning when a single subtask has more than 8 test_spec_refs entries.",
+      "preconditions": [
+        "A *Spec is constructed with one subtask having 9 test_spec_refs entries",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": [
+                {
+                  "test_spec_refs": [
+                    "a",
+                    "b",
+                    "c",
+                    "d",
+                    "e",
+                    "f",
+                    "g",
+                    "h",
+                    "i"
+                  ],
+                  "title": "big subtask"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "ValidationResult.Warnings contains at least one entry mentioning the subtask and count 9",
+        "warning": {
+          "Message": "non-empty string identifying the subtask with count > 8"
+        }
+      },
+      "assertion_pseudocode": "result = spec.Validate(); warnings = result.Warnings; subtask_warnings = [w for w in warnings if '9' in w.Message or 'test_spec_refs' in w.Message.lower()]; assert len(subtask_warnings) >= 1"
+    },
+    {
+      "id": "TS-04-22",
+      "requirement_id": "04-REQ-17.1",
+      "kind": "unit",
+      "description": "Validate appends a warning when a criterion has a non-null error_condition or error-indicating action keyword and a null return_contract.",
+      "preconditions": [
+        "A *Spec is constructed with one criterion having error_condition='network timeout' and return_contract=null",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "handle the error",
+                  "error_condition": "network timeout",
+                  "id": "04-REQ-Y.1",
+                  "return_contract": null
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "ValidationResult.Warnings contains at least one entry identifying criterion '04-REQ-Y.1'",
+        "warning": {
+          "Message": "non-empty string about missing return_contract on error path"
+        }
+      },
+      "assertion_pseudocode": "result = spec.Validate(); warnings = result.Warnings; error_path_warnings = [w for w in warnings if '04-REQ-Y.1' in w.Message or 'return_contract' in w.Message.lower()]; assert len(error_path_warnings) >= 1"
+    },
+    {
+      "id": "TS-04-23",
+      "requirement_id": "04-REQ-18.1",
+      "kind": "unit",
+      "description": "Validate appends one warning per vague word occurrence found in criterion fields, identifying the term and the field.",
+      "preconditions": [
+        "A *Spec is constructed with one criterion whose action field contains 'handle appropriately' and whose trigger field contains 'properly configured'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "handle appropriately",
+                  "id": "04-REQ-Z.1",
+                  "trigger": "properly configured"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "ValidationResult.Warnings contains two entries: one for 'appropriately' in action, one for 'properly' in trigger",
+        "warnings": [
+          {
+            "Message": "contains 'appropriately' and 'action'"
+          },
+          {
+            "Message": "contains 'properly' and 'trigger'"
+          }
+        ]
+      },
+      "assertion_pseudocode": "result = spec.Validate(); warnings = result.Warnings; vague_warnings = [w for w in warnings if 'appropriately' in w.Message.lower() or 'properly' in w.Message.lower()]; assert len(vague_warnings) == 2"
+    },
+    {
+      "id": "TS-04-24",
+      "requirement_id": "04-REQ-18.2",
+      "kind": "unit",
+      "description": "The vague language detection regex is compiled at package initialization time, not inside the Validate function body.",
+      "preconditions": [
+        "The golang/ afspec package source code is available for inspection",
+        "The package compiles without errors"
+      ],
+      "input": {},
+      "expected": {
+        "result": "Package-level var or init() block declares the vague language regex; no regexp.Compile or regexp.MustCompile call inside Validate function body for the vague language pattern"
+      },
+      "assertion_pseudocode": "// Static analysis check: grep validate.go for regexp.MustCompile or regexp.Compile; assert the vague language regex variable is declared at package scope (var vagueRe = regexp.MustCompile(...)); assert Validate body does not contain regexp.Compile calls for the vague language pattern"
+    },
+    {
+      "id": "TS-04-25",
+      "requirement_id": "04-REQ-19.1",
+      "kind": "unit",
+      "description": "Validate appends a scope limit warning when a spec has more than 10 requirements.",
+      "preconditions": [
+        "A *Spec is constructed with 11 requirements",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "id": "R1"
+            },
+            {
+              "id": "R2"
+            },
+            {
+              "id": "R3"
+            },
+            {
+              "id": "R4"
+            },
+            {
+              "id": "R5"
+            },
+            {
+              "id": "R6"
+            },
+            {
+              "id": "R7"
+            },
+            {
+              "id": "R8"
+            },
+            {
+              "id": "R9"
+            },
+            {
+              "id": "R10"
+            },
+            {
+              "id": "R11"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "ValidationResult.Warnings contains at least one entry suggesting the spec may be too large and recommending a split",
+        "warning": {
+          "Message": "non-empty string about spec size or splitting"
+        }
+      },
+      "assertion_pseudocode": "result = spec.Validate(); warnings = result.Warnings; scope_warnings = [w for w in warnings if 'split' in w.Message.lower() or 'large' in w.Message.lower() or '11' in w.Message]; assert len(scope_warnings) >= 1"
+    },
+    {
+      "id": "TS-04-26",
+      "requirement_id": "04-REQ-20.1",
+      "kind": "unit",
+      "description": "ValidateStructured returns a map[string]any with keys 'errors', 'warnings', and 'valid', where 'valid' is true when errors is empty.",
+      "preconditions": [
+        "A *Spec is constructed with no validation errors and no warnings",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": "valid spec with no errors or warnings"
+      },
+      "expected": {
+        "result": "map[string]any with keys 'errors' (empty slice), 'warnings' (empty slice), 'valid' (true)"
+      },
+      "assertion_pseudocode": "output = spec.ValidateStructured(); assert output['valid'] == true; assert type(output['errors']) == slice; assert len(output['errors']) == 0; assert type(output['warnings']) == slice; assert len(output['warnings']) == 0"
+    },
+    {
+      "id": "TS-04-27",
+      "requirement_id": "04-REQ-20.2",
+      "kind": "unit",
+      "description": "Each error map in ValidateStructured output includes 'category', 'rule', 'message', 'file', and 'path' fields, with 'category' set to 'schema' or 'integrity' as appropriate.",
+      "preconditions": [
+        "A *Spec is constructed that triggers both a schema error (EARS pattern violation) and an integrity error (missing property test coverage)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": "spec with one schema error and one integrity error"
+      },
+      "expected": {
+        "result": "Each error map contains non-empty 'category', 'rule', 'message', 'file', 'path' keys; schema error has category='schema'; integrity error has category='integrity'"
+      },
+      "assertion_pseudocode": "output = spec.ValidateStructured(); errors = output['errors']; for e in errors: assert 'category' in e; assert 'rule' in e; assert 'message' in e; assert 'file' in e; assert 'path' in e; schema_errors = [e for e in errors if e['category'] == 'schema']; assert len(schema_errors) >= 1; integrity_errors = [e for e in errors if e['category'] == 'integrity']; assert len(integrity_errors) >= 1"
+    },
+    {
+      "id": "TS-04-28",
+      "requirement_id": "04-REQ-20.3",
+      "kind": "unit",
+      "description": "Each warning map in ValidateStructured output includes 'message' and 'entity_id' fields.",
+      "preconditions": [
+        "A *Spec is constructed that triggers at least one warning (e.g. more than 10 requirements)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": "spec with 11 requirements triggering a scope limit warning"
+      },
+      "expected": {
+        "result": "Each warning map contains 'message' and 'entity_id' keys with non-empty values"
+      },
+      "assertion_pseudocode": "output = spec.ValidateStructured(); warnings = output['warnings']; assert len(warnings) >= 1; for w in warnings: assert 'message' in w; assert 'entity_id' in w; assert w['message'] != ''"
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-04-P1",
+      "property_id": "04-PROP-1",
+      "validates": [
+        "04-REQ-1.1",
+        "04-REQ-1.E2"
+      ],
+      "description": "For any spec with N correctness_properties and M property_tests, ValidateCrossFile returns exactly one integrity error per property whose property_id does not appear in any property_test.",
+      "for_any_strategy": "Generate specs with 0-10 correctness_properties (random IDs) and 0-10 property_tests (random property_id values drawn from a mix of the property IDs and unrelated IDs); enumerate all uncovered property IDs (those not referenced by any property_test).",
+      "invariant_check": "uncovered = {p.id for p in spec.correctness_properties} - {pt.property_id for pt in spec.test_spec.property_tests}; entries = spec.ValidateCrossFile(); prop_errors = [e for e in entries if e.Category == 'integrity' and e.RequirementID in uncovered]; assert len(prop_errors) == len(uncovered); assert all(e.RequirementID in uncovered for e in prop_errors)"
+    },
+    {
+      "id": "TS-04-P2",
+      "property_id": "04-PROP-2",
+      "validates": [
+        "04-REQ-2.1",
+        "04-REQ-2.E2"
+      ],
+      "description": "For any spec with N execution_paths and M smoke_tests, ValidateCrossFile returns exactly one integrity error per execution_path whose execution_path_id does not appear in any smoke_test.",
+      "for_any_strategy": "Generate specs with 0-10 execution_paths (random IDs) and 0-10 smoke_tests (random execution_path_id values drawn from a mix of the path IDs and unrelated IDs); enumerate all uncovered path IDs.",
+      "invariant_check": "uncovered = {p.id for p in spec.execution_paths} - {st.execution_path_id for st in spec.test_spec.smoke_tests}; entries = spec.ValidateCrossFile(); path_errors = [e for e in entries if e.Category == 'integrity' and any(uid in e.Message for uid in uncovered)]; assert len(path_errors) == len(uncovered)"
+    },
+    {
+      "id": "TS-04-P3",
+      "property_id": "04-PROP-3",
+      "validates": [
+        "04-REQ-4.1",
+        "04-REQ-4.E2",
+        "04-REQ-4.E3",
+        "04-REQ-4.E4"
+      ],
+      "description": "For any backtick-wrapped term extracted from a criterion or property field, the term is excluded from glossary checks if and only if it is numeric, a single character, a quoted string, or longer than 80 characters.",
+      "for_any_strategy": "Generate terms from four categories: (a) numeric strings including negatives and decimals, (b) single-character strings, (c) strings wrapped in single or double quotes, (d) strings of length 81+, (e) normal multi-character non-numeric strings of length 2-80; embed each as a backtick term in a criterion action field; use an empty glossary.",
+      "invariant_check": "for each term in categories (a)-(d): entries = spec.ValidateCrossFile(); assert no entry has term in its Message; for each term in category (e): assert exactly one entry has term in its Message and Category == 'integrity'"
+    },
+    {
+      "id": "TS-04-P4",
+      "property_id": "04-PROP-4",
+      "validates": [
+        "04-REQ-5.1",
+        "04-REQ-5.E1"
+      ],
+      "description": "For any spec with any number of traceability entries, ValidateCrossFile returns exactly N-1 errors for any (requirement_id, test_spec_id) pair appearing N times (N>1), and zero errors for pairs appearing exactly once.",
+      "for_any_strategy": "Generate traceability entry lists where each (requirement_id, test_spec_id) pair appears between 1 and 5 times; use random requirement_id and test_spec_id strings; track expected duplicate counts per pair.",
+      "invariant_check": "from collections import Counter; pair_counts = Counter((e.requirement_id, e.test_spec_id) for e in spec.traceability); entries = spec.ValidateCrossFile(); dup_errors = [e for e in entries if e.Category == 'integrity' and 'duplicate' in e.Message.lower()]; expected_total = sum(max(0, c-1) for c in pair_counts.values()); assert len(dup_errors) == expected_total"
+    },
+    {
+      "id": "TS-04-P5",
+      "property_id": "04-PROP-5",
+      "validates": [
+        "04-REQ-20.1",
+        "04-REQ-20.E1",
+        "04-REQ-20.E2"
+      ],
+      "description": "For any spec, the 'valid' field in ValidateStructured output is true if and only if the 'errors' slice is empty.",
+      "for_any_strategy": "Generate specs ranging from fully valid (no violations) to specs with 1-5 injected violations (missing property tests, duplicate traceability, unwanted criteria without return_contract); call ValidateStructured on each.",
+      "invariant_check": "output = spec.ValidateStructured(); assert output['valid'] == (len(output['errors']) == 0); assert type(output['valid']) == bool"
+    },
+    {
+      "id": "TS-04-P6",
+      "property_id": "04-PROP-6",
+      "validates": [
+        "04-REQ-14.E1",
+        "04-REQ-15.E1",
+        "04-REQ-16.E1"
+      ],
+      "description": "Warning rules for group test_spec_refs (>15), group subtask count (>6), and subtask test_spec_refs (>8) produce no warning at exactly the threshold value and exactly one warning at threshold+1.",
+      "for_any_strategy": "For each of the three warning rules, generate specs at exactly the threshold value and at threshold+1; use random but valid subtask and test_spec_refs content to fill counts.",
+      "invariant_check": "// Group refs ceiling: spec_at_15 = spec with group total refs == 15; result = spec_at_15.Validate(); assert no ceiling warning; spec_at_16 = spec with group total refs == 16; result = spec_at_16.Validate(); assert exactly one ceiling warning; // Group subtask count: spec_at_6 = spec with 6 non-verification subtasks; assert no count warning; spec_at_7 = spec with 7; assert exactly one count warning; // Subtask refs ceiling: spec_at_8 = spec with subtask having 8 refs; assert no warning; spec_at_9 = spec with 9 refs; assert exactly one warning"
+    },
+    {
+      "id": "TS-04-P7",
+      "property_id": "04-PROP-7",
+      "validates": [
+        "04-REQ-7.1",
+        "04-REQ-7.E1"
+      ],
+      "description": "ValidateCrossFile returns exactly one integrity error for each criterion with ears_pattern='unwanted' and a null or empty return_contract, and zero errors for unwanted criteria with a non-empty return_contract.",
+      "for_any_strategy": "Generate specs with 0-10 criteria having ears_pattern='unwanted'; randomly assign return_contract as null, empty string, or a non-empty string; track which criteria should produce errors.",
+      "invariant_check": "missing = [c for c in all_criteria if c.ears_pattern == 'unwanted' and (c.return_contract is null or c.return_contract == '')]; entries = spec.ValidateCrossFile(); unwanted_errors = [e for e in entries if e.Category == 'integrity' and any(c.id in e.Message for c in missing)]; assert len(unwanted_errors) == len(missing); covered = [c for c in all_criteria if c.ears_pattern == 'unwanted' and c.return_contract not in [null, '']]; covered_errors = [e for e in entries if any(c.id in e.Message for c in covered)]; assert len(covered_errors) == 0"
+    }
+  ],
+  "edge_case_tests": [
+    {
+      "id": "TS-04-E1",
+      "requirement_id": "04-REQ-1.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no property coverage errors when the spec has no correctness_properties.",
+      "preconditions": [
+        "A *Spec is constructed with an empty correctness_properties list",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "correctness_properties": [],
+          "test_spec": {
+            "property_tests": []
+          }
+        }
+      },
+      "expected": {
+        "result": "No ValidationEntry with Category='integrity' related to property coverage rule"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); prop_errors = [e for e in entries if e.Category == 'integrity' and 'property' in e.Message.lower()]; assert len(prop_errors) == 0"
+    },
+    {
+      "id": "TS-04-E2",
+      "requirement_id": "04-REQ-1.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile treats all correctness_properties as uncovered and produces one error per property when the spec has no test_spec.",
+      "preconditions": [
+        "A *Spec is constructed with two correctness_properties and a nil or empty test_spec",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "correctness_properties": [
+            {
+              "id": "04-PROP-A"
+            },
+            {
+              "id": "04-PROP-B"
+            }
+          ],
+          "test_spec": null
+        }
+      },
+      "expected": {
+        "result": "Two integrity errors, one for each correctness_property ID"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); prop_errors = [e for e in entries if e.Category == 'integrity' and ('04-PROP-A' in e.Message or '04-PROP-B' in e.RequirementID)]; assert len(prop_errors) == 2"
+    },
+    {
+      "id": "TS-04-E3",
+      "requirement_id": "04-REQ-1.E3",
+      "kind": "unit",
+      "description": "ValidateCrossFile treats a correctness_property as covered when multiple property_tests share the same property_id, producing no error.",
+      "preconditions": [
+        "A *Spec is constructed with one correctness_property (id: '04-PROP-A')",
+        "The test_spec contains two property_tests both with property_id='04-PROP-A'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "correctness_properties": [
+            {
+              "id": "04-PROP-A"
+            }
+          ],
+          "test_spec": {
+            "property_tests": [
+              {
+                "id": "TS-04-P1",
+                "property_id": "04-PROP-A"
+              },
+              {
+                "id": "TS-04-P2",
+                "property_id": "04-PROP-A"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "result": "No integrity error for '04-PROP-A'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); prop_errors = [e for e in entries if '04-PROP-A' in e.RequirementID or '04-PROP-A' in e.Message]; assert len(prop_errors) == 0"
+    },
+    {
+      "id": "TS-04-E4",
+      "requirement_id": "04-REQ-2.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no smoke test coverage errors when the spec has no execution_paths.",
+      "preconditions": [
+        "A *Spec is constructed with an empty execution_paths list",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "execution_paths": [],
+          "test_spec": {
+            "smoke_tests": []
+          }
+        }
+      },
+      "expected": {
+        "result": "No ValidationEntry related to smoke test coverage rule"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); smoke_errors = [e for e in entries if e.Category == 'integrity' and 'smoke' in e.Message.lower()]; assert len(smoke_errors) == 0"
+    },
+    {
+      "id": "TS-04-E5",
+      "requirement_id": "04-REQ-2.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile treats all execution_paths as uncovered and produces one error per path when the spec has no test_spec.",
+      "preconditions": [
+        "A *Spec is constructed with two execution_paths and a nil or empty test_spec",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "execution_paths": [
+            {
+              "id": "04-PATH-A"
+            },
+            {
+              "id": "04-PATH-B"
+            }
+          ],
+          "test_spec": null
+        }
+      },
+      "expected": {
+        "result": "Two integrity errors, one for each execution_path ID"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); path_errors = [e for e in entries if e.Category == 'integrity' and ('04-PATH-A' in e.Message or '04-PATH-B' in e.Message)]; assert len(path_errors) == 2"
+    },
+    {
+      "id": "TS-04-E6",
+      "requirement_id": "04-REQ-3.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces a separate error for each occurrence when the same unresolvable test_spec_id appears in both a traceability entry and a subtask test_spec_refs.",
+      "preconditions": [
+        "A *Spec is constructed with a traceability entry and a subtask test_spec_refs both referencing 'TS-04-GHOST'",
+        "The test_spec contains no entry with id='TS-04-GHOST'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "subtasks": [
+                {
+                  "test_spec_refs": [
+                    "TS-04-GHOST"
+                  ]
+                }
+              ]
+            }
+          ],
+          "test_spec": {
+            "edge_case_tests": [],
+            "property_tests": [],
+            "smoke_tests": [],
+            "test_cases": []
+          },
+          "traceability": [
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-GHOST"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "Two integrity errors for 'TS-04-GHOST', one from traceability check and one from subtask refs check"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); ghost_errors = [e for e in entries if e.Category == 'integrity' and 'TS-04-GHOST' in e.Message]; assert len(ghost_errors) == 2"
+    },
+    {
+      "id": "TS-04-E7",
+      "requirement_id": "04-REQ-3.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no test_spec_id resolution errors when the spec has no traceability entries and no subtask test_spec_refs.",
+      "preconditions": [
+        "A *Spec is constructed with empty traceability and all subtasks having empty test_spec_refs",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "subtasks": [
+                {
+                  "test_spec_refs": []
+                }
+              ]
+            }
+          ],
+          "traceability": []
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to test_spec_id resolution rule"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); resolution_errors = [e for e in entries if e.Category == 'integrity' and 'TS-' in e.Message]; assert len(resolution_errors) == 0"
+    },
+    {
+      "id": "TS-04-E8",
+      "requirement_id": "04-REQ-4.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces one error per occurrence when the same missing backtick term appears in multiple criterion fields across multiple requirements.",
+      "preconditions": [
+        "A *Spec is constructed with two requirements each having a criterion with action containing backtick-wrapped MissingTerm",
+        "The spec glossary does not contain 'MissingTerm'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "glossary": {},
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "call `MissingTerm`"
+                }
+              ]
+            },
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "invoke `MissingTerm` again"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "Two integrity errors, one per occurrence of 'MissingTerm'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); term_errors = [e for e in entries if e.Category == 'integrity' and 'MissingTerm' in e.Message]; assert len(term_errors) == 2"
+    },
+    {
+      "id": "TS-04-E9",
+      "requirement_id": "04-REQ-4.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile excludes numeric backtick terms (including negatives and decimals) from glossary checks and produces no error for them.",
+      "preconditions": [
+        "A *Spec is constructed with criteria containing backtick terms -1, 3.14, and 0",
+        "The spec glossary is empty",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "glossary": {},
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "use value `-1` or `3.14` or `0`"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No integrity errors for -1, 3.14, or 0"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); numeric_errors = [e for e in entries if e.Category == 'integrity' and any(n in e.Message for n in ['-1', '3.14', '0'])]; assert len(numeric_errors) == 0"
+    },
+    {
+      "id": "TS-04-E10",
+      "requirement_id": "04-REQ-4.E3",
+      "kind": "unit",
+      "description": "ValidateCrossFile excludes single-character backtick terms from glossary checks and produces no error for them.",
+      "preconditions": [
+        "A *Spec is constructed with a criterion containing backtick term 'x'",
+        "The spec glossary is empty",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "glossary": {},
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "use value `x`"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No integrity error for single-character term x"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); single_char_errors = [e for e in entries if e.Category == 'integrity' and \"'x'\" in e.Message]; assert len(single_char_errors) == 0"
+    },
+    {
+      "id": "TS-04-E11",
+      "requirement_id": "04-REQ-4.E4",
+      "kind": "unit",
+      "description": "ValidateCrossFile excludes backtick terms longer than 80 characters from glossary checks and produces no error for them.",
+      "preconditions": [
+        "A *Spec is constructed with a criterion containing a backtick term that is 81 characters long",
+        "The spec glossary is empty",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "glossary": {},
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "use `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX`"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No integrity error for the 81-character term"
+      },
+      "assertion_pseudocode": "long_term = 'a' * 80 + 'X'; entries = spec.ValidateCrossFile(); long_errors = [e for e in entries if e.Category == 'integrity' and long_term in e.Message]; assert len(long_errors) == 0"
+    },
+    {
+      "id": "TS-04-E12",
+      "requirement_id": "04-REQ-4.E5",
+      "kind": "unit",
+      "description": "ValidateCrossFile treats every non-excluded backtick term as missing and produces one error per term occurrence when the spec has an empty glossary.",
+      "preconditions": [
+        "A *Spec is constructed with criteria containing backtick terms 'ValidTerm' and 'AnotherTerm' (both non-excluded)",
+        "The spec glossary is empty",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "glossary": {},
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "call `ValidTerm` and `AnotherTerm`"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "Two integrity errors, one for 'ValidTerm' and one for 'AnotherTerm'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); term_errors = [e for e in entries if e.Category == 'integrity' and ('ValidTerm' in e.Message or 'AnotherTerm' in e.Message)]; assert len(term_errors) == 2"
+    },
+    {
+      "id": "TS-04-E13",
+      "requirement_id": "04-REQ-5.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces N-1 errors when the same (requirement_id, test_spec_id) pair appears N times (N=4, so 3 errors).",
+      "preconditions": [
+        "A *Spec is constructed with four traceability entries all sharing requirement_id='04-REQ-1' and test_spec_id='TS-04-1'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "traceability": [
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-1"
+            },
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-1"
+            },
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-1"
+            },
+            {
+              "requirement_id": "04-REQ-1",
+              "test_spec_id": "TS-04-1"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "Exactly three integrity errors (N-1 = 4-1 = 3) for the duplicate pair"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); dup_errors = [e for e in entries if e.Category == 'integrity' and '04-REQ-1' in e.Message and 'TS-04-1' in e.Message]; assert len(dup_errors) == 3"
+    },
+    {
+      "id": "TS-04-E14",
+      "requirement_id": "04-REQ-5.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no deduplication errors when the spec has no traceability entries.",
+      "preconditions": [
+        "A *Spec is constructed with an empty traceability list",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "traceability": []
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to traceability deduplication rule"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); dup_errors = [e for e in entries if e.Category == 'integrity' and 'duplicate' in e.Message.lower()]; assert len(dup_errors) == 0"
+    },
+    {
+      "id": "TS-04-E15",
+      "requirement_id": "04-REQ-6.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no requirement_refs resolution errors when the spec has no subtasks or no requirement_refs.",
+      "preconditions": [
+        "A *Spec is constructed with task groups containing subtasks that all have empty requirement_refs",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "subtasks": [
+                {
+                  "requirement_refs": [],
+                  "title": "s1"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to requirement_refs resolution rule"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); ref_errors = [e for e in entries if e.Category == 'integrity' and 'requirement_ref' in e.Message.lower()]; assert len(ref_errors) == 0"
+    },
+    {
+      "id": "TS-04-E16",
+      "requirement_id": "04-REQ-6.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile treats an edge case ID (e.g. '04-REQ-1.E1') as a valid resolved reference and produces no error for it.",
+      "preconditions": [
+        "A *Spec is constructed with a requirement '04-REQ-1' having edge case '04-REQ-1.E1'",
+        "A subtask has requirement_refs=['04-REQ-1.E1']",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "edge_cases": [
+                {
+                  "id": "04-REQ-1.E1"
+                }
+              ],
+              "id": "04-REQ-1"
+            }
+          ],
+          "tasks": [
+            {
+              "subtasks": [
+                {
+                  "requirement_refs": [
+                    "04-REQ-1.E1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No integrity error for '04-REQ-1.E1'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); edge_case_errors = [e for e in entries if '04-REQ-1.E1' in e.Message]; assert len(edge_case_errors) == 0"
+    },
+    {
+      "id": "TS-04-E17",
+      "requirement_id": "04-REQ-7.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile treats an empty string return_contract the same as null for unwanted-pattern criteria and produces one integrity error.",
+      "preconditions": [
+        "A *Spec is constructed with a criterion having ears_pattern='unwanted' and return_contract='' (empty string)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "ears_pattern": "unwanted",
+                  "id": "04-REQ-W.1",
+                  "return_contract": ""
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "One integrity error for '04-REQ-W.1' treating empty string as missing return_contract"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); unwanted_errors = [e for e in entries if e.Category == 'integrity' and '04-REQ-W.1' in e.Message]; assert len(unwanted_errors) == 1"
+    },
+    {
+      "id": "TS-04-E18",
+      "requirement_id": "04-REQ-7.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no unwanted return_contract errors when the spec has no unwanted-pattern criteria.",
+      "preconditions": [
+        "A *Spec is constructed with criteria all having ears_pattern='event_driven' or 'ubiquitous'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "ears_pattern": "event_driven",
+                  "id": "04-REQ-V.1",
+                  "return_contract": null
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to unwanted return_contract rule"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); unwanted_errors = [e for e in entries if e.Category == 'integrity' and 'unwanted' in e.Message.lower()]; assert len(unwanted_errors) == 0"
+    },
+    {
+      "id": "TS-04-E19",
+      "requirement_id": "04-REQ-8.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no task group structure errors when the spec has no task groups.",
+      "preconditions": [
+        "A *Spec is constructed with an empty tasks list",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": []
+        }
+      },
+      "expected": {
+        "result": "No schema errors related to task group structure rule"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); schema_errors = [e for e in entries if e.Category == 'schema' and ('tests' in e.Message.lower() or 'wiring' in e.Message.lower())]; assert len(schema_errors) == 0"
+    },
+    {
+      "id": "TS-04-E20",
+      "requirement_id": "04-REQ-8.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile checks a single task group against both first-group and last-group rules and produces up to two schema errors if it satisfies neither.",
+      "preconditions": [
+        "A *Spec is constructed with exactly one task group having kind='implementation' (neither 'tests' nor 'wiring_verification')",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "implementation",
+              "subtasks": []
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "Two schema errors: one for first group not being 'tests', one for last group not being 'wiring_verification'"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); schema_errors = [e for e in entries if e.Category == 'schema']; assert len(schema_errors) == 2"
+    },
+    {
+      "id": "TS-04-E21",
+      "requirement_id": "04-REQ-9.E1",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces no wiring verification semantic errors when the spec has no task groups or no wiring_verification group.",
+      "preconditions": [
+        "A *Spec is constructed with task groups but none having kind='wiring_verification'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": []
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to wiring verification semantics rules"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); wiring_errors = [e for e in entries if e.Category == 'integrity' and ('smoke' in e.Message.lower() or 'stub' in e.Message.lower() or 'wiring' in e.Message.lower())]; assert len(wiring_errors) == 0"
+    },
+    {
+      "id": "TS-04-E22",
+      "requirement_id": "04-REQ-9.E2",
+      "kind": "unit",
+      "description": "ValidateCrossFile produces three integrity errors (no refs, no smoke ref, no stub mention) when the wiring_verification group has no subtasks.",
+      "preconditions": [
+        "A *Spec is constructed with a wiring_verification task group containing zero subtasks",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": []
+            },
+            {
+              "kind": "wiring_verification",
+              "subtasks": []
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "Exactly three integrity errors: one for empty test_spec_refs, one for no smoke test ref, one for no stub/dead mention"
+      },
+      "assertion_pseudocode": "entries = spec.ValidateCrossFile(); wiring_errors = [e for e in entries if e.Category == 'integrity']; assert len(wiring_errors) == 3"
+    },
+    {
+      "id": "TS-04-E23",
+      "requirement_id": "04-REQ-10.E1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec produces no duplicate API symbol errors when specs have no shared external API symbols.",
+      "preconditions": [
+        "Two specs are constructed: specA declares symbol 'Foo', specB declares symbol 'Bar' (no overlap)",
+        "A DependencyGraph has an edge specA -> specB",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "DependencyGraph with edge specA -> specB",
+        "specs": {
+          "specA": {
+            "external_apis": [
+              {
+                "symbols": [
+                  {
+                    "name": "Foo",
+                    "signature": "func Foo() int"
+                  }
+                ]
+              }
+            ]
+          },
+          "specB": {
+            "external_apis": [
+              {
+                "symbols": [
+                  {
+                    "name": "Bar",
+                    "signature": "func Bar() string"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to duplicate API symbol rule"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); symbol_errors = [e for e in entries if e.Category == 'integrity' and 'signature' in e.Message.lower()]; assert len(symbol_errors) == 0"
+    },
+    {
+      "id": "TS-04-E24",
+      "requirement_id": "04-REQ-10.E2",
+      "kind": "integration",
+      "description": "ValidateCrossSpec skips all edge-dependent rules and produces no errors when called with an empty DependencyGraph.",
+      "preconditions": [
+        "Two specs are constructed with shared API symbols",
+        "An empty DependencyGraph (no edges) is provided",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "empty DependencyGraph with no edges",
+        "specs": {
+          "specA": {
+            "external_apis": [
+              {
+                "symbols": [
+                  {
+                    "name": "Foo",
+                    "signature": "func Foo() int"
+                  }
+                ]
+              }
+            ]
+          },
+          "specB": {
+            "external_apis": [
+              {
+                "symbols": [
+                  {
+                    "name": "Foo",
+                    "signature": "func Foo() string"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "result": "No integrity errors from edge-dependent rules (rules 1, 4, 5)"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); edge_errors = [e for e in entries if e.Category == 'integrity' and 'Foo' in e.Message]; assert len(edge_errors) == 0"
+    },
+    {
+      "id": "TS-04-E25",
+      "requirement_id": "04-REQ-11.E1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec produces no unknown dependency errors when called with a single spec that has no task dependencies.",
+      "preconditions": [
+        "A spec map contains one spec with no task dependencies (depends_on_spec is absent or empty)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "empty DependencyGraph",
+        "specs": {
+          "specA": {
+            "tasks": []
+          }
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to unknown dependency rule"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); dep_errors = [e for e in entries if e.Category == 'integrity' and 'depends_on_spec' in e.Message.lower()]; assert len(dep_errors) == 0"
+    },
+    {
+      "id": "TS-04-E26",
+      "requirement_id": "04-REQ-12.E1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec treats the absence of return_contract on both sides as a match and produces no error.",
+      "preconditions": [
+        "specA (upstream) has a criterion with action containing backtick-wrapped Foo and return_contract=null",
+        "specB (downstream) has a criterion with action containing backtick-wrapped Foo and return_contract=null",
+        "A DependencyGraph has an edge specA -> specB",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "DependencyGraph with edge specA -> specB",
+        "specs": {
+          "specA": {
+            "requirements": [
+              {
+                "acceptance_criteria": [
+                  {
+                    "action": "call `Foo`",
+                    "return_contract": null
+                  }
+                ]
+              }
+            ]
+          },
+          "specB": {
+            "requirements": [
+              {
+                "acceptance_criteria": [
+                  {
+                    "action": "call `Foo`",
+                    "return_contract": null
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "result": "No integrity error for 'Foo' when both sides have null return_contract"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); contract_errors = [e for e in entries if e.Category == 'integrity' and 'Foo' in e.Message and 'contract' in e.Message.lower()]; assert len(contract_errors) == 0"
+    },
+    {
+      "id": "TS-04-E27",
+      "requirement_id": "04-REQ-13.E1",
+      "kind": "integration",
+      "description": "ValidateCrossSpec skips boundary coverage checks for actors not present in the DependencyGraph and produces no error.",
+      "preconditions": [
+        "specA has an execution_path with a step whose actor='externalService' (not in the spec map or DependencyGraph)",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "DependencyGraph containing only specA",
+        "specs": {
+          "specA": {
+            "execution_paths": [
+              {
+                "id": "04-PATH-X",
+                "steps": [
+                  {
+                    "action": "call API",
+                    "actor": "externalService"
+                  }
+                ]
+              }
+            ],
+            "test_spec": {
+              "smoke_tests": []
+            }
+          }
+        }
+      },
+      "expected": {
+        "result": "No integrity error for actor 'externalService' not in the dependency graph"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); boundary_errors = [e for e in entries if e.Category == 'integrity' and 'externalService' in e.Message]; assert len(boundary_errors) == 0"
+    },
+    {
+      "id": "TS-04-E28",
+      "requirement_id": "04-REQ-13.E2",
+      "kind": "integration",
+      "description": "ValidateCrossSpec produces no boundary coverage errors when specs have no execution_paths.",
+      "preconditions": [
+        "All specs in the map have empty execution_paths lists",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "graph": "DependencyGraph with edge specA -> specB",
+        "specs": {
+          "specA": {
+            "execution_paths": []
+          },
+          "specB": {}
+        }
+      },
+      "expected": {
+        "result": "No integrity errors related to boundary coverage rule"
+      },
+      "assertion_pseudocode": "entries = ValidateCrossSpec(specs, graph); boundary_errors = [e for e in entries if e.Category == 'integrity' and 'boundary' in e.Message.lower()]; assert len(boundary_errors) == 0"
+    },
+    {
+      "id": "TS-04-E29",
+      "requirement_id": "04-REQ-14.E1",
+      "kind": "unit",
+      "description": "Validate produces no group test_spec_refs ceiling warning when a task group has exactly 15 total test_spec_refs (threshold is strictly greater than 15).",
+      "preconditions": [
+        "A *Spec is constructed with one task group containing subtasks whose test_spec_refs total exactly 15",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": [
+                {
+                  "test_spec_refs": [
+                    "a",
+                    "b",
+                    "c",
+                    "d",
+                    "e",
+                    "f",
+                    "g",
+                    "h",
+                    "i",
+                    "j",
+                    "k",
+                    "l",
+                    "m",
+                    "n",
+                    "o"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No warning for group test_spec_refs ceiling when total is exactly 15"
+      },
+      "assertion_pseudocode": "result = spec.Validate(); ceiling_warnings = [w for w in result.Warnings if '15' in w.Message and 'test_spec_refs' in w.Message.lower()]; assert len(ceiling_warnings) == 0"
+    },
+    {
+      "id": "TS-04-E30",
+      "requirement_id": "04-REQ-15.E1",
+      "kind": "unit",
+      "description": "Validate produces no group subtask count warning when a task group has exactly 6 non-verification subtasks (threshold is strictly greater than 6).",
+      "preconditions": [
+        "A *Spec is constructed with one task group containing exactly 6 non-verification subtasks",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": [
+                {
+                  "title": "s1"
+                },
+                {
+                  "title": "s2"
+                },
+                {
+                  "title": "s3"
+                },
+                {
+                  "title": "s4"
+                },
+                {
+                  "title": "s5"
+                },
+                {
+                  "title": "s6"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No warning for group subtask count when count is exactly 6"
+      },
+      "assertion_pseudocode": "result = spec.Validate(); count_warnings = [w for w in result.Warnings if '6' in w.Message and 'subtask' in w.Message.lower()]; assert len(count_warnings) == 0"
+    },
+    {
+      "id": "TS-04-E31",
+      "requirement_id": "04-REQ-16.E1",
+      "kind": "unit",
+      "description": "Validate produces no subtask test_spec_refs ceiling warning when a subtask has exactly 8 test_spec_refs entries (threshold is strictly greater than 8).",
+      "preconditions": [
+        "A *Spec is constructed with one subtask having exactly 8 test_spec_refs entries",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "tasks": [
+            {
+              "kind": "tests",
+              "subtasks": [
+                {
+                  "test_spec_refs": [
+                    "a",
+                    "b",
+                    "c",
+                    "d",
+                    "e",
+                    "f",
+                    "g",
+                    "h"
+                  ],
+                  "title": "s1"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No warning for subtask test_spec_refs ceiling when count is exactly 8"
+      },
+      "assertion_pseudocode": "result = spec.Validate(); subtask_warnings = [w for w in result.Warnings if '8' in w.Message and 'test_spec_refs' in w.Message.lower()]; assert len(subtask_warnings) == 0"
+    },
+    {
+      "id": "TS-04-E32",
+      "requirement_id": "04-REQ-17.E1",
+      "kind": "unit",
+      "description": "Validate produces both an integrity error (rule 10) and a warning (error path return_contract) for a criterion with ears_pattern='unwanted' and null return_contract.",
+      "preconditions": [
+        "A *Spec is constructed with a criterion having ears_pattern='unwanted' and return_contract=null",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "reject the request",
+                  "ears_pattern": "unwanted",
+                  "id": "04-REQ-U.1",
+                  "return_contract": null
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "ValidationResult.Errors contains one integrity error for '04-REQ-U.1' AND ValidationResult.Warnings contains one warning for '04-REQ-U.1'"
+      },
+      "assertion_pseudocode": "result = spec.Validate(); errors = [e for e in result.Errors if '04-REQ-U.1' in e.Message and e.Category == 'integrity']; assert len(errors) == 1; warnings = [w for w in result.Warnings if '04-REQ-U.1' in w.Message]; assert len(warnings) == 1"
+    },
+    {
+      "id": "TS-04-E33",
+      "requirement_id": "04-REQ-18.E1",
+      "kind": "unit",
+      "description": "Validate produces one warning per vague term occurrence when the same vague word appears in multiple criterion fields across multiple requirements.",
+      "preconditions": [
+        "A *Spec is constructed with two requirements each having a criterion with action containing 'correctly'",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "handle correctly"
+                }
+              ]
+            },
+            {
+              "acceptance_criteria": [
+                {
+                  "action": "process correctly"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "Two warnings, one per occurrence of 'correctly'"
+      },
+      "assertion_pseudocode": "result = spec.Validate(); vague_warnings = [w for w in result.Warnings if 'correctly' in w.Message.lower()]; assert len(vague_warnings) == 2"
+    },
+    {
+      "id": "TS-04-E34",
+      "requirement_id": "04-REQ-19.E1",
+      "kind": "unit",
+      "description": "Validate produces no scope limit warning when a spec has exactly 10 requirements (threshold is strictly greater than 10).",
+      "preconditions": [
+        "A *Spec is constructed with exactly 10 requirements",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": {
+          "requirements": [
+            {
+              "id": "R1"
+            },
+            {
+              "id": "R2"
+            },
+            {
+              "id": "R3"
+            },
+            {
+              "id": "R4"
+            },
+            {
+              "id": "R5"
+            },
+            {
+              "id": "R6"
+            },
+            {
+              "id": "R7"
+            },
+            {
+              "id": "R8"
+            },
+            {
+              "id": "R9"
+            },
+            {
+              "id": "R10"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "result": "No scope limit warning for exactly 10 requirements"
+      },
+      "assertion_pseudocode": "result = spec.Validate(); scope_warnings = [w for w in result.Warnings if 'split' in w.Message.lower() or 'large' in w.Message.lower()]; assert len(scope_warnings) == 0"
+    },
+    {
+      "id": "TS-04-E35",
+      "requirement_id": "04-REQ-20.E1",
+      "kind": "unit",
+      "description": "ValidateStructured returns a map with 'errors' as empty slice, 'warnings' as empty slice, and 'valid' as true when the spec has no errors and no warnings.",
+      "preconditions": [
+        "A *Spec is constructed that passes all validation rules with no warnings",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": "minimal valid spec with no violations"
+      },
+      "expected": {
+        "result": "map[string]any with keys errors (empty slice), warnings (empty slice), and valid (true)"
+      },
+      "assertion_pseudocode": "output = spec.ValidateStructured(); assert output['valid'] == true; assert len(output['errors']) == 0; assert len(output['warnings']) == 0"
+    },
+    {
+      "id": "TS-04-E36",
+      "requirement_id": "04-REQ-20.E2",
+      "kind": "unit",
+      "description": "ValidateStructured returns a map with 'valid' set to false and 'errors' containing all error entries when the spec has one or more errors.",
+      "preconditions": [
+        "A *Spec is constructed that triggers at least one integrity error",
+        "The golang/ afspec package is compiled and available"
+      ],
+      "input": {
+        "spec": "spec with one uncovered correctness_property (no matching property_test)"
+      },
+      "expected": {
+        "result": "map[string]any with valid=false and errors containing a non-empty slice"
+      },
+      "assertion_pseudocode": "output = spec.ValidateStructured(); assert output['valid'] == false; assert len(output['errors']) >= 1"
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "TS-04-SMOKE-1",
+      "execution_path_id": "04-PATH-1",
+      "description": "Full cross-file validation run on a spec that violates all 7 cross-file rules returns a combined ValidationEntry slice with errors from each rule.",
+      "trigger": "Call spec.ValidateCrossFile() on a *Spec constructed to violate all 7 cross-file rules simultaneously: missing property_test coverage, missing smoke_test coverage, unresolvable test_spec_ids, undefined backtick terms, duplicate traceability pairs, unresolvable requirement_refs, and unwanted criteria without return_contract.",
+      "real_components": [
+        "ValidateCrossFile (golang/validate.go)",
+        "Spec struct (golang/)"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a []ValidationEntry with at least 7 entries (one per violated rule)",
+        "Contains at least one entry with Category='integrity' and RequirementID referencing the uncovered correctness_property",
+        "Contains at least one entry with Category='integrity' and Message referencing the uncovered execution_path_id",
+        "Contains at least one entry with Category='integrity' and Message referencing the unresolvable test_spec_id",
+        "Contains at least one entry with Category='integrity' and Message referencing the undefined backtick term",
+        "Contains at least one entry with Category='integrity' and Message referencing the duplicate traceability pair",
+        "Contains at least one entry with Category='integrity' and Message referencing the unresolvable requirement_ref",
+        "Contains at least one entry with Category='integrity' and Message referencing the unwanted criterion missing return_contract",
+        "Does not panic; returns cleanly to the caller"
+      ]
+    },
+    {
+      "id": "TS-04-SMOKE-2",
+      "execution_path_id": "04-PATH-2",
+      "description": "ValidateStructured call on a spec with errors and warnings produces a structured map with correct keys, field shapes, and valid=false.",
+      "trigger": "Call spec.ValidateStructured() on a *Spec that has at least one integrity error (missing property test) and at least one warning (more than 10 requirements).",
+      "real_components": [
+        "ValidateStructured (golang/validate.go)",
+        "Validate (golang/validate.go)",
+        "ValidateSchema (golang/validate.go)",
+        "ValidateCrossFile (golang/validate.go)",
+        "Spec struct (golang/)"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a non-nil map[string]any",
+        "Map contains key 'valid' with value false (bool)",
+        "Map contains key 'errors' with a non-empty slice of map[string]any",
+        "Each error map contains keys: 'category', 'rule', 'message', 'file', 'path' — all non-empty strings",
+        "Integrity errors have category='integrity'",
+        "Map contains key 'warnings' with a non-empty slice of map[string]any",
+        "Each warning map contains keys: 'message' and 'entity_id'",
+        "Does not panic or return nil"
+      ]
+    },
+    {
+      "id": "TS-04-SMOKE-3",
+      "execution_path_id": "04-PATH-3",
+      "description": "Cross-spec validation run detects API symbol signature mismatch and unknown dependency reference, returning combined integrity errors.",
+      "trigger": "Call ValidateCrossSpec(specs, graph) where specs contains specA (declaring symbol 'Foo' with signature 'func Foo() int' and a task dependency depends_on_spec='specZ') and specB (declaring 'Foo' with signature 'func Foo() string'), and graph has an edge specA -> specB; 'specZ' is not in the spec map.",
+      "real_components": [
+        "ValidateCrossSpec (golang/validate.go)",
+        "DependencyGraph (golang/)",
+        "Spec struct (golang/)"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a []ValidationEntry with at least two entries",
+        "Contains one entry with Category='integrity' identifying 'Foo' signature mismatch between specA and specB",
+        "Contains one entry with Category='integrity' identifying 'specZ' as an unknown depends_on_spec reference",
+        "Does not panic; returns cleanly to the caller"
+      ]
+    },
+    {
+      "id": "TS-04-SMOKE-4",
+      "execution_path_id": "04-PATH-4",
+      "description": "Full Validate run on a large spec with vague language and oversized groups produces a ValidationResult with warnings and correct Valid flag.",
+      "trigger": "Call spec.Validate() on a *Spec with 11 requirements, one task group containing 7 non-verification subtasks, and a criterion whose action field contains the word 'appropriately'.",
+      "real_components": [
+        "Validate (golang/validate.go)",
+        "ValidateSchema (golang/validate.go)",
+        "ValidateCrossFile (golang/validate.go)",
+        "Spec struct (golang/)"
+      ],
+      "mockable": [],
+      "expected_effects": [
+        "Returns a ValidationResult struct",
+        "ValidationResult.Warnings contains at least three entries: one for scope limit (more than 10 requirements), one for group subtask count (more than 6), one for vague language ('appropriately')",
+        "ValidationResult.Valid is true if Errors is empty, false otherwise",
+        "ValidationResult.Errors contains only schema or integrity entries (no warnings mixed in)",
+        "Does not panic; returns cleanly to the caller"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [
+      "04-REQ-1.1",
+      "04-REQ-1.2",
+      "04-REQ-2.1",
+      "04-REQ-3.1",
+      "04-REQ-4.1",
+      "04-REQ-4.2",
+      "04-REQ-5.1",
+      "04-REQ-6.1",
+      "04-REQ-7.1",
+      "04-REQ-8.1",
+      "04-REQ-8.2",
+      "04-REQ-9.1",
+      "04-REQ-9.2",
+      "04-REQ-9.3",
+      "04-REQ-10.1",
+      "04-REQ-11.1",
+      "04-REQ-12.1",
+      "04-REQ-13.1",
+      "04-REQ-14.1",
+      "04-REQ-15.1",
+      "04-REQ-16.1",
+      "04-REQ-17.1",
+      "04-REQ-18.1",
+      "04-REQ-18.2",
+      "04-REQ-19.1",
+      "04-REQ-20.1",
+      "04-REQ-20.2",
+      "04-REQ-20.3",
+      "04-REQ-1.E1",
+      "04-REQ-1.E2",
+      "04-REQ-1.E3",
+      "04-REQ-2.E1",
+      "04-REQ-2.E2",
+      "04-REQ-3.E1",
+      "04-REQ-3.E2",
+      "04-REQ-4.E1",
+      "04-REQ-4.E2",
+      "04-REQ-4.E3",
+      "04-REQ-4.E4",
+      "04-REQ-4.E5",
+      "04-REQ-5.E1",
+      "04-REQ-5.E2",
+      "04-REQ-6.E1",
+      "04-REQ-6.E2",
+      "04-REQ-7.E1",
+      "04-REQ-7.E2",
+      "04-REQ-8.E1",
+      "04-REQ-8.E2",
+      "04-REQ-9.E1",
+      "04-REQ-9.E2",
+      "04-REQ-10.E1",
+      "04-REQ-10.E2",
+      "04-REQ-11.E1",
+      "04-REQ-12.E1",
+      "04-REQ-13.E1",
+      "04-REQ-13.E2",
+      "04-REQ-14.E1",
+      "04-REQ-15.E1",
+      "04-REQ-16.E1",
+      "04-REQ-17.E1",
+      "04-REQ-18.E1",
+      "04-REQ-19.E1",
+      "04-REQ-20.E1",
+      "04-REQ-20.E2"
+    ],
+    "properties_covered": [
+      "04-PROP-1",
+      "04-PROP-2",
+      "04-PROP-3",
+      "04-PROP-4",
+      "04-PROP-5",
+      "04-PROP-6",
+      "04-PROP-7"
+    ],
+    "paths_covered": [
+      "04-PATH-1",
+      "04-PATH-2",
+      "04-PATH-3",
+      "04-PATH-4"
+    ],
+    "gaps": []
+  }
+}

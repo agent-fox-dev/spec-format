@@ -1,0 +1,1348 @@
+{
+  "$schema": null,
+  "spec_id": "06",
+  "spec_name": "agentspec_go_core",
+  "schema_version": 1,
+  "introduction": "The `agentspec` Go core package ports the non-AI portions of the Python `agentspec` library to Go, providing error types, TOML configuration loading, campaign directory lifecycle management, session state machine with atomic persistence, and tool schema definitions that sit between the `afspec` format library and the `spec` CLI.",
+  "glossary": {
+    "AF_SPEC_MODEL": "Environment variable that, when set, overrides the model field from any config file.",
+    "AgentError": "Richest error type carrying Detail, ErrorCategory, Retryable, HTTPStatus, and an Unwrap() method preserving the original error.",
+    "AgentSpecConfig": "Go struct holding model and provider configuration loaded from config.toml.",
+    "AgentSpecError": "Base Go error interface for all agentspec errors; matchable via errors.As and exposing a Category() string method.",
+    "ArtifactTool": "Function returning the Anthropic tool definition for submitting a named artifact type.",
+    "Assessment": "Go struct capturing PRD quality assessment output: Quality, Summary, Gaps, and Questions.",
+    "AssessmentTools": "Function returning the Anthropic tool definition list for the assessment phase.",
+    "Campaign": "Go struct holding a filesystem path and CampaignMetadata representing an agentspec campaign directory.",
+    "CampaignError": "Error type returned for campaign directory operation failures such as duplicate path, missing campaign.yaml, or invalid spec name.",
+    "CampaignMetadata": "Go struct holding name, description, created_at, and updated_at for a campaign.",
+    "CleanSchema": "Function that strips title fields, default fields, and the top-level $schema field from a JSON Schema map while preserving description fields.",
+    "ConfigError": "Error type returned for invalid TOML syntax, missing required config fields, or symlinked config files; Category() returns \"config\".",
+    "CreateCampaign": "Function that initializes a new campaign directory by writing campaign.yaml atomically.",
+    "CreateSession": "Function that initializes a new SpecSession in StateInit and persists it to _session.json.",
+    "ErrorCategory": "String field on AgentError classifying the error kind; valid values are rate_limit, auth, transient, overloaded, input, internal, validation, refusal, context_window, pause_turn.",
+    "GenerateResult": "Go struct returned after artifact generation containing Artifacts list, Validation result, and Warnings.",
+    "InlineRefs": "Function that recursively resolves $ref references against $defs in a JSON Schema map, removing $defs from the result.",
+    "LastError": "Go struct recording the most recent error encountered during a session operation.",
+    "LoadConfig": "Function that searches for config.toml in .specs/ then ~/.specs/ and returns an AgentSpecConfig.",
+    "LoadSpec": "Existing afspec function that loads a spec from a directory path into a Spec struct.",
+    "NewSpec": "Method on Campaign that provisions a new spec directory with prd.md and an initial SpecSession.",
+    "OpenCampaign": "Function that reads and parses an existing campaign.yaml to reconstruct a Campaign.",
+    "ParseSpecDirName": "afspec function that parses a directory name of the form {NN}_{snake_case} into numeric prefix, name, and validity flag.",
+    "QAExchange": "Go struct recording a set of answers to assessment questions at a point in time.",
+    "RefinementTools": "Function returning the Anthropic tool definition list for the refinement phase.",
+    "RenderCombined": "afspec method on Spec that renders all artifacts into a single combined string.",
+    "RenderIndividual": "afspec method on Spec that renders each artifact into a separate string keyed by artifact name.",
+    "RepairSuggestion": "Go struct describing a suggested fix for a validation error, including whether it is auto-fixable.",
+    "ResumeSession": "Function that reads _session.json and reconstructs a SpecSession.",
+    "Schemas": "afspec function returning a map of embedded JSON Schema files keyed by artifact type name.",
+    "SessionError": "Error type returned for illegal state transitions or invalid session state; Category() returns \"state\".",
+    "SessionState": "String type enumerating the valid states of a SpecSession: StateInit, StateAssessing, StateRefining, StatePRDAccepted, StateGenerating, StateGenerated.",
+    "SessionValidationResult": "Go struct returned by Validate() containing Valid flag, SchemaErrors, IntegrityErrors, and RepairSuggestions.",
+    "SpecSession": "Go struct representing the stateful session for authoring a single spec, persisted to _session.json.",
+    "StateAssessing": "SessionState indicating the session is undergoing PRD quality assessment.",
+    "StateGenerated": "SessionState indicating all artifacts have been successfully generated.",
+    "StateGenerating": "SessionState indicating artifact generation is in progress.",
+    "StateInit": "Initial SessionState assigned when a SpecSession is first created.",
+    "StatePRDAccepted": "SessionState indicating the PRD has been accepted and is ready for artifact generation.",
+    "StateRefining": "SessionState indicating the session is in iterative Q&A refinement.",
+    "_session.json": "JSON file inside a spec directory that persists SpecSession state atomically.",
+    "archive": "Subdirectory within a campaign directory holding retired or archived spec directories.",
+    "atomic temp-file-and-rename": "File write pattern that writes to a temporary file then renames it to the target path, ensuring the target is never partially written.",
+    "campaign.yaml": "YAML file at the root of a campaign directory that stores CampaignMetadata.",
+    "config.toml": "TOML configuration file read by LoadConfig; may reside in .specs/ (local) or ~/.specs/ (global).",
+    "prd.md": "Markdown file with YAML frontmatter written into a new spec directory by NewSpec.",
+    "schema_version": "Integer field in prd.md frontmatter fixed at 1 for all newly provisioned specs.",
+    "spec directory": "Subdirectory within a campaign matching the {NN}_{snake_case} naming pattern that holds all files for a single spec.",
+    "submit_assessment": "Anthropic tool name used during assessment; accepts quality, summary, gaps, and questions.",
+    "submit_prd_update": "Anthropic tool name used during refinement; accepts an updated_prd string."
+  },
+  "requirements": [
+    {
+      "id": "06-REQ-1",
+      "title": "AgentSpecError base error type",
+      "user_story": {
+        "role": "Go developer consuming the agentspec package",
+        "goal": "match any agentspec error via errors.As and inspect its category",
+        "benefit": "write uniform error-handling code without importing every concrete error type"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-1.1",
+          "ears_pattern": "ubiquitous",
+          "system": "agentspec error package",
+          "action": "define AgentSpecError as a Go interface (or base struct) that all agentspec error types satisfy, exposing a Category() string method that returns \"internal\" by default",
+          "return_contract": "errors.As(err, &target) returns true for any agentspec error; target.Category() returns a non-empty string"
+        },
+        {
+          "id": "06-REQ-1.2",
+          "ears_pattern": "ubiquitous",
+          "system": "ConfigError",
+          "action": "implement Category() returning \"config\" and satisfy the AgentSpecError interface",
+          "return_contract": "target.Category() == \"config\""
+        },
+        {
+          "id": "06-REQ-1.3",
+          "ears_pattern": "ubiquitous",
+          "system": "CampaignError",
+          "action": "implement Category() returning \"campaign\" and satisfy the AgentSpecError interface",
+          "return_contract": "target.Category() == \"campaign\""
+        },
+        {
+          "id": "06-REQ-1.4",
+          "ears_pattern": "ubiquitous",
+          "system": "SessionError",
+          "action": "implement Category() returning \"state\" and satisfy the AgentSpecError interface",
+          "return_contract": "target.Category() == \"state\""
+        },
+        {
+          "id": "06-REQ-1.5",
+          "ears_pattern": "ubiquitous",
+          "system": "AgentError",
+          "action": "carry Detail (string), ErrorCategory (string), Retryable (bool), HTTPStatus (optional int), implement Unwrap() returning the wrapped original error, and satisfy the AgentSpecError interface",
+          "return_contract": "errors.Unwrap(agentErr) returns the original wrapped error; agentErr.ErrorCategory is one of the valid ErrorCategory values"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-1.E1",
+          "ears_pattern": "unwanted",
+          "system": "AgentError",
+          "action": "represent HTTPStatus as a nil pointer or zero value and omit it from JSON serialization",
+          "return_contract": "HTTPStatus field is nil/zero; JSON output omits the http_status key",
+          "error_condition": "HTTPStatus is not applicable to the error"
+        },
+        {
+          "id": "06-REQ-1.E2",
+          "ears_pattern": "unwanted",
+          "system": "AgentError",
+          "action": "accept the value without panicking; callers are responsible for providing valid categories",
+          "return_contract": "no panic; agentErr.ErrorCategory holds the provided string",
+          "error_condition": "ErrorCategory is set to a value outside the defined set"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-2",
+      "title": "TOML configuration loading with environment variable override",
+      "user_story": {
+        "role": "operator deploying the spec tool",
+        "goal": "store model and provider settings in a config.toml file with optional environment variable overrides",
+        "benefit": "configure the tool without modifying source code or passing flags on every invocation"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-2.1",
+          "ears_pattern": "event_driven",
+          "system": "LoadConfig",
+          "action": "search for config.toml in .specs/ relative to the current working directory, then in ~/.specs/; parse the first file found, reading the [model] section for the model key and the [provider] section for auth_method, vertex_project, vertex_region; silently ignore unknown sections",
+          "return_contract": "returns (AgentSpecConfig, nil) with fields populated from the first config.toml found",
+          "trigger": "called with no arguments"
+        },
+        {
+          "id": "06-REQ-2.2",
+          "ears_pattern": "event_driven",
+          "system": "LoadConfig",
+          "action": "return an AgentSpecConfig with default values: Model set to \"STANDARD\" and other fields empty",
+          "return_contract": "returns (AgentSpecConfig{Model: \"STANDARD\"}, nil)",
+          "trigger": "called when no config.toml exists in either search location"
+        },
+        {
+          "id": "06-REQ-2.3",
+          "ears_pattern": "complex_event",
+          "system": "LoadConfig",
+          "action": "override the Model field with the value of AF_SPEC_MODEL after all file-based loading is complete",
+          "return_contract": "returns AgentSpecConfig where Model equals the AF_SPEC_MODEL value",
+          "trigger": "called when AF_SPEC_MODEL environment variable is set",
+          "condition": "regardless of whether a config.toml was found"
+        },
+        {
+          "id": "06-REQ-2.4",
+          "ears_pattern": "unwanted",
+          "system": "LoadConfig",
+          "action": "return a ConfigError describing the symlink rejection",
+          "return_contract": "returns (AgentSpecConfig{}, ConfigError)",
+          "error_condition": "the resolved path of config.toml differs from the original path (symlink detected)"
+        },
+        {
+          "id": "06-REQ-2.5",
+          "ears_pattern": "unwanted",
+          "system": "LoadConfig",
+          "action": "return a ConfigError wrapping the parse error",
+          "return_contract": "returns (AgentSpecConfig{}, ConfigError)",
+          "error_condition": "config.toml contains invalid TOML syntax"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-2.E1",
+          "ears_pattern": "event_driven",
+          "system": "LoadConfig",
+          "action": "use only the local .specs/config.toml and ignore the global file; do not merge fields from both files",
+          "return_contract": "returns AgentSpecConfig populated solely from .specs/config.toml",
+          "trigger": "called when both .specs/config.toml and ~/.specs/config.toml exist"
+        },
+        {
+          "id": "06-REQ-2.E2",
+          "ears_pattern": "event_driven",
+          "system": "LoadConfig",
+          "action": "silently ignore the unknown sections and parse only [model] and [provider]",
+          "return_contract": "returns (AgentSpecConfig, nil) without error",
+          "trigger": "called when config.toml contains unknown sections such as [spec_tool] or [theme]"
+        },
+        {
+          "id": "06-REQ-2.E3",
+          "ears_pattern": "unwanted",
+          "system": "LoadConfig",
+          "action": "treat the empty string as unset and fall back to the config file value or default",
+          "return_contract": "returns AgentSpecConfig with Model from config file or \"STANDARD\" default",
+          "error_condition": "AF_SPEC_MODEL is set to an empty string"
+        },
+        {
+          "id": "06-REQ-2.E4",
+          "ears_pattern": "unwanted",
+          "system": "LoadConfig",
+          "action": "return a ConfigError wrapping the OS error",
+          "return_contract": "returns (AgentSpecConfig{}, ConfigError)",
+          "error_condition": "config.toml exists but is not readable due to filesystem permissions"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-3",
+      "title": "Campaign creation",
+      "user_story": {
+        "role": "spec author",
+        "goal": "create a new campaign directory with metadata",
+        "benefit": "organize multiple related specs under a single campaign"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-3.1",
+          "ears_pattern": "event_driven",
+          "system": "CreateCampaign",
+          "action": "write campaign.yaml atomically using the atomic temp-file-and-rename pattern with name, description, created_at, and updated_at fields; return the new Campaign",
+          "return_contract": "returns (*Campaign, nil); campaign.yaml exists at path with correct YAML content",
+          "trigger": "called with a valid path, name, and description where the parent directory exists and campaign.yaml does not yet exist at path"
+        },
+        {
+          "id": "06-REQ-3.2",
+          "ears_pattern": "unwanted",
+          "system": "CreateCampaign",
+          "action": "return a CampaignError without modifying the existing file",
+          "return_contract": "returns (nil, CampaignError); existing campaign.yaml is unchanged",
+          "error_condition": "campaign.yaml already exists at the given path"
+        },
+        {
+          "id": "06-REQ-3.3",
+          "ears_pattern": "unwanted",
+          "system": "CreateCampaign",
+          "action": "return a CampaignError",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "the parent directory of path does not exist"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-3.E1",
+          "ears_pattern": "unwanted",
+          "system": "CreateCampaign",
+          "action": "clean up the temporary file if it was created and return a CampaignError; do not leave a partial campaign.yaml at the target path",
+          "return_contract": "returns (nil, CampaignError); no partial file remains at path",
+          "error_condition": "the atomic temp-file write or rename fails midway due to a filesystem error"
+        },
+        {
+          "id": "06-REQ-3.E2",
+          "ears_pattern": "unwanted",
+          "system": "CreateCampaign",
+          "action": "return a CampaignError describing the missing field",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "name or description is an empty string"
+        },
+        {
+          "id": "06-REQ-3.E3",
+          "ears_pattern": "unwanted",
+          "system": "CreateCampaign",
+          "action": "one call succeeds and the other returns a CampaignError; the final campaign.yaml is a complete, valid file from exactly one writer",
+          "return_contract": "exactly one caller receives (*Campaign, nil); the other receives (nil, CampaignError)",
+          "error_condition": "two goroutines call CreateCampaign for the same path concurrently"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-4",
+      "title": "Campaign opening",
+      "user_story": {
+        "role": "spec author",
+        "goal": "open an existing campaign directory",
+        "benefit": "resume work on a campaign that was previously created"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-4.1",
+          "ears_pattern": "event_driven",
+          "system": "OpenCampaign",
+          "action": "read and parse campaign.yaml using go-yaml Unmarshal, populate CampaignMetadata, and return the Campaign",
+          "return_contract": "returns (*Campaign, nil) with Path and Metadata populated",
+          "trigger": "called with a path containing a valid campaign.yaml"
+        },
+        {
+          "id": "06-REQ-4.2",
+          "ears_pattern": "unwanted",
+          "system": "OpenCampaign",
+          "action": "return a CampaignError",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "campaign.yaml does not exist at the given path"
+        },
+        {
+          "id": "06-REQ-4.3",
+          "ears_pattern": "unwanted",
+          "system": "OpenCampaign",
+          "action": "return a CampaignError wrapping the parse error",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "campaign.yaml exists but contains malformed YAML"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-4.E1",
+          "ears_pattern": "unwanted",
+          "system": "OpenCampaign",
+          "action": "return a CampaignError describing the missing fields",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "campaign.yaml is readable but missing required fields such as name or created_at"
+        },
+        {
+          "id": "06-REQ-4.E2",
+          "ears_pattern": "unwanted",
+          "system": "OpenCampaign",
+          "action": "return a CampaignError without attempting filesystem access",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "path is an empty string"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-5",
+      "title": "Campaign spec listing",
+      "user_story": {
+        "role": "spec author",
+        "goal": "list all active spec directories in a campaign",
+        "benefit": "discover which specs exist and determine the next numeric prefix"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-5.1",
+          "ears_pattern": "event_driven",
+          "system": "Campaign.Specs",
+          "action": "call ParseSpecDirName on each subdirectory name, collect those that parse successfully, sort by numeric prefix ascending, and return the directory names; exclude the archive/ subdirectory",
+          "return_contract": "returns ([]string, nil) with directory names sorted by numeric prefix",
+          "trigger": "called on a Campaign whose directory contains subdirectories matching the {NN}_{snake_case} pattern"
+        },
+        {
+          "id": "06-REQ-5.2",
+          "ears_pattern": "event_driven",
+          "system": "Campaign.Specs",
+          "action": "return an empty slice",
+          "return_contract": "returns ([]string{}, nil)",
+          "trigger": "called on a Campaign whose directory contains no matching subdirectories"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-5.E1",
+          "ears_pattern": "unwanted",
+          "system": "Campaign.Specs",
+          "action": "return a CampaignError wrapping the OS error",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "the campaign directory is not readable due to filesystem permissions"
+        },
+        {
+          "id": "06-REQ-5.E2",
+          "ears_pattern": "event_driven",
+          "system": "Campaign.Specs",
+          "action": "silently skip non-matching entries and return only valid spec directory names",
+          "return_contract": "returns ([]string, nil) containing only matching directory names",
+          "trigger": "called when the campaign directory contains subdirectories that do not match the {NN}_{snake_case} pattern"
+        },
+        {
+          "id": "06-REQ-5.E3",
+          "ears_pattern": "event_driven",
+          "system": "Campaign.Specs",
+          "action": "exclude archive/ from the returned list but include all active spec directories",
+          "return_contract": "returns ([]string, nil) with no entry for archive/",
+          "trigger": "called when the archive/ subdirectory exists alongside active spec directories"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-6",
+      "title": "New spec provisioning",
+      "user_story": {
+        "role": "spec author",
+        "goal": "provision a new spec directory within a campaign from a PRD file",
+        "benefit": "start a new spec authoring session with correct directory structure and metadata"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-6.1",
+          "ears_pattern": "event_driven",
+          "system": "Campaign.NewSpec",
+          "action": "compute the next numeric prefix by scanning both active specs and the archive/ subdirectory, create the spec directory named {NN}_{specName}, write prd.md with YAML frontmatter (spec_id, spec_name, title, status: draft, created_at, updated_at, owner: \"\", source, schema_version: 1) followed by the PRD body copied from prdPath, then call CreateSession to initialize a SpecSession",
+          "return_contract": "returns (*SpecSession, nil); spec directory exists with prd.md and _session.json",
+          "trigger": "called with a valid spec name matching [a-z][a-z0-9_]*, a readable prdPath, a mode, and a source string"
+        },
+        {
+          "id": "06-REQ-6.2",
+          "ears_pattern": "unwanted",
+          "system": "Campaign.NewSpec",
+          "action": "return a CampaignError without creating any directories or files",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "specName does not match the [a-z][a-z0-9_]* pattern"
+        },
+        {
+          "id": "06-REQ-6.3",
+          "ears_pattern": "unwanted",
+          "system": "Campaign.NewSpec",
+          "action": "return a CampaignError without creating the spec directory",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "prdPath does not exist or is not readable"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-6.E1",
+          "ears_pattern": "unwanted",
+          "system": "Campaign.NewSpec",
+          "action": "return the error from CreateSession; the spec directory and prd.md remain on disk for manual recovery",
+          "return_contract": "returns (nil, error)",
+          "error_condition": "CreateSession fails after the spec directory and prd.md have been written"
+        },
+        {
+          "id": "06-REQ-6.E2",
+          "ears_pattern": "event_driven",
+          "system": "Campaign.NewSpec",
+          "action": "include archived spec prefixes when computing the next numeric prefix so that the new spec's prefix is strictly greater than all existing prefixes in both active and archive directories",
+          "return_contract": "returns (*SpecSession, nil); new spec directory prefix is max(active_prefixes ∪ archive_prefixes) + 1",
+          "trigger": "called when the archive/ subdirectory contains specs with higher numeric prefixes than active specs"
+        },
+        {
+          "id": "06-REQ-6.E3",
+          "ears_pattern": "unwanted",
+          "system": "Campaign.NewSpec",
+          "action": "return a CampaignError without creating any directories or files",
+          "return_contract": "returns (nil, CampaignError)",
+          "error_condition": "specName is an empty string"
+        },
+        {
+          "id": "06-REQ-6.E4",
+          "ears_pattern": "unwanted",
+          "system": "Campaign.NewSpec",
+          "action": "return a CampaignError without leaving partial state",
+          "return_contract": "returns (nil, CampaignError); no partial spec directory exists",
+          "error_condition": "the spec directory cannot be created due to filesystem permissions"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-7",
+      "title": "Session creation and persistence",
+      "user_story": {
+        "role": "spec author",
+        "goal": "create a new session that persists its state to disk",
+        "benefit": "resume the authoring session after process restart without losing progress"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-7.1",
+          "ears_pattern": "event_driven",
+          "system": "CreateSession",
+          "action": "initialize a SpecSession with state StateInit, empty assessment history, empty QA exchanges, and no last error; persist the session to _session.json inside specDir using the atomic temp-file-and-rename pattern",
+          "return_contract": "returns (*SpecSession, nil); _session.json exists in specDir with state \"init\"",
+          "trigger": "called with a valid specDir, mode, and source string"
+        },
+        {
+          "id": "06-REQ-7.2",
+          "ears_pattern": "event_driven",
+          "system": "ResumeSession",
+          "action": "read and unmarshal _session.json, reconstruct the SpecSession with all persisted fields including state, assessment_history, qa_exchanges, generated_artifacts, mode, prd_path, and last_error",
+          "return_contract": "returns (*SpecSession, nil) with all fields matching the persisted JSON",
+          "trigger": "called with a specDir containing a valid _session.json"
+        },
+        {
+          "id": "06-REQ-7.3",
+          "ears_pattern": "unwanted",
+          "system": "ResumeSession",
+          "action": "return a SessionError",
+          "return_contract": "returns (nil, SessionError)",
+          "error_condition": "_session.json does not exist in specDir"
+        },
+        {
+          "id": "06-REQ-7.4",
+          "ears_pattern": "unwanted",
+          "system": "ResumeSession",
+          "action": "return a SessionError wrapping the parse error",
+          "return_contract": "returns (nil, SessionError)",
+          "error_condition": "_session.json contains malformed JSON"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-7.E1",
+          "ears_pattern": "unwanted",
+          "system": "CreateSession",
+          "action": "clean up the temporary file and return the error; no _session.json is left at the target path",
+          "return_contract": "returns (nil, error); no partial _session.json remains",
+          "error_condition": "the atomic write of _session.json fails due to a filesystem error"
+        },
+        {
+          "id": "06-REQ-7.E2",
+          "ears_pattern": "unwanted",
+          "system": "ResumeSession",
+          "action": "return a SessionError describing the unrecognized state",
+          "return_contract": "returns (nil, SessionError)",
+          "error_condition": "_session.json contains a state value not in the defined SessionState constants"
+        },
+        {
+          "id": "06-REQ-7.E3",
+          "ears_pattern": "unwanted",
+          "system": "CreateSession",
+          "action": "return an error without creating any files",
+          "return_contract": "returns (nil, error)",
+          "error_condition": "specDir is an empty string or does not exist"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-8",
+      "title": "Session state transitions",
+      "user_story": {
+        "role": "spec author",
+        "goal": "transition a session through its lifecycle states",
+        "benefit": "track where the spec authoring process is and prevent invalid operations"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-8.1",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.AcceptPRD",
+          "action": "transition the session state to StatePRDAccepted and persist the updated state to _session.json atomically",
+          "return_contract": "returns nil; _session.json reflects state \"prd_accepted\"",
+          "trigger": "called when the session is in StateAssessing or StateRefining"
+        },
+        {
+          "id": "06-REQ-8.2",
+          "ears_pattern": "unwanted",
+          "system": "SpecSession.AcceptPRD",
+          "action": "return a SessionError without modifying the session state or _session.json",
+          "return_contract": "returns SessionError; session state is unchanged",
+          "error_condition": "the session is in any state other than StateAssessing or StateRefining"
+        },
+        {
+          "id": "06-REQ-8.3",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.State",
+          "action": "return the current SessionState of the session",
+          "return_contract": "returns the current SessionState value",
+          "trigger": "called at any time"
+        },
+        {
+          "id": "06-REQ-8.4",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.Assessment",
+          "action": "return a pointer to the most recent Assessment",
+          "return_contract": "returns *Assessment pointing to the last element of assessmentHistory",
+          "trigger": "called when the session has at least one entry in assessmentHistory"
+        },
+        {
+          "id": "06-REQ-8.5",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.Assessment",
+          "action": "return nil",
+          "return_contract": "returns nil",
+          "trigger": "called when assessmentHistory is empty"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-8.E1",
+          "ears_pattern": "unwanted",
+          "system": "SpecSession.AcceptPRD",
+          "action": "revert the in-memory state to its pre-transition value and return the error",
+          "return_contract": "returns error; in-memory state and _session.json remain at the pre-transition state",
+          "error_condition": "the atomic persistence of the state transition to _session.json fails"
+        },
+        {
+          "id": "06-REQ-8.E2",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.PendingQuestions",
+          "action": "return an empty slice",
+          "return_contract": "returns []map[string]any{}",
+          "trigger": "called when the latest Assessment has no questions"
+        },
+        {
+          "id": "06-REQ-8.E3",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.PendingQuestions",
+          "action": "return an empty slice",
+          "return_contract": "returns []map[string]any{}",
+          "trigger": "called when assessmentHistory is empty"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-9",
+      "title": "Session validation",
+      "user_story": {
+        "role": "spec author",
+        "goal": "validate the artifacts in a spec session",
+        "benefit": "detect schema and integrity errors before finalizing the spec"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-9.1",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.Validate",
+          "action": "call LoadSpec(specDir) to load the spec, call Validate() on the result, categorize ValidationResult entries as schema errors or integrity errors, and return a SessionValidationResult",
+          "return_contract": "returns (SessionValidationResult, nil) with Valid=true when no errors are found",
+          "trigger": "called when the spec directory contains valid artifacts loadable by LoadSpec"
+        },
+        {
+          "id": "06-REQ-9.2",
+          "ears_pattern": "unwanted",
+          "system": "SpecSession.Validate",
+          "action": "fall back to loading individual JSON artifact files that are present, run validation on available artifacts, and return a SessionValidationResult with Valid=false and appropriate errors listed",
+          "return_contract": "returns (SessionValidationResult{Valid: false, ...}, nil)",
+          "error_condition": "LoadSpec fails because some artifact files are missing"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-9.E1",
+          "ears_pattern": "unwanted",
+          "system": "SpecSession.Validate",
+          "action": "return a SessionValidationResult with Valid=false and an IntegrityErrors entry indicating no artifacts were found",
+          "return_contract": "returns (SessionValidationResult{Valid: false, IntegrityErrors: [...]}, nil)",
+          "error_condition": "no artifact files exist in the spec directory"
+        },
+        {
+          "id": "06-REQ-9.E2",
+          "ears_pattern": "unwanted",
+          "system": "SpecSession.Validate",
+          "action": "record the parse failure as a SchemaError in the result and continue validating remaining artifacts",
+          "return_contract": "returns (SessionValidationResult{Valid: false, SchemaErrors: [...]}, nil)",
+          "error_condition": "an artifact file exists but contains invalid JSON"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-10",
+      "title": "Session rendering",
+      "user_story": {
+        "role": "spec author",
+        "goal": "render the spec artifacts in a session to a human-readable format",
+        "benefit": "review the current state of the spec before accepting or generating"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-10.1",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.Render",
+          "action": "load the spec via LoadSpec and call RenderCombined on the result; return the combined string",
+          "return_contract": "returns (string, nil) containing the combined rendered spec",
+          "trigger": "called with combined=true"
+        },
+        {
+          "id": "06-REQ-10.2",
+          "ears_pattern": "event_driven",
+          "system": "SpecSession.Render",
+          "action": "load the spec via LoadSpec and call RenderIndividual on the result; return the map of artifact name to rendered string",
+          "return_contract": "returns (map[string]string, nil) keyed by artifact name",
+          "trigger": "called with combined=false"
+        },
+        {
+          "id": "06-REQ-10.3",
+          "ears_pattern": "unwanted",
+          "system": "SpecSession.Render",
+          "action": "fall back to rendering only the available artifact files and return the partial result",
+          "return_contract": "returns (partial result, nil) containing only the artifacts that could be loaded",
+          "error_condition": "LoadSpec fails because some artifacts are missing"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-10.E1",
+          "ears_pattern": "unwanted",
+          "system": "SpecSession.Render",
+          "action": "return an empty string for combined mode or an empty map for individual mode",
+          "return_contract": "returns (\"\", nil) for combined=true or (map[string]string{}, nil) for combined=false",
+          "error_condition": "no artifact files are present in the spec directory"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-11",
+      "title": "Assessment tool schema definition",
+      "user_story": {
+        "role": "AI integration layer",
+        "goal": "obtain the Anthropic tool definition for the assessment phase",
+        "benefit": "pass a correctly structured tool schema to the Anthropic API without constructing it manually"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-11.1",
+          "ears_pattern": "event_driven",
+          "system": "AssessmentTools",
+          "action": "return a slice containing the submit_assessment tool definition with input schema fields: quality (enum: ready/needs_refinement/incomplete), summary (string), gaps (array of strings), questions (array of objects with id, text, context, options, required)",
+          "return_contract": "returns []map[string]any with exactly one entry for submit_assessment",
+          "trigger": "called with no arguments"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-11.E1",
+          "ears_pattern": "ubiquitous",
+          "system": "AssessmentTools",
+          "action": "return a new slice on every call so that callers cannot mutate the shared definition",
+          "return_contract": "each call returns a distinct slice value"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-12",
+      "title": "Refinement tool schema definition",
+      "user_story": {
+        "role": "AI integration layer",
+        "goal": "obtain the Anthropic tool definitions for the refinement phase",
+        "benefit": "pass correctly structured tool schemas to the Anthropic API for both PRD update and re-assessment"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-12.1",
+          "ears_pattern": "event_driven",
+          "system": "RefinementTools",
+          "action": "return a slice containing submit_prd_update (with input schema field updated_prd: string) followed by submit_assessment (same schema as AssessmentTools)",
+          "return_contract": "returns []map[string]any with exactly two entries: submit_prd_update at index 0 and submit_assessment at index 1",
+          "trigger": "called with no arguments"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-12.E1",
+          "ears_pattern": "ubiquitous",
+          "system": "RefinementTools",
+          "action": "return a new slice on every call so that callers cannot mutate the shared definition",
+          "return_contract": "each call returns a distinct slice value"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-13",
+      "title": "Artifact tool schema definition",
+      "user_story": {
+        "role": "AI integration layer",
+        "goal": "obtain the Anthropic tool definition for submitting a specific artifact type",
+        "benefit": "pass a correctly structured, fully inlined JSON Schema to the Anthropic API for artifact generation"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-13.1",
+          "ears_pattern": "event_driven",
+          "system": "ArtifactTool",
+          "action": "retrieve the JSON Schema for the artifact type from Schemas(), call InlineRefs to resolve all $ref references, call CleanSchema to strip title, default, and $schema fields while preserving description fields, embed the cleaned schema as the content property of the submit_{artifactName} tool input schema, and return the tool definition",
+          "return_contract": "returns []map[string]any with one entry for submit_{artifactName}; the content schema contains no $ref, $defs, title, default, or $schema fields but retains description fields",
+          "trigger": "called with an artifactName of requirements, test_spec, or tasks"
+        },
+        {
+          "id": "06-REQ-13.2",
+          "ears_pattern": "unwanted",
+          "system": "ArtifactTool",
+          "action": "return an empty slice; do not panic",
+          "return_contract": "returns []map[string]any{}",
+          "error_condition": "artifactName is not one of requirements, test_spec, or tasks"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-13.E1",
+          "ears_pattern": "unwanted",
+          "system": "ArtifactTool",
+          "action": "return an empty slice without panicking",
+          "return_contract": "returns []map[string]any{}",
+          "error_condition": "Schemas() does not contain an entry for the requested artifactName"
+        },
+        {
+          "id": "06-REQ-13.E2",
+          "ears_pattern": "unwanted",
+          "system": "ArtifactTool",
+          "action": "InlineRefs detects the cycle and returns the schema with the cycle broken at the point of recurrence rather than looping infinitely",
+          "return_contract": "returns []map[string]any with a finite schema; no infinite loop or stack overflow",
+          "error_condition": "the embedded JSON Schema for the artifact type contains a circular $ref chain"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-14",
+      "title": "InlineRefs schema resolution",
+      "user_story": {
+        "role": "tool schema builder",
+        "goal": "resolve all $ref references in a JSON Schema into inline definitions",
+        "benefit": "produce a self-contained schema that the Anthropic API can interpret without external lookups"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-14.1",
+          "ears_pattern": "event_driven",
+          "system": "InlineRefs",
+          "action": "recursively replace each $ref with the definition it points to from $defs, then remove the $defs key from the top-level result",
+          "return_contract": "returns map[string]any with no $ref or $defs keys at any level",
+          "trigger": "called with a schema map containing $defs and $ref entries"
+        },
+        {
+          "id": "06-REQ-14.2",
+          "ears_pattern": "event_driven",
+          "system": "InlineRefs",
+          "action": "return the schema unchanged except for removing the $defs key if present",
+          "return_contract": "returns map[string]any identical to input minus the $defs key",
+          "trigger": "called with a schema map containing no $ref entries"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-14.E1",
+          "ears_pattern": "unwanted",
+          "system": "InlineRefs",
+          "action": "leave the $ref in place and continue processing the rest of the schema",
+          "return_contract": "returns map[string]any with unresolvable $ref entries preserved",
+          "error_condition": "a $ref points to a definition name not present in $defs"
+        },
+        {
+          "id": "06-REQ-14.E2",
+          "ears_pattern": "unwanted",
+          "system": "InlineRefs",
+          "action": "return an empty map without panicking",
+          "return_contract": "returns map[string]any{}",
+          "error_condition": "the input schema map is nil or empty"
+        }
+      ]
+    },
+    {
+      "id": "06-REQ-15",
+      "title": "CleanSchema metadata stripping",
+      "user_story": {
+        "role": "tool schema builder",
+        "goal": "strip metadata noise from a JSON Schema before passing it to the Anthropic API",
+        "benefit": "reduce token usage and avoid confusing the model with irrelevant schema metadata"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "06-REQ-15.1",
+          "ears_pattern": "event_driven",
+          "system": "CleanSchema",
+          "action": "recursively remove all title fields, all default fields, and the top-level $schema field from the schema map; preserve all description fields",
+          "return_contract": "returns map[string]any with no title or default keys at any level and no $schema key at the top level; all description keys are present",
+          "trigger": "called with a schema map containing title, default, and $schema fields at various nesting levels"
+        },
+        {
+          "id": "06-REQ-15.2",
+          "ears_pattern": "event_driven",
+          "system": "CleanSchema",
+          "action": "return the schema unchanged",
+          "return_contract": "returns map[string]any identical to input",
+          "trigger": "called with a schema map that has no title, default, or $schema fields"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "06-REQ-15.E1",
+          "ears_pattern": "unwanted",
+          "system": "CleanSchema",
+          "action": "return an empty map without panicking",
+          "return_contract": "returns map[string]any{}",
+          "error_condition": "the input schema map is nil or empty"
+        },
+        {
+          "id": "06-REQ-15.E2",
+          "ears_pattern": "event_driven",
+          "system": "CleanSchema",
+          "action": "recursively strip title and default fields from all nested objects",
+          "return_contract": "returns map[string]any with no title or default keys at any nesting depth",
+          "trigger": "called with a schema containing nested objects in properties or items arrays"
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [
+    {
+      "id": "06-PROP-1",
+      "title": "All agentspec errors are matchable via errors.As",
+      "for_any": "error value returned by any agentspec function",
+      "invariant": "errors.As(err, &target) where target is of type AgentSpecError returns true, and target.Category() returns a non-empty string",
+      "validates": [
+        "06-REQ-1.1",
+        "06-REQ-1.2",
+        "06-REQ-1.3",
+        "06-REQ-1.4",
+        "06-REQ-1.5"
+      ]
+    },
+    {
+      "id": "06-PROP-2",
+      "title": "AF_SPEC_MODEL always overrides config file model",
+      "for_any": "call to LoadConfig when AF_SPEC_MODEL is set to a non-empty string",
+      "invariant": "the returned AgentSpecConfig.Model equals the value of AF_SPEC_MODEL regardless of what config.toml specifies",
+      "validates": [
+        "06-REQ-2.3"
+      ]
+    },
+    {
+      "id": "06-PROP-3",
+      "title": "Config file search order: local before global",
+      "for_any": "call to LoadConfig when both .specs/config.toml and ~/.specs/config.toml exist",
+      "invariant": "the returned AgentSpecConfig is populated solely from .specs/config.toml and the global file is not read",
+      "validates": [
+        "06-REQ-2.1",
+        "06-REQ-2.E1"
+      ]
+    },
+    {
+      "id": "06-PROP-4",
+      "title": "Atomic writes never leave partial files",
+      "for_any": "any file write operation in agentspec (campaign.yaml, prd.md, _session.json)",
+      "invariant": "after the write operation completes or fails, the target path either contains the complete new content or the pre-existing content; no partial file is observable at the target path",
+      "validates": [
+        "06-REQ-3.1",
+        "06-REQ-3.E1",
+        "06-REQ-7.1",
+        "06-REQ-7.E1"
+      ]
+    },
+    {
+      "id": "06-PROP-5",
+      "title": "Session state transitions are persisted atomically",
+      "for_any": "any successful state transition on a SpecSession",
+      "invariant": "after the transition method returns nil, _session.json reflects the new state; if the write fails, the in-memory state is reverted to match the pre-transition _session.json",
+      "validates": [
+        "06-REQ-8.1",
+        "06-REQ-8.E1"
+      ]
+    },
+    {
+      "id": "06-PROP-6",
+      "title": "AcceptPRD only succeeds from valid predecessor states",
+      "for_any": "call to SpecSession.AcceptPRD",
+      "invariant": "the method returns nil if and only if the pre-call state was StateAssessing or StateRefining; otherwise it returns a SessionError and the state is unchanged",
+      "validates": [
+        "06-REQ-8.1",
+        "06-REQ-8.2"
+      ]
+    },
+    {
+      "id": "06-PROP-7",
+      "title": "InlineRefs produces schemas with no $ref or $defs keys",
+      "for_any": "call to InlineRefs with any schema map",
+      "invariant": "the returned map contains no key named $ref or $defs at any nesting level, provided all referenced definitions exist in $defs",
+      "validates": [
+        "06-REQ-14.1",
+        "06-REQ-14.2"
+      ]
+    },
+    {
+      "id": "06-PROP-8",
+      "title": "CleanSchema preserves description fields",
+      "for_any": "call to CleanSchema with any schema map containing description fields",
+      "invariant": "every description field present in the input is present in the output at the same nesting path",
+      "validates": [
+        "06-REQ-15.1",
+        "06-REQ-15.2"
+      ]
+    },
+    {
+      "id": "06-PROP-9",
+      "title": "Spec directory numeric prefixes are strictly monotonically increasing",
+      "for_any": "sequence of calls to Campaign.NewSpec on the same campaign",
+      "invariant": "each new spec directory's numeric prefix is strictly greater than the maximum prefix among all existing active and archived spec directories at the time of the call",
+      "validates": [
+        "06-REQ-6.1",
+        "06-REQ-6.E2"
+      ]
+    },
+    {
+      "id": "06-PROP-10",
+      "title": "ResumeSession is the inverse of CreateSession",
+      "for_any": "SpecSession created by CreateSession with given specDir, mode, and source",
+      "invariant": "ResumeSession(specDir) returns a SpecSession with identical state, mode, prd_path, assessment_history, qa_exchanges, generated_artifacts, and last_error fields",
+      "validates": [
+        "06-REQ-7.1",
+        "06-REQ-7.2"
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "06-PATH-1",
+      "title": "Create campaign and provision first spec",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls CreateCampaign with a new directory path, name, and description"
+        },
+        {
+          "actor": "CreateCampaign",
+          "action": "validates parent directory exists and campaign.yaml is absent"
+        },
+        {
+          "actor": "CreateCampaign",
+          "action": "writes campaign.yaml atomically using temp-file-and-rename"
+        },
+        {
+          "actor": "CreateCampaign",
+          "action": "returns *Campaign to caller"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls Campaign.NewSpec with specName, prdPath, mode, and source"
+        },
+        {
+          "actor": "Campaign.NewSpec",
+          "action": "validates specName against [a-z][a-z0-9_]* and reads prdPath"
+        },
+        {
+          "actor": "Campaign.NewSpec",
+          "action": "scans active and archive directories to compute next numeric prefix"
+        },
+        {
+          "actor": "Campaign.NewSpec",
+          "action": "creates spec directory and writes prd.md with YAML frontmatter and PRD body"
+        },
+        {
+          "actor": "CreateSession",
+          "action": "initializes SpecSession in StateInit and writes _session.json atomically"
+        },
+        {
+          "actor": "Campaign.NewSpec",
+          "action": "returns *SpecSession to caller"
+        }
+      ]
+    },
+    {
+      "id": "06-PATH-2",
+      "title": "Load configuration with environment override",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "sets AF_SPEC_MODEL environment variable and calls LoadConfig"
+        },
+        {
+          "actor": "LoadConfig",
+          "action": "checks for config.toml in .specs/ relative to current working directory"
+        },
+        {
+          "actor": "LoadConfig",
+          "action": "falls back to ~/.specs/config.toml if local file is absent"
+        },
+        {
+          "actor": "LoadConfig",
+          "action": "parses the found config.toml, reading [model] and [provider] sections"
+        },
+        {
+          "actor": "LoadConfig",
+          "action": "overrides Model field with AF_SPEC_MODEL value"
+        },
+        {
+          "actor": "LoadConfig",
+          "action": "returns AgentSpecConfig to caller"
+        }
+      ]
+    },
+    {
+      "id": "06-PATH-3",
+      "title": "Resume session and accept PRD",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls ResumeSession with an existing specDir"
+        },
+        {
+          "actor": "ResumeSession",
+          "action": "reads and unmarshals _session.json from specDir"
+        },
+        {
+          "actor": "ResumeSession",
+          "action": "reconstructs SpecSession with all persisted fields and returns it"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls SpecSession.AcceptPRD"
+        },
+        {
+          "actor": "SpecSession.AcceptPRD",
+          "action": "verifies current state is StateAssessing or StateRefining"
+        },
+        {
+          "actor": "SpecSession.AcceptPRD",
+          "action": "transitions state to StatePRDAccepted and persists _session.json atomically"
+        },
+        {
+          "actor": "SpecSession.AcceptPRD",
+          "action": "returns nil to caller"
+        }
+      ]
+    },
+    {
+      "id": "06-PATH-4",
+      "title": "Build artifact tool schema for requirements",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls ArtifactTool with artifactName \"requirements\""
+        },
+        {
+          "actor": "ArtifactTool",
+          "action": "calls Schemas() to retrieve the embedded JSON Schema map"
+        },
+        {
+          "actor": "ArtifactTool",
+          "action": "calls InlineRefs on the requirements schema to resolve all $ref references"
+        },
+        {
+          "actor": "ArtifactTool",
+          "action": "calls CleanSchema to strip title, default, and $schema fields"
+        },
+        {
+          "actor": "ArtifactTool",
+          "action": "embeds the cleaned schema as the content property of the submit_requirements tool definition"
+        },
+        {
+          "actor": "ArtifactTool",
+          "action": "returns []map[string]any containing the submit_requirements tool to caller"
+        }
+      ]
+    },
+    {
+      "id": "06-PATH-5",
+      "title": "Validate session artifacts with fallback",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls SpecSession.Validate on a session with some missing artifact files"
+        },
+        {
+          "actor": "SpecSession.Validate",
+          "action": "calls LoadSpec(specDir) which fails due to missing artifacts"
+        },
+        {
+          "actor": "SpecSession.Validate",
+          "action": "falls back to loading individual JSON artifact files that are present"
+        },
+        {
+          "actor": "SpecSession.Validate",
+          "action": "runs validation on available artifacts and categorizes errors"
+        },
+        {
+          "actor": "SpecSession.Validate",
+          "action": "returns SessionValidationResult with Valid=false and error details to caller"
+        }
+      ]
+    },
+    {
+      "id": "06-PATH-6",
+      "title": "List campaign specs sorted by prefix",
+      "steps": [
+        {
+          "actor": "Caller",
+          "action": "calls OpenCampaign with an existing campaign directory path"
+        },
+        {
+          "actor": "OpenCampaign",
+          "action": "reads and parses campaign.yaml using go-yaml Unmarshal"
+        },
+        {
+          "actor": "OpenCampaign",
+          "action": "returns *Campaign to caller"
+        },
+        {
+          "actor": "Caller",
+          "action": "calls Campaign.Specs"
+        },
+        {
+          "actor": "Campaign.Specs",
+          "action": "reads subdirectory names from the campaign directory"
+        },
+        {
+          "actor": "Campaign.Specs",
+          "action": "calls ParseSpecDirName on each name, filters matches, excludes archive/"
+        },
+        {
+          "actor": "Campaign.Specs",
+          "action": "sorts matching names by numeric prefix and returns the sorted slice to caller"
+        }
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "id": "06-ERR-1",
+      "condition": "config.toml resolved path differs from original path (symlink detected)",
+      "behavior": "LoadConfig returns (AgentSpecConfig{}, ConfigError) describing the symlink rejection; no config values are applied",
+      "requirement_id": "06-REQ-2.4"
+    },
+    {
+      "id": "06-ERR-2",
+      "condition": "config.toml contains invalid TOML syntax",
+      "behavior": "LoadConfig returns (AgentSpecConfig{}, ConfigError) wrapping the TOML parse error",
+      "requirement_id": "06-REQ-2.5"
+    },
+    {
+      "id": "06-ERR-3",
+      "condition": "campaign.yaml already exists when CreateCampaign is called",
+      "behavior": "CreateCampaign returns (nil, CampaignError) without modifying the existing file",
+      "requirement_id": "06-REQ-3.2"
+    },
+    {
+      "id": "06-ERR-4",
+      "condition": "atomic temp-file write or rename fails during campaign.yaml creation",
+      "behavior": "CreateCampaign cleans up the temporary file and returns (nil, CampaignError); no partial file remains at the target path",
+      "requirement_id": "06-REQ-3.E1"
+    },
+    {
+      "id": "06-ERR-5",
+      "condition": "campaign.yaml is missing or malformed when OpenCampaign is called",
+      "behavior": "OpenCampaign returns (nil, CampaignError) wrapping the underlying error",
+      "requirement_id": "06-REQ-4.2"
+    },
+    {
+      "id": "06-ERR-6",
+      "condition": "specName does not match [a-z][a-z0-9_]* when NewSpec is called",
+      "behavior": "Campaign.NewSpec returns (nil, CampaignError) without creating any directories or files",
+      "requirement_id": "06-REQ-6.2"
+    },
+    {
+      "id": "06-ERR-7",
+      "condition": "_session.json is missing when ResumeSession is called",
+      "behavior": "ResumeSession returns (nil, SessionError)",
+      "requirement_id": "06-REQ-7.3"
+    },
+    {
+      "id": "06-ERR-8",
+      "condition": "_session.json contains malformed JSON when ResumeSession is called",
+      "behavior": "ResumeSession returns (nil, SessionError) wrapping the JSON parse error",
+      "requirement_id": "06-REQ-7.4"
+    },
+    {
+      "id": "06-ERR-9",
+      "condition": "SpecSession.AcceptPRD is called when session state is not StateAssessing or StateRefining",
+      "behavior": "AcceptPRD returns SessionError without modifying session state or _session.json",
+      "requirement_id": "06-REQ-8.2"
+    },
+    {
+      "id": "06-ERR-10",
+      "condition": "atomic persistence of state transition to _session.json fails",
+      "behavior": "AcceptPRD reverts in-memory state to pre-transition value and returns the error",
+      "requirement_id": "06-REQ-8.E1"
+    },
+    {
+      "id": "06-ERR-11",
+      "condition": "ArtifactTool is called with an artifactName not in {requirements, test_spec, tasks}",
+      "behavior": "ArtifactTool returns an empty slice without panicking",
+      "requirement_id": "06-REQ-13.2"
+    },
+    {
+      "id": "06-ERR-12",
+      "condition": "Schemas() does not contain an entry for the requested artifactName in ArtifactTool",
+      "behavior": "ArtifactTool returns an empty slice without panicking",
+      "requirement_id": "06-REQ-13.E1"
+    },
+    {
+      "id": "06-ERR-13",
+      "condition": "InlineRefs encounters a $ref pointing to a definition not present in $defs",
+      "behavior": "InlineRefs leaves the unresolvable $ref in place and continues processing the rest of the schema",
+      "requirement_id": "06-REQ-14.E1"
+    },
+    {
+      "id": "06-ERR-14",
+      "condition": "CreateSession atomic write of _session.json fails",
+      "behavior": "CreateSession cleans up the temporary file and returns (nil, error); no partial _session.json remains",
+      "requirement_id": "06-REQ-7.E1"
+    },
+    {
+      "id": "06-ERR-15",
+      "condition": "Campaign.Specs cannot read the campaign directory due to filesystem permissions",
+      "behavior": "Campaign.Specs returns (nil, CampaignError) wrapping the OS error",
+      "requirement_id": "06-REQ-5.E1"
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "afspec (Go, in-repo at golang/)",
+      "version": "in-repo",
+      "symbols": [
+        {
+          "name": "LoadSpec",
+          "import_path": "golang/afspec",
+          "signature": "LoadSpec(dir string) (*Spec, error)",
+          "notes": "Loads a complete Spec from a directory"
+        },
+        {
+          "name": "Validate",
+          "import_path": "golang/afspec",
+          "signature": "(*Spec).Validate() ValidationResult",
+          "notes": "Runs full validation on a loaded Spec"
+        },
+        {
+          "name": "RenderCombined",
+          "import_path": "golang/afspec",
+          "signature": "(*Spec).RenderCombined(opts ...RenderOption) string",
+          "notes": "Renders all artifacts into a single combined string"
+        },
+        {
+          "name": "RenderIndividual",
+          "import_path": "golang/afspec",
+          "signature": "(*Spec).RenderIndividual(opts ...RenderOption) map[string]string",
+          "notes": "Renders each artifact into a separate string keyed by artifact name"
+        },
+        {
+          "name": "MarshalJSON",
+          "import_path": "golang/afspec",
+          "signature": "MarshalJSON(v any) ([]byte, error)",
+          "notes": "Deterministic JSON marshaling"
+        },
+        {
+          "name": "Schemas",
+          "import_path": "golang/afspec",
+          "signature": "Schemas() map[string][]byte",
+          "notes": "Returns embedded JSON Schema files keyed by artifact type name"
+        },
+        {
+          "name": "ParseSpecDirName",
+          "import_path": "golang/afspec",
+          "signature": "ParseSpecDirName(name string) (int, string, bool)",
+          "notes": "Parses a directory name of the form {NN}_{snake_case} into numeric prefix, name, and validity flag"
+        },
+        {
+          "name": "IsSpecDirName",
+          "import_path": "golang/afspec",
+          "signature": "IsSpecDirName(name string) bool",
+          "notes": "Returns true if the name matches the {NN}_{snake_case} pattern"
+        }
+      ]
+    },
+    {
+      "package": "github.com/goccy/go-yaml",
+      "version": "see go.mod",
+      "symbols": [
+        {
+          "name": "Marshal",
+          "import_path": "github.com/goccy/go-yaml",
+          "signature": "func Marshal(v interface{}) ([]byte, error)",
+          "notes": "Used for writing campaign.yaml"
+        },
+        {
+          "name": "Unmarshal",
+          "import_path": "github.com/goccy/go-yaml",
+          "signature": "func Unmarshal(data []byte, v interface{}) error",
+          "notes": "Used for reading campaign.yaml"
+        }
+      ]
+    }
+  ]
+}

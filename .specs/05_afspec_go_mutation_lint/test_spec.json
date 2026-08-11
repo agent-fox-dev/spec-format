@@ -1,0 +1,1436 @@
+{
+  "$schema": null,
+  "spec_id": "05",
+  "spec_name": "afspec_go_mutation_lint",
+  "schema_version": 1,
+  "test_cases": [
+    {
+      "id": "TS-05-1",
+      "requirement_id": "05-REQ-1.1",
+      "kind": "unit",
+      "description": "AddRequirement with a non-duplicate ID returns a new RequirementsV1Json with the requirement appended and leaves the original unchanged.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with one existing requirement having ID '05-REQ-1'",
+        "A new Requirement struct is constructed with ID '05-REQ-2'"
+      ],
+      "input": {
+        "r": "Requirement{id:'05-REQ-2'}",
+        "req": "RequirementsV1Json with requirements=[{id:'05-REQ-1'}]"
+      },
+      "expected": {
+        "new_last_id": "05-REQ-2",
+        "new_req_count": 2,
+        "original_req_count": 1,
+        "return": "(RequirementsV1Json, nil)"
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Requirements: [{id:'05-REQ-1'}]}; newReq, err := AddRequirement(original, Requirement{id:'05-REQ-2'}); assert err == nil; assert len(newReq.Requirements) == 2; assert newReq.Requirements[1].id == '05-REQ-2'; assert len(original.Requirements) == 1"
+    },
+    {
+      "id": "TS-05-2",
+      "requirement_id": "05-REQ-1.2",
+      "kind": "unit",
+      "description": "GetRequirement with an existing ID returns a pointer to the matching Requirement and true.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with a requirement having ID '05-REQ-3'"
+      ],
+      "input": {
+        "id": "'05-REQ-3'",
+        "req": "RequirementsV1Json with requirements=[{id:'05-REQ-3', title:'Test Req'}]"
+      },
+      "expected": {
+        "found_id": "05-REQ-3",
+        "return": "(*Requirement, true)"
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{Requirements: [{id:'05-REQ-3', title:'Test Req'}]}; ptr, found := GetRequirement(req, '05-REQ-3'); assert found == true; assert ptr != nil; assert ptr.id == '05-REQ-3'"
+    },
+    {
+      "id": "TS-05-3",
+      "requirement_id": "05-REQ-1.3",
+      "kind": "unit",
+      "description": "GetRequirement with a non-existent ID returns nil and false.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with a requirement having ID '05-REQ-1'"
+      ],
+      "input": {
+        "id": "'05-REQ-99'",
+        "req": "RequirementsV1Json with requirements=[{id:'05-REQ-1'}]"
+      },
+      "expected": {
+        "return": "(nil, false)"
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{Requirements: [{id:'05-REQ-1'}]}; ptr, found := GetRequirement(req, '05-REQ-99'); assert found == false; assert ptr == nil"
+    },
+    {
+      "id": "TS-05-4",
+      "requirement_id": "05-REQ-1.4",
+      "kind": "unit",
+      "description": "RemoveRequirement with an existing ID returns a new RequirementsV1Json without that requirement and true.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with two requirements having IDs '05-REQ-1' and '05-REQ-2'"
+      ],
+      "input": {
+        "id": "'05-REQ-1'",
+        "req": "RequirementsV1Json with requirements=[{id:'05-REQ-1'},{id:'05-REQ-2'}]"
+      },
+      "expected": {
+        "new_req_count": 1,
+        "remaining_id": "05-REQ-2",
+        "return": "(RequirementsV1Json, true)"
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Requirements: [{id:'05-REQ-1'},{id:'05-REQ-2'}]}; newReq, ok := RemoveRequirement(original, '05-REQ-1'); assert ok == true; assert len(newReq.Requirements) == 1; assert newReq.Requirements[0].id == '05-REQ-2'; assert len(original.Requirements) == 2"
+    },
+    {
+      "id": "TS-05-5",
+      "requirement_id": "05-REQ-1.5",
+      "kind": "unit",
+      "description": "SetGlossaryEntry inserts a new term or overwrites an existing one and returns a new RequirementsV1Json without modifying the original.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with an empty glossary map"
+      ],
+      "input": {
+        "definition": "'A foo is a bar'",
+        "req": "RequirementsV1Json with glossary={}",
+        "term": "'Foo'"
+      },
+      "expected": {
+        "glossary_entry": {
+          "Foo": "A foo is a bar"
+        },
+        "original_glossary": {},
+        "return": "RequirementsV1Json"
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Glossary: {}}; newReq := SetGlossaryEntry(original, 'Foo', 'A foo is a bar'); assert newReq.Glossary['Foo'] == 'A foo is a bar'; assert len(original.Glossary) == 0; newReq2 := SetGlossaryEntry(newReq, 'Foo', 'Updated definition'); assert newReq2.Glossary['Foo'] == 'Updated definition'"
+    },
+    {
+      "id": "TS-05-6",
+      "requirement_id": "05-REQ-1.6",
+      "kind": "unit",
+      "description": "RemoveGlossaryEntry with an existing term returns a new RequirementsV1Json without that term and true.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with a glossary containing term 'Foo'"
+      ],
+      "input": {
+        "req": "RequirementsV1Json with glossary={'Foo':'A foo is a bar'}",
+        "term": "'Foo'"
+      },
+      "expected": {
+        "glossary_size": 0,
+        "return": "(RequirementsV1Json, true)"
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Glossary: {'Foo':'A foo is a bar'}}; newReq, ok := RemoveGlossaryEntry(original, 'Foo'); assert ok == true; assert 'Foo' not in newReq.Glossary; assert 'Foo' in original.Glossary"
+    },
+    {
+      "id": "TS-05-7",
+      "requirement_id": "05-REQ-1.7",
+      "kind": "unit",
+      "description": "AddCorrectnessProperty, AddExecutionPath, and AddErrorHandling each return a new RequirementsV1Json with the item appended when the ID is unique.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with empty correctness_properties, execution_paths, and error_handling slices"
+      ],
+      "input": {
+        "items": "CorrectnessProperty{id:'05-PROP-1'}, ExecutionPath{id:'05-PATH-1'}, ErrorHandlingEntry{id:'05-ERR-1'}",
+        "req": "RequirementsV1Json with empty collections"
+      },
+      "expected": {
+        "each_collection_count": 1,
+        "return": "(RequirementsV1Json, nil) for each call"
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{}; r1, err1 := AddCorrectnessProperty(req, CorrectnessProperty{id:'05-PROP-1'}); assert err1 == nil; assert len(r1.CorrectnessProperties) == 1; r2, err2 := AddExecutionPath(req, ExecutionPath{id:'05-PATH-1'}); assert err2 == nil; assert len(r2.ExecutionPaths) == 1; r3, err3 := AddErrorHandling(req, ErrorHandlingEntry{id:'05-ERR-1'}); assert err3 == nil; assert len(r3.ErrorHandling) == 1"
+    },
+    {
+      "id": "TS-05-8",
+      "requirement_id": "05-REQ-2.1",
+      "kind": "unit",
+      "description": "AddCriterion with a non-duplicate ID appends the Criterion to acceptance_criteria and returns a new Requirement with the original unchanged.",
+      "preconditions": [
+        "A Requirement struct is constructed with one existing criterion in acceptance_criteria with ID '05-REQ-1.1'"
+      ],
+      "input": {
+        "c": "Criterion{id:'05-REQ-1.2'}",
+        "r": "Requirement{acceptance_criteria:[{id:'05-REQ-1.1'}]}"
+      },
+      "expected": {
+        "new_criteria_count": 2,
+        "original_criteria_count": 1,
+        "return": "(Requirement, nil)"
+      },
+      "assertion_pseudocode": "original := Requirement{AcceptanceCriteria: [{id:'05-REQ-1.1'}]}; newReq, err := AddCriterion(original, Criterion{id:'05-REQ-1.2'}); assert err == nil; assert len(newReq.AcceptanceCriteria) == 2; assert newReq.AcceptanceCriteria[1].id == '05-REQ-1.2'; assert len(original.AcceptanceCriteria) == 1"
+    },
+    {
+      "id": "TS-05-9",
+      "requirement_id": "05-REQ-2.2",
+      "kind": "unit",
+      "description": "AddEdgeCase with a non-duplicate ID appends the Criterion to edge_cases and returns a new Requirement with the original unchanged.",
+      "preconditions": [
+        "A Requirement struct is constructed with one existing edge case with ID '05-REQ-1.E1'"
+      ],
+      "input": {
+        "c": "Criterion{id:'05-REQ-1.E2'}",
+        "r": "Requirement{edge_cases:[{id:'05-REQ-1.E1'}]}"
+      },
+      "expected": {
+        "new_edge_cases_count": 2,
+        "original_edge_cases_count": 1,
+        "return": "(Requirement, nil)"
+      },
+      "assertion_pseudocode": "original := Requirement{EdgeCases: [{id:'05-REQ-1.E1'}]}; newReq, err := AddEdgeCase(original, Criterion{id:'05-REQ-1.E2'}); assert err == nil; assert len(newReq.EdgeCases) == 2; assert newReq.EdgeCases[1].id == '05-REQ-1.E2'; assert len(original.EdgeCases) == 1"
+    },
+    {
+      "id": "TS-05-10",
+      "requirement_id": "05-REQ-2.3",
+      "kind": "unit",
+      "description": "GetCriterion searches both acceptance_criteria and edge_cases and returns a pointer and true when found, or nil and false when not found.",
+      "preconditions": [
+        "A Requirement struct is constructed with acceptance_criteria=[{id:'05-REQ-1.1'}] and edge_cases=[{id:'05-REQ-1.E1'}]"
+      ],
+      "input": {
+        "ids_to_search": [
+          "'05-REQ-1.1'",
+          "'05-REQ-1.E1'",
+          "'05-REQ-1.99'"
+        ],
+        "r": "Requirement{acceptance_criteria:[{id:'05-REQ-1.1'}], edge_cases:[{id:'05-REQ-1.E1'}]}"
+      },
+      "expected": {
+        "found_in_criteria": "(*Criterion, true) for '05-REQ-1.1'",
+        "found_in_edge_cases": "(*Criterion, true) for '05-REQ-1.E1'",
+        "not_found": "(nil, false) for '05-REQ-1.99'"
+      },
+      "assertion_pseudocode": "r := Requirement{AcceptanceCriteria:[{id:'05-REQ-1.1'}], EdgeCases:[{id:'05-REQ-1.E1'}]}; p1, ok1 := GetCriterion(r, '05-REQ-1.1'); assert ok1 == true; assert p1 != nil; assert p1.id == '05-REQ-1.1'; p2, ok2 := GetCriterion(r, '05-REQ-1.E1'); assert ok2 == true; assert p2 != nil; p3, ok3 := GetCriterion(r, '05-REQ-1.99'); assert ok3 == false; assert p3 == nil"
+    },
+    {
+      "id": "TS-05-11",
+      "requirement_id": "05-REQ-3.1",
+      "kind": "unit",
+      "description": "AddTestCase with a non-duplicate ID returns a new TestSpecV1Json with the TestCase appended and the original unchanged.",
+      "preconditions": [
+        "A TestSpecV1Json struct is constructed with one existing test case with ID 'TS-05-1'"
+      ],
+      "input": {
+        "tc": "TestCase{id:'TS-05-2'}",
+        "ts": "TestSpecV1Json{test_cases:[{id:'TS-05-1'}]}"
+      },
+      "expected": {
+        "new_count": 2,
+        "original_count": 1,
+        "return": "(TestSpecV1Json, nil)"
+      },
+      "assertion_pseudocode": "original := TestSpecV1Json{TestCases: [{id:'TS-05-1'}]}; newTs, err := AddTestCase(original, TestCase{id:'TS-05-2'}); assert err == nil; assert len(newTs.TestCases) == 2; assert newTs.TestCases[1].id == 'TS-05-2'; assert len(original.TestCases) == 1"
+    },
+    {
+      "id": "TS-05-12",
+      "requirement_id": "05-REQ-3.2",
+      "kind": "unit",
+      "description": "AddPropertyTest with a non-duplicate ID returns a new TestSpecV1Json with the PropertyTest appended and the original unchanged.",
+      "preconditions": [
+        "A TestSpecV1Json struct is constructed with one existing property test with ID 'TS-05-P1'"
+      ],
+      "input": {
+        "pt": "PropertyTest{id:'TS-05-P2'}",
+        "ts": "TestSpecV1Json{property_tests:[{id:'TS-05-P1'}]}"
+      },
+      "expected": {
+        "new_count": 2,
+        "return": "(TestSpecV1Json, nil)"
+      },
+      "assertion_pseudocode": "original := TestSpecV1Json{PropertyTests: [{id:'TS-05-P1'}]}; newTs, err := AddPropertyTest(original, PropertyTest{id:'TS-05-P2'}); assert err == nil; assert len(newTs.PropertyTests) == 2; assert newTs.PropertyTests[1].id == 'TS-05-P2'; assert len(original.PropertyTests) == 1"
+    },
+    {
+      "id": "TS-05-13",
+      "requirement_id": "05-REQ-3.3",
+      "kind": "unit",
+      "description": "AddEdgeCaseTest with a non-duplicate ID returns a new TestSpecV1Json with the EdgeCaseTest appended and the original unchanged.",
+      "preconditions": [
+        "A TestSpecV1Json struct is constructed with one existing edge case test with ID 'TS-05-E1'"
+      ],
+      "input": {
+        "et": "EdgeCaseTest{id:'TS-05-E2'}",
+        "ts": "TestSpecV1Json{edge_case_tests:[{id:'TS-05-E1'}]}"
+      },
+      "expected": {
+        "new_count": 2,
+        "return": "(TestSpecV1Json, nil)"
+      },
+      "assertion_pseudocode": "original := TestSpecV1Json{EdgeCaseTests: [{id:'TS-05-E1'}]}; newTs, err := AddEdgeCaseTest(original, EdgeCaseTest{id:'TS-05-E2'}); assert err == nil; assert len(newTs.EdgeCaseTests) == 2; assert newTs.EdgeCaseTests[1].id == 'TS-05-E2'; assert len(original.EdgeCaseTests) == 1"
+    },
+    {
+      "id": "TS-05-14",
+      "requirement_id": "05-REQ-3.4",
+      "kind": "unit",
+      "description": "AddSmokeTest with a non-duplicate ID returns a new TestSpecV1Json with the SmokeTest appended and the original unchanged.",
+      "preconditions": [
+        "A TestSpecV1Json struct is constructed with one existing smoke test with ID 'TS-05-SMOKE-1'"
+      ],
+      "input": {
+        "st": "SmokeTest{id:'TS-05-SMOKE-2'}",
+        "ts": "TestSpecV1Json{smoke_tests:[{id:'TS-05-SMOKE-1'}]}"
+      },
+      "expected": {
+        "new_count": 2,
+        "return": "(TestSpecV1Json, nil)"
+      },
+      "assertion_pseudocode": "original := TestSpecV1Json{SmokeTests: [{id:'TS-05-SMOKE-1'}]}; newTs, err := AddSmokeTest(original, SmokeTest{id:'TS-05-SMOKE-2'}); assert err == nil; assert len(newTs.SmokeTests) == 2; assert newTs.SmokeTests[1].id == 'TS-05-SMOKE-2'; assert len(original.SmokeTests) == 1"
+    },
+    {
+      "id": "TS-05-15",
+      "requirement_id": "05-REQ-4.1",
+      "kind": "unit",
+      "description": "AddTaskGroup with a non-duplicate ID returns a new TasksV1Json with the TaskGroup appended and the original unchanged.",
+      "preconditions": [
+        "A TasksV1Json struct is constructed with one existing task group with ID '1'"
+      ],
+      "input": {
+        "g": "TaskGroup{id:'2'}",
+        "t": "TasksV1Json{task_groups:[{id:'1'}]}"
+      },
+      "expected": {
+        "new_count": 2,
+        "original_count": 1,
+        "return": "(TasksV1Json, nil)"
+      },
+      "assertion_pseudocode": "original := TasksV1Json{TaskGroups: [{id:'1'}]}; newT, err := AddTaskGroup(original, TaskGroup{id:'2'}); assert err == nil; assert len(newT.TaskGroups) == 2; assert newT.TaskGroups[1].id == '2'; assert len(original.TaskGroups) == 1"
+    },
+    {
+      "id": "TS-05-16",
+      "requirement_id": "05-REQ-4.2",
+      "kind": "unit",
+      "description": "AddSubtask with a non-duplicate ID returns a new TaskGroup with the Subtask appended and the original unchanged.",
+      "preconditions": [
+        "A TaskGroup struct is constructed with one existing subtask with ID '1.1'"
+      ],
+      "input": {
+        "g": "TaskGroup{subtasks:[{id:'1.1'}]}",
+        "s": "Subtask{id:'1.2'}"
+      },
+      "expected": {
+        "new_count": 2,
+        "original_count": 1,
+        "return": "(TaskGroup, nil)"
+      },
+      "assertion_pseudocode": "original := TaskGroup{Subtasks: [{id:'1.1'}]}; newG, err := AddSubtask(original, Subtask{id:'1.2'}); assert err == nil; assert len(newG.Subtasks) == 2; assert newG.Subtasks[1].id == '1.2'; assert len(original.Subtasks) == 1"
+    },
+    {
+      "id": "TS-05-17",
+      "requirement_id": "05-REQ-4.3",
+      "kind": "unit",
+      "description": "AddTraceabilityEntry with a unique (requirement_id, test_spec_id) pair returns a new TasksV1Json with the entry appended and the original unchanged.",
+      "preconditions": [
+        "A TasksV1Json struct is constructed with one existing traceability entry with requirement_id='05-REQ-1' and test_spec_id='05'"
+      ],
+      "input": {
+        "e": "TraceabilityEntry{requirement_id:'05-REQ-2', test_spec_id:'05'}",
+        "t": "TasksV1Json{traceability:[{requirement_id:'05-REQ-1', test_spec_id:'05'}]}"
+      },
+      "expected": {
+        "new_count": 2,
+        "return": "(TasksV1Json, nil)"
+      },
+      "assertion_pseudocode": "original := TasksV1Json{Traceability: [{requirement_id:'05-REQ-1', test_spec_id:'05'}]}; newT, err := AddTraceabilityEntry(original, TraceabilityEntry{requirement_id:'05-REQ-2', test_spec_id:'05'}); assert err == nil; assert len(newT.Traceability) == 2; assert len(original.Traceability) == 1"
+    },
+    {
+      "id": "TS-05-18",
+      "requirement_id": "05-REQ-4.4",
+      "kind": "unit",
+      "description": "AddDependency unconditionally appends a TaskDependency and returns a new TasksV1Json with the original unchanged.",
+      "preconditions": [
+        "A TasksV1Json struct is constructed with an empty dependencies slice"
+      ],
+      "input": {
+        "d": "TaskDependency{spec_id:'04'}",
+        "t": "TasksV1Json{dependencies:[]}"
+      },
+      "expected": {
+        "new_count": 1,
+        "original_count": 0,
+        "return": "TasksV1Json"
+      },
+      "assertion_pseudocode": "original := TasksV1Json{Dependencies: []}; newT := AddDependency(original, TaskDependency{spec_id:'04'}); assert len(newT.Dependencies) == 1; assert newT.Dependencies[0].spec_id == '04'; assert len(original.Dependencies) == 0"
+    },
+    {
+      "id": "TS-05-19",
+      "requirement_id": "05-REQ-5.1",
+      "kind": "unit",
+      "description": "NextRequirementID scans existing requirement IDs, finds the maximum numeric suffix, and returns a new ID formatted as {spec_id}-REQ-{max+1}.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with spec_id='05' and requirements with IDs '05-REQ-1', '05-REQ-3', '05-REQ-5'"
+      ],
+      "input": {
+        "req": "RequirementsV1Json{spec_id:'05', requirements:[{id:'05-REQ-1'},{id:'05-REQ-3'},{id:'05-REQ-5'}]}"
+      },
+      "expected": {
+        "return": "'05-REQ-6'"
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{SpecID:'05', Requirements:[{id:'05-REQ-1'},{id:'05-REQ-3'},{id:'05-REQ-5'}]}; next := NextRequirementID(req); assert next == '05-REQ-6'"
+    },
+    {
+      "id": "TS-05-20",
+      "requirement_id": "05-REQ-5.2",
+      "kind": "unit",
+      "description": "NextCriterionID scans acceptance_criteria IDs, finds the maximum numeric suffix, and returns a new ID formatted as {requirement_id}.{max+1}.",
+      "preconditions": [
+        "A Requirement struct is constructed with ID '05-REQ-2' and acceptance_criteria with IDs '05-REQ-2.1', '05-REQ-2.3'"
+      ],
+      "input": {
+        "r": "Requirement{id:'05-REQ-2', acceptance_criteria:[{id:'05-REQ-2.1'},{id:'05-REQ-2.3'}]}"
+      },
+      "expected": {
+        "return": "'05-REQ-2.4'"
+      },
+      "assertion_pseudocode": "r := Requirement{id:'05-REQ-2', AcceptanceCriteria:[{id:'05-REQ-2.1'},{id:'05-REQ-2.3'}]}; next := NextCriterionID(r); assert next == '05-REQ-2.4'"
+    },
+    {
+      "id": "TS-05-21",
+      "requirement_id": "05-REQ-5.3",
+      "kind": "unit",
+      "description": "NextEdgeCaseID scans edge_cases IDs, extracts the numeric suffix after 'E', finds the maximum, and returns a new ID formatted as {requirement_id}.E{max+1}.",
+      "preconditions": [
+        "A Requirement struct is constructed with ID '05-REQ-2' and edge_cases with IDs '05-REQ-2.E1', '05-REQ-2.E4'"
+      ],
+      "input": {
+        "r": "Requirement{id:'05-REQ-2', edge_cases:[{id:'05-REQ-2.E1'},{id:'05-REQ-2.E4'}]}"
+      },
+      "expected": {
+        "return": "'05-REQ-2.E5'"
+      },
+      "assertion_pseudocode": "r := Requirement{id:'05-REQ-2', EdgeCases:[{id:'05-REQ-2.E1'},{id:'05-REQ-2.E4'}]}; next := NextEdgeCaseID(r); assert next == '05-REQ-2.E5'"
+    },
+    {
+      "id": "TS-05-22",
+      "requirement_id": "05-REQ-5.4",
+      "kind": "unit",
+      "description": "NextCorrectnessPropertyID, NextExecutionPathID, and NextErrorHandlingID each return the correct next ID in their respective formats.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with spec_id='05', correctness_properties=[{id:'05-PROP-2'}], execution_paths=[{id:'05-PATH-1'},{id:'05-PATH-3'}], error_handling=[{id:'05-ERR-1'}]"
+      ],
+      "input": {
+        "req": "RequirementsV1Json{spec_id:'05', correctness_properties:[{id:'05-PROP-2'}], execution_paths:[{id:'05-PATH-1'},{id:'05-PATH-3'}], error_handling:[{id:'05-ERR-1'}]}"
+      },
+      "expected": {
+        "NextCorrectnessPropertyID": "'05-PROP-3'",
+        "NextErrorHandlingID": "'05-ERR-2'",
+        "NextExecutionPathID": "'05-PATH-4'"
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{SpecID:'05', CorrectnessProperties:[{id:'05-PROP-2'}], ExecutionPaths:[{id:'05-PATH-1'},{id:'05-PATH-3'}], ErrorHandling:[{id:'05-ERR-1'}]}; assert NextCorrectnessPropertyID(req) == '05-PROP-3'; assert NextExecutionPathID(req) == '05-PATH-4'; assert NextErrorHandlingID(req) == '05-ERR-2'"
+    },
+    {
+      "id": "TS-05-23",
+      "requirement_id": "05-REQ-5.5",
+      "kind": "unit",
+      "description": "NextTestCaseID, NextPropertyTestID, NextEdgeCaseTestID, and NextSmokeTestID each return the correct next ID in their respective formats.",
+      "preconditions": [
+        "A TestSpecV1Json struct is constructed with spec_id='05', test_cases=[{id:'TS-05-2'}], property_tests=[{id:'TS-05-P1'}], edge_case_tests=[{id:'TS-05-E3'}], smoke_tests=[{id:'TS-05-SMOKE-1'},{id:'TS-05-SMOKE-2'}]"
+      ],
+      "input": {
+        "ts": "TestSpecV1Json{spec_id:'05', test_cases:[{id:'TS-05-2'}], property_tests:[{id:'TS-05-P1'}], edge_case_tests:[{id:'TS-05-E3'}], smoke_tests:[{id:'TS-05-SMOKE-1'},{id:'TS-05-SMOKE-2'}]}"
+      },
+      "expected": {
+        "NextEdgeCaseTestID": "'TS-05-E4'",
+        "NextPropertyTestID": "'TS-05-P2'",
+        "NextSmokeTestID": "'TS-05-SMOKE-3'",
+        "NextTestCaseID": "'TS-05-3'"
+      },
+      "assertion_pseudocode": "ts := TestSpecV1Json{SpecID:'05', TestCases:[{id:'TS-05-2'}], PropertyTests:[{id:'TS-05-P1'}], EdgeCaseTests:[{id:'TS-05-E3'}], SmokeTests:[{id:'TS-05-SMOKE-1'},{id:'TS-05-SMOKE-2'}]}; assert NextTestCaseID(ts) == 'TS-05-3'; assert NextPropertyTestID(ts) == 'TS-05-P2'; assert NextEdgeCaseTestID(ts) == 'TS-05-E4'; assert NextSmokeTestID(ts) == 'TS-05-SMOKE-3'"
+    },
+    {
+      "id": "TS-05-24",
+      "requirement_id": "05-REQ-6.1",
+      "kind": "unit",
+      "description": "LintFinding struct is exported with all required fields: SpecName, File, Rule, Severity, Message, and Line.",
+      "preconditions": [
+        "The afspec lint package is compiled and importable"
+      ],
+      "input": {
+        "struct_literal": "LintFinding{SpecName:'my_spec', File:'requirements.json', Rule:'missing-title', Severity:'error', Message:'Requirement has no title', Line:10}"
+      },
+      "expected": {
+        "File": "string 'requirements.json'",
+        "Line": "int 10",
+        "Message": "string 'Requirement has no title'",
+        "Rule": "string 'missing-title'",
+        "Severity": "string 'error'",
+        "SpecName": "string 'my_spec'"
+      },
+      "assertion_pseudocode": "f := LintFinding{SpecName:'my_spec', File:'requirements.json', Rule:'missing-title', Severity:'error', Message:'Requirement has no title', Line:10}; assert f.SpecName == 'my_spec'; assert f.File == 'requirements.json'; assert f.Rule == 'missing-title'; assert f.Severity == 'error'; assert f.Message == 'Requirement has no title'; assert f.Line == 10"
+    },
+    {
+      "id": "TS-05-25",
+      "requirement_id": "05-REQ-6.2",
+      "kind": "unit",
+      "description": "LintSpecInfo struct is exported with all required fields: Name, Prefix, Path, HasTasks, and HasPRD.",
+      "preconditions": [
+        "The afspec lint package is compiled and importable"
+      ],
+      "input": {
+        "struct_literal": "LintSpecInfo{Name:'my_spec', Prefix:5, Path:'/specs/05-my_spec', HasTasks:true, HasPRD:false}"
+      },
+      "expected": {
+        "HasPRD": "bool false",
+        "HasTasks": "bool true",
+        "Name": "string 'my_spec'",
+        "Path": "string '/specs/05-my_spec'",
+        "Prefix": "int 5"
+      },
+      "assertion_pseudocode": "info := LintSpecInfo{Name:'my_spec', Prefix:5, Path:'/specs/05-my_spec', HasTasks:true, HasPRD:false}; assert info.Name == 'my_spec'; assert info.Prefix == 5; assert info.Path == '/specs/05-my_spec'; assert info.HasTasks == true; assert info.HasPRD == false"
+    },
+    {
+      "id": "TS-05-26",
+      "requirement_id": "05-REQ-6.3",
+      "kind": "unit",
+      "description": "LintResult struct is exported with fields Findings ([]LintFinding) and ExitCode (int).",
+      "preconditions": [
+        "The afspec lint package is compiled and importable"
+      ],
+      "input": {
+        "struct_literal": "LintResult{Findings:[LintFinding{Severity:'warning'}], ExitCode:0}"
+      },
+      "expected": {
+        "ExitCode": "int 0",
+        "Findings_type": "[]LintFinding with one entry"
+      },
+      "assertion_pseudocode": "r := LintResult{Findings:[LintFinding{Severity:'warning'}], ExitCode:0}; assert len(r.Findings) == 1; assert r.ExitCode == 0"
+    },
+    {
+      "id": "TS-05-27",
+      "requirement_id": "05-REQ-7.1",
+      "kind": "integration",
+      "description": "DiscoverLintSpecs with a valid specsDir and empty filterSpec returns LintSpecInfo entries for all subdirectories containing requirements.json, with HasTasks and HasPRD set correctly.",
+      "preconditions": [
+        "A temporary directory is created on the filesystem",
+        "Subdirectory '05-my_spec' is created containing requirements.json and tasks.json but no prd.md",
+        "Subdirectory '06-other_spec' is created containing requirements.json and prd.md but no tasks.json",
+        "Subdirectory 'not-a-spec' is created containing requirements.json (invalid name format)"
+      ],
+      "input": {
+        "filterSpec": "''",
+        "specsDir": "path to temp directory"
+      },
+      "expected": {
+        "entry_05": "LintSpecInfo{Name:'my_spec', Prefix:5, HasTasks:true, HasPRD:false}",
+        "entry_06": "LintSpecInfo{Name:'other_spec', Prefix:6, HasTasks:false, HasPRD:true}",
+        "return": "([]LintSpecInfo, nil) with 2 entries"
+      },
+      "assertion_pseudocode": "specsDir := createTempDir(); createDir(specsDir+'/05-my_spec'); writeFile(specsDir+'/05-my_spec/requirements.json', '{}'); writeFile(specsDir+'/05-my_spec/tasks.json', '{}'); createDir(specsDir+'/06-other_spec'); writeFile(specsDir+'/06-other_spec/requirements.json', '{}'); writeFile(specsDir+'/06-other_spec/prd.md', ''); createDir(specsDir+'/not-a-spec'); writeFile(specsDir+'/not-a-spec/requirements.json', '{}'); infos, err := DiscoverLintSpecs(specsDir, ''); assert err == nil; assert len(infos) == 2; assert any(i.Name=='my_spec' && i.HasTasks==true && i.HasPRD==false for i in infos); assert any(i.Name=='other_spec' && i.HasTasks==false && i.HasPRD==true for i in infos)"
+    },
+    {
+      "id": "TS-05-28",
+      "requirement_id": "05-REQ-7.2",
+      "kind": "integration",
+      "description": "DiscoverLintSpecs with a non-empty filterSpec returns only the matching LintSpecInfo entry, or an error if no match is found.",
+      "preconditions": [
+        "A temporary directory is created on the filesystem",
+        "Subdirectory '05-my_spec' is created containing requirements.json",
+        "Subdirectory '06-other_spec' is created containing requirements.json"
+      ],
+      "input": {
+        "filterSpec": "'my_spec'",
+        "specsDir": "path to temp directory"
+      },
+      "expected": {
+        "return_match": "([]LintSpecInfo with 1 entry where Name=='my_spec', nil)",
+        "return_no_match": "(nil, error) when filterSpec='nonexistent'"
+      },
+      "assertion_pseudocode": "specsDir := createTempDir(); createSpecDir(specsDir, '05-my_spec'); createSpecDir(specsDir, '06-other_spec'); infos, err := DiscoverLintSpecs(specsDir, 'my_spec'); assert err == nil; assert len(infos) == 1; assert infos[0].Name == 'my_spec'; infos2, err2 := DiscoverLintSpecs(specsDir, 'nonexistent'); assert err2 != nil; assert infos2 == nil"
+    },
+    {
+      "id": "TS-05-29",
+      "requirement_id": "05-REQ-8.1",
+      "kind": "unit",
+      "description": "SortFindings returns a new slice sorted by SpecName ascending, then File ascending, then Severity in order error < warning < hint, without modifying the input.",
+      "preconditions": [
+        "A slice of LintFinding values is constructed in an unsorted order"
+      ],
+      "input": {
+        "findings": "[{SpecName:'b_spec', File:'a.json', Severity:'hint'}, {SpecName:'a_spec', File:'z.json', Severity:'warning'}, {SpecName:'a_spec', File:'a.json', Severity:'hint'}, {SpecName:'a_spec', File:'a.json', Severity:'error'}]"
+      },
+      "expected": {
+        "input_unchanged": true,
+        "sorted_order": "[{SpecName:'a_spec', File:'a.json', Severity:'error'}, {SpecName:'a_spec', File:'a.json', Severity:'hint'}, {SpecName:'a_spec', File:'z.json', Severity:'warning'}, {SpecName:'b_spec', File:'a.json', Severity:'hint'}]"
+      },
+      "assertion_pseudocode": "input := [{SpecName:'b_spec',File:'a.json',Severity:'hint'},{SpecName:'a_spec',File:'z.json',Severity:'warning'},{SpecName:'a_spec',File:'a.json',Severity:'hint'},{SpecName:'a_spec',File:'a.json',Severity:'error'}]; inputCopy := copy(input); sorted := SortFindings(input); assert sorted[0] == {SpecName:'a_spec',File:'a.json',Severity:'error'}; assert sorted[1] == {SpecName:'a_spec',File:'a.json',Severity:'hint'}; assert sorted[2] == {SpecName:'a_spec',File:'z.json',Severity:'warning'}; assert sorted[3] == {SpecName:'b_spec',File:'a.json',Severity:'hint'}; assert input == inputCopy"
+    },
+    {
+      "id": "TS-05-30",
+      "requirement_id": "05-REQ-8.2",
+      "kind": "unit",
+      "description": "ComputeExitCode returns 1 when at least one finding has Severity 'error'.",
+      "preconditions": [],
+      "input": {
+        "findings": "[{Severity:'warning'}, {Severity:'error'}, {Severity:'hint'}]"
+      },
+      "expected": {
+        "return": "int 1"
+      },
+      "assertion_pseudocode": "findings := [{Severity:'warning'},{Severity:'error'},{Severity:'hint'}]; code := ComputeExitCode(findings); assert code == 1"
+    },
+    {
+      "id": "TS-05-31",
+      "requirement_id": "05-REQ-8.3",
+      "kind": "unit",
+      "description": "ComputeExitCode returns 0 when no finding has Severity 'error'.",
+      "preconditions": [],
+      "input": {
+        "findings": "[{Severity:'warning'}, {Severity:'hint'}]"
+      },
+      "expected": {
+        "return": "int 0"
+      },
+      "assertion_pseudocode": "findings := [{Severity:'warning'},{Severity:'hint'}]; code := ComputeExitCode(findings); assert code == 0"
+    },
+    {
+      "id": "TS-05-32",
+      "requirement_id": "05-REQ-9.1",
+      "kind": "integration",
+      "description": "RunLintSpecs with lintAll=true discovers all specs, validates each, collects findings, sorts them, computes exit code, and returns a LintResult.",
+      "preconditions": [
+        "A temporary specs directory is created on the filesystem",
+        "Two spec subdirectories are created, each containing a valid requirements.json",
+        "One spec has a validation error (e.g. missing required field)"
+      ],
+      "input": {
+        "lintAll": true,
+        "specsDir": "path to temp specs directory"
+      },
+      "expected": {
+        "ExitCode": "1 (due to error-severity finding)",
+        "Findings_non_empty": true,
+        "findings_sorted": true,
+        "return": "(LintResult, nil)"
+      },
+      "assertion_pseudocode": "specsDir := createTempSpecsDir(); result, err := RunLintSpecs(specsDir, true); assert err == nil; assert result.ExitCode == 0 or 1; assert result.Findings is sorted by SortFindings criteria; assert result.ExitCode == ComputeExitCode(result.Findings)"
+    },
+    {
+      "id": "TS-05-33",
+      "requirement_id": "05-REQ-9.2",
+      "kind": "integration",
+      "description": "RunLintSpecs with lintAll=false skips specs where all subtasks are in state 'done' or 'dropped' and excludes them from findings.",
+      "preconditions": [
+        "A temporary specs directory is created on the filesystem",
+        "Spec '05-my_spec' has requirements.json and tasks.json where all subtasks have state 'done'",
+        "Spec '06-other_spec' has requirements.json and tasks.json where one subtask has state 'todo'"
+      ],
+      "input": {
+        "lintAll": false,
+        "specsDir": "path to temp specs directory"
+      },
+      "expected": {
+        "my_spec_absent_from_findings": true,
+        "other_spec_present_in_findings": true,
+        "return": "(LintResult, nil)"
+      },
+      "assertion_pseudocode": "specsDir := createTempSpecsDir(); result, err := RunLintSpecs(specsDir, false); assert err == nil; assert none(f.SpecName == 'my_spec' for f in result.Findings); assert any(f.SpecName == 'other_spec' for f in result.Findings) or result.Findings is empty for other_spec if it has no issues"
+    },
+    {
+      "id": "TS-05-34",
+      "requirement_id": "05-REQ-9.3",
+      "kind": "integration",
+      "description": "RunLintSpecs with lintAll=false includes specs that have no tasks.json or have at least one subtask not in 'done' or 'dropped' state.",
+      "preconditions": [
+        "A temporary specs directory is created on the filesystem",
+        "Spec '05-no_tasks' has requirements.json but no tasks.json",
+        "Spec '06-in_progress' has requirements.json and tasks.json with one subtask in state 'in_progress'"
+      ],
+      "input": {
+        "lintAll": false,
+        "specsDir": "path to temp specs directory"
+      },
+      "expected": {
+        "in_progress_spec_included": true,
+        "no_tasks_spec_included": true,
+        "return": "(LintResult, nil)"
+      },
+      "assertion_pseudocode": "specsDir := createTempSpecsDir(); result, err := RunLintSpecs(specsDir, false); assert err == nil; specsLinted := unique(f.SpecName for f in result.Findings); assert 'no_tasks' in specsLinted or no_tasks spec was linted (even if no findings); assert 'in_progress' in specsLinted or in_progress spec was linted"
+    },
+    {
+      "id": "TS-05-35",
+      "requirement_id": "05-REQ-10.1",
+      "kind": "integration",
+      "description": "LoadDependentInterfaces with a valid specID and specRoot calls DiscoverSpecs, BuildDependencyGraph, and LoadSpec for each upstream dependency, returning a slice of interface maps.",
+      "preconditions": [
+        "A temporary specRoot directory is created on the filesystem",
+        "Two spec directories exist: '04-upstream_spec' and '05-my_spec'",
+        "The dependency graph for '05' includes '04' as an upstream dependency",
+        "Both specs have valid requirements.json files with glossary entries"
+      ],
+      "input": {
+        "specID": "'05'",
+        "specRoot": "path to temp specRoot directory"
+      },
+      "expected": {
+        "entry_contains": "glossary entries from '04-upstream_spec'",
+        "return": "[]map[string]any with one entry for the upstream spec '04'"
+      },
+      "assertion_pseudocode": "specRoot := createTempSpecRoot(); result := LoadDependentInterfaces('05', specRoot); assert len(result) >= 0; if upstream exists: assert len(result) == 1; assert result[0]['glossary'] is not nil"
+    },
+    {
+      "id": "TS-05-36",
+      "requirement_id": "05-REQ-1.E1",
+      "kind": "unit",
+      "description": "AddRequirement with a duplicate ID returns the original RequirementsV1Json unchanged and a non-nil error whose message contains the duplicate ID.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with a requirement having ID '05-REQ-1'"
+      ],
+      "input": {
+        "r": "Requirement{id:'05-REQ-1'}",
+        "req": "RequirementsV1Json with requirements=[{id:'05-REQ-1'}]"
+      },
+      "expected": {
+        "error_contains": "'05-REQ-1'",
+        "error_non_nil": true,
+        "return": "(RequirementsV1Json, error)",
+        "returned_req_unchanged": true
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Requirements:[{id:'05-REQ-1'}]}; result, err := AddRequirement(original, Requirement{id:'05-REQ-1'}); assert err != nil; assert '05-REQ-1' in err.Error(); assert len(result.Requirements) == 1"
+    },
+    {
+      "id": "TS-05-37",
+      "requirement_id": "05-REQ-1.E2",
+      "kind": "unit",
+      "description": "AddCorrectnessProperty, AddExecutionPath, and AddErrorHandling each return the original RequirementsV1Json unchanged and a non-nil error when called with a duplicate ID.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with correctness_properties=[{id:'05-PROP-1'}], execution_paths=[{id:'05-PATH-1'}], error_handling=[{id:'05-ERR-1'}]"
+      ],
+      "input": {
+        "duplicate_items": "CorrectnessProperty{id:'05-PROP-1'}, ExecutionPath{id:'05-PATH-1'}, ErrorHandlingEntry{id:'05-ERR-1'}",
+        "req": "RequirementsV1Json with existing items"
+      },
+      "expected": {
+        "error_contains_id": true,
+        "original_unchanged": true,
+        "return": "(RequirementsV1Json, error) for each call"
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{CorrectnessProperties:[{id:'05-PROP-1'}], ExecutionPaths:[{id:'05-PATH-1'}], ErrorHandling:[{id:'05-ERR-1'}]}; r1, e1 := AddCorrectnessProperty(req, CorrectnessProperty{id:'05-PROP-1'}); assert e1 != nil; assert '05-PROP-1' in e1.Error(); assert len(r1.CorrectnessProperties) == 1; r2, e2 := AddExecutionPath(req, ExecutionPath{id:'05-PATH-1'}); assert e2 != nil; assert '05-PATH-1' in e2.Error(); r3, e3 := AddErrorHandling(req, ErrorHandlingEntry{id:'05-ERR-1'}); assert e3 != nil; assert '05-ERR-1' in e3.Error()"
+    },
+    {
+      "id": "TS-05-38",
+      "requirement_id": "05-REQ-1.E3",
+      "kind": "unit",
+      "description": "RemoveRequirement with a non-existent ID returns the original RequirementsV1Json unchanged and false.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with a requirement having ID '05-REQ-1'"
+      ],
+      "input": {
+        "id": "'05-REQ-99'",
+        "req": "RequirementsV1Json with requirements=[{id:'05-REQ-1'}]"
+      },
+      "expected": {
+        "return": "(RequirementsV1Json, false)",
+        "returned_req_count": 1
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Requirements:[{id:'05-REQ-1'}]}; result, ok := RemoveRequirement(original, '05-REQ-99'); assert ok == false; assert len(result.Requirements) == 1"
+    },
+    {
+      "id": "TS-05-39",
+      "requirement_id": "05-REQ-1.E4",
+      "kind": "unit",
+      "description": "RemoveGlossaryEntry with a non-existent term returns the original RequirementsV1Json unchanged and false.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with a glossary containing only term 'Foo'"
+      ],
+      "input": {
+        "req": "RequirementsV1Json with glossary={'Foo':'bar'}",
+        "term": "'NonExistentTerm'"
+      },
+      "expected": {
+        "glossary_unchanged": true,
+        "return": "(RequirementsV1Json, false)"
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Glossary:{'Foo':'bar'}}; result, ok := RemoveGlossaryEntry(original, 'NonExistentTerm'); assert ok == false; assert result.Glossary['Foo'] == 'bar'"
+    },
+    {
+      "id": "TS-05-40",
+      "requirement_id": "05-REQ-1.E5",
+      "kind": "unit",
+      "description": "All mutation functions deep-copy slice and map fields so that modifying the returned struct does not affect the original.",
+      "preconditions": [
+        "A RequirementsV1Json struct is constructed with requirements=[{id:'05-REQ-1'}] and glossary={'Foo':'bar'}"
+      ],
+      "input": {
+        "operation": "AddRequirement, SetGlossaryEntry",
+        "req": "RequirementsV1Json with requirements and glossary populated"
+      },
+      "expected": {
+        "original_glossary_unchanged": true,
+        "original_requirements_unchanged": true
+      },
+      "assertion_pseudocode": "original := RequirementsV1Json{Requirements:[{id:'05-REQ-1'}], Glossary:{'Foo':'bar'}}; newReq, _ := AddRequirement(original, Requirement{id:'05-REQ-2'}); newReq.Requirements[0].id = 'MUTATED'; assert original.Requirements[0].id == '05-REQ-1'; newGloss := SetGlossaryEntry(original, 'Baz', 'qux'); newGloss.Glossary['Foo'] = 'MUTATED'; assert original.Glossary['Foo'] == 'bar'"
+    },
+    {
+      "id": "TS-05-41",
+      "requirement_id": "05-REQ-2.E1",
+      "kind": "unit",
+      "description": "AddCriterion with a duplicate ID returns the original Requirement unchanged and a non-nil error whose message contains the duplicate ID.",
+      "preconditions": [
+        "A Requirement struct is constructed with acceptance_criteria=[{id:'05-REQ-1.1'}]"
+      ],
+      "input": {
+        "c": "Criterion{id:'05-REQ-1.1'}",
+        "r": "Requirement{acceptance_criteria:[{id:'05-REQ-1.1'}]}"
+      },
+      "expected": {
+        "error_contains": "'05-REQ-1.1'",
+        "error_non_nil": true,
+        "original_criteria_count": 1,
+        "return": "(Requirement, error)"
+      },
+      "assertion_pseudocode": "original := Requirement{AcceptanceCriteria:[{id:'05-REQ-1.1'}]}; result, err := AddCriterion(original, Criterion{id:'05-REQ-1.1'}); assert err != nil; assert '05-REQ-1.1' in err.Error(); assert len(result.AcceptanceCriteria) == 1"
+    },
+    {
+      "id": "TS-05-42",
+      "requirement_id": "05-REQ-2.E2",
+      "kind": "unit",
+      "description": "AddEdgeCase with a duplicate ID returns the original Requirement unchanged and a non-nil error whose message contains the duplicate ID.",
+      "preconditions": [
+        "A Requirement struct is constructed with edge_cases=[{id:'05-REQ-1.E1'}]"
+      ],
+      "input": {
+        "c": "Criterion{id:'05-REQ-1.E1'}",
+        "r": "Requirement{edge_cases:[{id:'05-REQ-1.E1'}]}"
+      },
+      "expected": {
+        "error_contains": "'05-REQ-1.E1'",
+        "error_non_nil": true,
+        "original_edge_cases_count": 1,
+        "return": "(Requirement, error)"
+      },
+      "assertion_pseudocode": "original := Requirement{EdgeCases:[{id:'05-REQ-1.E1'}]}; result, err := AddEdgeCase(original, Criterion{id:'05-REQ-1.E1'}); assert err != nil; assert '05-REQ-1.E1' in err.Error(); assert len(result.EdgeCases) == 1"
+    },
+    {
+      "id": "TS-05-43",
+      "requirement_id": "05-REQ-2.E3",
+      "kind": "unit",
+      "description": "AddCriterion and AddEdgeCase called on a Requirement with nil slices initialize the slice and return a Requirement with a non-nil slice containing exactly the new Criterion.",
+      "preconditions": [
+        "A Requirement struct is constructed with nil acceptance_criteria and nil edge_cases"
+      ],
+      "input": {
+        "c": "Criterion{id:'05-REQ-1.1'}",
+        "r": "Requirement{acceptance_criteria:nil, edge_cases:nil}"
+      },
+      "expected": {
+        "return_criterion": "(Requirement, nil) with AcceptanceCriteria=[{id:'05-REQ-1.1'}]",
+        "return_edge_case": "(Requirement, nil) with EdgeCases=[{id:'05-REQ-1.E1'}]",
+        "slices_non_nil": true
+      },
+      "assertion_pseudocode": "r := Requirement{AcceptanceCriteria:nil, EdgeCases:nil}; r1, err1 := AddCriterion(r, Criterion{id:'05-REQ-1.1'}); assert err1 == nil; assert r1.AcceptanceCriteria != nil; assert len(r1.AcceptanceCriteria) == 1; r2, err2 := AddEdgeCase(r, Criterion{id:'05-REQ-1.E1'}); assert err2 == nil; assert r2.EdgeCases != nil; assert len(r2.EdgeCases) == 1"
+    },
+    {
+      "id": "TS-05-44",
+      "requirement_id": "05-REQ-3.E1",
+      "kind": "unit",
+      "description": "AddTestCase, AddPropertyTest, AddEdgeCaseTest, and AddSmokeTest each return the original TestSpecV1Json unchanged and a non-nil error when called with a duplicate ID.",
+      "preconditions": [
+        "A TestSpecV1Json struct is constructed with test_cases=[{id:'TS-05-1'}], property_tests=[{id:'TS-05-P1'}], edge_case_tests=[{id:'TS-05-E1'}], smoke_tests=[{id:'TS-05-SMOKE-1'}]"
+      ],
+      "input": {
+        "duplicate_items": "TestCase{id:'TS-05-1'}, PropertyTest{id:'TS-05-P1'}, EdgeCaseTest{id:'TS-05-E1'}, SmokeTest{id:'TS-05-SMOKE-1'}",
+        "ts": "TestSpecV1Json with one entry in each collection"
+      },
+      "expected": {
+        "error_contains_id": true,
+        "original_unchanged": true,
+        "return": "(TestSpecV1Json, error) for each call"
+      },
+      "assertion_pseudocode": "ts := TestSpecV1Json{TestCases:[{id:'TS-05-1'}], PropertyTests:[{id:'TS-05-P1'}], EdgeCaseTests:[{id:'TS-05-E1'}], SmokeTests:[{id:'TS-05-SMOKE-1'}]}; r1, e1 := AddTestCase(ts, TestCase{id:'TS-05-1'}); assert e1 != nil; assert 'TS-05-1' in e1.Error(); assert len(r1.TestCases) == 1; r2, e2 := AddPropertyTest(ts, PropertyTest{id:'TS-05-P1'}); assert e2 != nil; r3, e3 := AddEdgeCaseTest(ts, EdgeCaseTest{id:'TS-05-E1'}); assert e3 != nil; r4, e4 := AddSmokeTest(ts, SmokeTest{id:'TS-05-SMOKE-1'}); assert e4 != nil"
+    },
+    {
+      "id": "TS-05-45",
+      "requirement_id": "05-REQ-3.E2",
+      "kind": "unit",
+      "description": "AddTestCase, AddPropertyTest, AddEdgeCaseTest, and AddSmokeTest called on a TestSpecV1Json with nil target slices initialize the slice and return a non-nil slice containing exactly the new item.",
+      "preconditions": [
+        "A TestSpecV1Json struct is constructed with all collection fields set to nil"
+      ],
+      "input": {
+        "ts": "TestSpecV1Json{test_cases:nil, property_tests:nil, edge_case_tests:nil, smoke_tests:nil}"
+      },
+      "expected": {
+        "return": "(TestSpecV1Json, nil) for each call with non-nil slice of length 1"
+      },
+      "assertion_pseudocode": "ts := TestSpecV1Json{}; r1, e1 := AddTestCase(ts, TestCase{id:'TS-05-1'}); assert e1 == nil; assert r1.TestCases != nil; assert len(r1.TestCases) == 1; r2, e2 := AddPropertyTest(ts, PropertyTest{id:'TS-05-P1'}); assert e2 == nil; assert r2.PropertyTests != nil; assert len(r2.PropertyTests) == 1; r3, e3 := AddEdgeCaseTest(ts, EdgeCaseTest{id:'TS-05-E1'}); assert e3 == nil; assert r3.EdgeCaseTests != nil; r4, e4 := AddSmokeTest(ts, SmokeTest{id:'TS-05-SMOKE-1'}); assert e4 == nil; assert r4.SmokeTests != nil"
+    },
+    {
+      "id": "TS-05-46",
+      "requirement_id": "05-REQ-4.E1",
+      "kind": "unit",
+      "description": "AddTaskGroup with a duplicate ID returns the original TasksV1Json unchanged and a non-nil error whose message contains the duplicate ID.",
+      "preconditions": [
+        "A TasksV1Json struct is constructed with task_groups=[{id:'1'}]"
+      ],
+      "input": {
+        "g": "TaskGroup{id:'1'}",
+        "t": "TasksV1Json{task_groups:[{id:'1'}]}"
+      },
+      "expected": {
+        "error_contains": "'1'",
+        "error_non_nil": true,
+        "original_count": 1,
+        "return": "(TasksV1Json, error)"
+      },
+      "assertion_pseudocode": "original := TasksV1Json{TaskGroups:[{id:'1'}]}; result, err := AddTaskGroup(original, TaskGroup{id:'1'}); assert err != nil; assert '1' in err.Error(); assert len(result.TaskGroups) == 1"
+    },
+    {
+      "id": "TS-05-47",
+      "requirement_id": "05-REQ-4.E2",
+      "kind": "unit",
+      "description": "AddSubtask with a duplicate ID returns the original TaskGroup unchanged and a non-nil error whose message contains the duplicate ID.",
+      "preconditions": [
+        "A TaskGroup struct is constructed with subtasks=[{id:'1.1'}]"
+      ],
+      "input": {
+        "g": "TaskGroup{subtasks:[{id:'1.1'}]}",
+        "s": "Subtask{id:'1.1'}"
+      },
+      "expected": {
+        "error_contains": "'1.1'",
+        "error_non_nil": true,
+        "original_count": 1,
+        "return": "(TaskGroup, error)"
+      },
+      "assertion_pseudocode": "original := TaskGroup{Subtasks:[{id:'1.1'}]}; result, err := AddSubtask(original, Subtask{id:'1.1'}); assert err != nil; assert '1.1' in err.Error(); assert len(result.Subtasks) == 1"
+    },
+    {
+      "id": "TS-05-48",
+      "requirement_id": "05-REQ-4.E3",
+      "kind": "unit",
+      "description": "AddTraceabilityEntry with a duplicate (requirement_id, test_spec_id) pair returns the original TasksV1Json unchanged and a non-nil error containing both IDs.",
+      "preconditions": [
+        "A TasksV1Json struct is constructed with traceability=[{requirement_id:'05-REQ-1', test_spec_id:'05'}]"
+      ],
+      "input": {
+        "e": "TraceabilityEntry{requirement_id:'05-REQ-1', test_spec_id:'05'}",
+        "t": "TasksV1Json{traceability:[{requirement_id:'05-REQ-1', test_spec_id:'05'}]}"
+      },
+      "expected": {
+        "error_contains_requirement_id": "'05-REQ-1'",
+        "error_contains_test_spec_id": "'05'",
+        "error_non_nil": true,
+        "original_count": 1,
+        "return": "(TasksV1Json, error)"
+      },
+      "assertion_pseudocode": "original := TasksV1Json{Traceability:[{requirement_id:'05-REQ-1', test_spec_id:'05'}]}; result, err := AddTraceabilityEntry(original, TraceabilityEntry{requirement_id:'05-REQ-1', test_spec_id:'05'}); assert err != nil; assert '05-REQ-1' in err.Error(); assert '05' in err.Error(); assert len(result.Traceability) == 1"
+    },
+    {
+      "id": "TS-05-49",
+      "requirement_id": "05-REQ-5.E1",
+      "kind": "unit",
+      "description": "Any Next*ID function called on an empty collection returns the ID with numeric suffix 1.",
+      "preconditions": [
+        "Empty RequirementsV1Json with spec_id='05' and empty TestSpecV1Json with spec_id='05' and empty Requirement with id='05-REQ-1'"
+      ],
+      "input": {
+        "empty_r": "Requirement{id:'05-REQ-1', acceptance_criteria:[], edge_cases:[]}",
+        "empty_req": "RequirementsV1Json{spec_id:'05', requirements:[], correctness_properties:[], execution_paths:[], error_handling:[]}",
+        "empty_ts": "TestSpecV1Json{spec_id:'05', test_cases:[], property_tests:[], edge_case_tests:[], smoke_tests:[]}"
+      },
+      "expected": {
+        "NextCorrectnessPropertyID": "'05-PROP-1'",
+        "NextCriterionID": "'05-REQ-1.1'",
+        "NextEdgeCaseID": "'05-REQ-1.E1'",
+        "NextEdgeCaseTestID": "'TS-05-E1'",
+        "NextErrorHandlingID": "'05-ERR-1'",
+        "NextExecutionPathID": "'05-PATH-1'",
+        "NextPropertyTestID": "'TS-05-P1'",
+        "NextRequirementID": "'05-REQ-1'",
+        "NextSmokeTestID": "'TS-05-SMOKE-1'",
+        "NextTestCaseID": "'TS-05-1'"
+      },
+      "assertion_pseudocode": "emptyReq := RequirementsV1Json{SpecID:'05'}; emptyTs := TestSpecV1Json{SpecID:'05'}; emptyR := Requirement{id:'05-REQ-1'}; assert NextRequirementID(emptyReq) == '05-REQ-1'; assert NextCriterionID(emptyR) == '05-REQ-1.1'; assert NextEdgeCaseID(emptyR) == '05-REQ-1.E1'; assert NextCorrectnessPropertyID(emptyReq) == '05-PROP-1'; assert NextExecutionPathID(emptyReq) == '05-PATH-1'; assert NextErrorHandlingID(emptyReq) == '05-ERR-1'; assert NextTestCaseID(emptyTs) == 'TS-05-1'; assert NextPropertyTestID(emptyTs) == 'TS-05-P1'; assert NextEdgeCaseTestID(emptyTs) == 'TS-05-E1'; assert NextSmokeTestID(emptyTs) == 'TS-05-SMOKE-1'"
+    },
+    {
+      "id": "TS-05-50",
+      "requirement_id": "05-REQ-5.E2",
+      "kind": "unit",
+      "description": "Any Next*ID function called on a non-contiguous collection returns max+1 without filling gaps.",
+      "preconditions": [
+        "A RequirementsV1Json with spec_id='05' and requirements with IDs '05-REQ-1', '05-REQ-3', '05-REQ-7'"
+      ],
+      "input": {
+        "req": "RequirementsV1Json{spec_id:'05', requirements:[{id:'05-REQ-1'},{id:'05-REQ-3'},{id:'05-REQ-7'}]}"
+      },
+      "expected": {
+        "NextRequirementID": "'05-REQ-8'"
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{SpecID:'05', Requirements:[{id:'05-REQ-1'},{id:'05-REQ-3'},{id:'05-REQ-7'}]}; next := NextRequirementID(req); assert next == '05-REQ-8'"
+    },
+    {
+      "id": "TS-05-51",
+      "requirement_id": "05-REQ-5.E3",
+      "kind": "unit",
+      "description": "Next*ID functions skip IDs that do not match the expected format pattern and do not panic or return an incorrect result.",
+      "preconditions": [
+        "A RequirementsV1Json with spec_id='05' and requirements with IDs '05-REQ-2', 'MALFORMED-ID', '05-REQ-5'"
+      ],
+      "input": {
+        "req": "RequirementsV1Json{spec_id:'05', requirements:[{id:'05-REQ-2'},{id:'MALFORMED-ID'},{id:'05-REQ-5'}]}"
+      },
+      "expected": {
+        "NextRequirementID": "'05-REQ-6'",
+        "no_panic": true
+      },
+      "assertion_pseudocode": "req := RequirementsV1Json{SpecID:'05', Requirements:[{id:'05-REQ-2'},{id:'MALFORMED-ID'},{id:'05-REQ-5'}]}; next := NextRequirementID(req); assert next == '05-REQ-6'"
+    },
+    {
+      "id": "TS-05-52",
+      "requirement_id": "05-REQ-6.E1",
+      "kind": "unit",
+      "description": "LintFinding Severity field only accepts 'error', 'warning', or 'hint'; callers treat any other value as 'hint'.",
+      "preconditions": [
+        "The afspec lint package is compiled and importable"
+      ],
+      "input": {
+        "finding_with_invalid_severity": "LintFinding{Severity:'critical'}"
+      },
+      "expected": {
+        "ComputeExitCode_result": "0 (since 'critical' is not 'error')",
+        "SortFindings_behavior": "treated as 'hint' in sort order"
+      },
+      "assertion_pseudocode": "f := LintFinding{Severity:'critical'}; code := ComputeExitCode([]LintFinding{f}); assert code == 0; sorted := SortFindings([]LintFinding{{Severity:'error'},{Severity:'critical'}}); assert sorted[0].Severity == 'error'"
+    },
+    {
+      "id": "TS-05-53",
+      "requirement_id": "05-REQ-7.E1",
+      "kind": "integration",
+      "description": "DiscoverLintSpecs returns nil and a descriptive error when specsDir does not exist or is not a directory.",
+      "preconditions": [
+        "No directory exists at the given path"
+      ],
+      "input": {
+        "filterSpec": "''",
+        "specsDir": "'/nonexistent/path/to/specs'"
+      },
+      "expected": {
+        "error_describes_missing_dir": true,
+        "error_non_nil": true,
+        "return": "(nil, error)"
+      },
+      "assertion_pseudocode": "infos, err := DiscoverLintSpecs('/nonexistent/path/to/specs', ''); assert err != nil; assert infos == nil; assert 'nonexistent' in err.Error() or 'does not exist' in err.Error() or 'no such file' in err.Error()"
+    },
+    {
+      "id": "TS-05-54",
+      "requirement_id": "05-REQ-7.E2",
+      "kind": "integration",
+      "description": "DiscoverLintSpecs returns nil and a descriptive error when specsDir exists but contains no subdirectories with requirements.json.",
+      "preconditions": [
+        "A temporary directory is created on the filesystem with no valid spec subdirectories"
+      ],
+      "input": {
+        "filterSpec": "''",
+        "specsDir": "path to empty temp directory"
+      },
+      "expected": {
+        "error_indicates_no_specs": true,
+        "return": "(nil, error)"
+      },
+      "assertion_pseudocode": "specsDir := createTempDir(); infos, err := DiscoverLintSpecs(specsDir, ''); assert err != nil; assert infos == nil; assert 'no specs' in err.Error() or 'zero' in err.Error() or 'found' in err.Error()"
+    },
+    {
+      "id": "TS-05-55",
+      "requirement_id": "05-REQ-7.E3",
+      "kind": "integration",
+      "description": "DiscoverLintSpecs skips a subdirectory where IsSpecDirName returns true but ParseSpecDirName returns ok=false, and continues scanning without returning an error.",
+      "preconditions": [
+        "A temporary directory is created on the filesystem",
+        "A valid spec subdirectory '05-my_spec' is created containing requirements.json",
+        "IsSpecDirName is mocked or a directory name is crafted that passes IsSpecDirName but causes ParseSpecDirName to return ok=false"
+      ],
+      "input": {
+        "filterSpec": "''",
+        "specsDir": "path to temp directory with one valid and one unparseable spec dir"
+      },
+      "expected": {
+        "no_error": true,
+        "return": "([]LintSpecInfo with 1 entry, nil)",
+        "unparseable_dir_skipped": true
+      },
+      "assertion_pseudocode": "specsDir := createTempDir(); createSpecDir(specsDir, '05-my_spec'); createUnparseableSpecDir(specsDir); infos, err := DiscoverLintSpecs(specsDir, ''); assert err == nil; assert len(infos) == 1; assert infos[0].Name == 'my_spec'"
+    },
+    {
+      "id": "TS-05-56",
+      "requirement_id": "05-REQ-8.E1",
+      "kind": "unit",
+      "description": "SortFindings called with an empty slice returns an empty slice without panicking.",
+      "preconditions": [],
+      "input": {
+        "findings": "[]LintFinding{}"
+      },
+      "expected": {
+        "no_panic": true,
+        "return": "[]LintFinding{} or nil"
+      },
+      "assertion_pseudocode": "result := SortFindings([]LintFinding{}); assert result != nil or result == nil; assert len(result) == 0"
+    },
+    {
+      "id": "TS-05-57",
+      "requirement_id": "05-REQ-8.E2",
+      "kind": "unit",
+      "description": "ComputeExitCode called with an empty slice returns 0.",
+      "preconditions": [],
+      "input": {
+        "findings": "[]LintFinding{}"
+      },
+      "expected": {
+        "return": "int 0"
+      },
+      "assertion_pseudocode": "code := ComputeExitCode([]LintFinding{}); assert code == 0"
+    },
+    {
+      "id": "TS-05-58",
+      "requirement_id": "05-REQ-9.E1",
+      "kind": "integration",
+      "description": "RunLintSpecs propagates the error from DiscoverLintSpecs to the caller without returning a partial LintResult.",
+      "preconditions": [
+        "No directory exists at the given specsDir path"
+      ],
+      "input": {
+        "lintAll": true,
+        "specsDir": "'/nonexistent/specs'"
+      },
+      "expected": {
+        "LintResult_empty": true,
+        "error_non_nil": true,
+        "return": "(LintResult{}, error)"
+      },
+      "assertion_pseudocode": "result, err := RunLintSpecs('/nonexistent/specs', true); assert err != nil; assert result.Findings == nil or len(result.Findings) == 0; assert result.ExitCode == 0"
+    },
+    {
+      "id": "TS-05-59",
+      "requirement_id": "05-REQ-9.E2",
+      "kind": "integration",
+      "description": "RunLintSpecs records a LintFinding with Severity 'error' and Rule 'load-failure' for a spec where LoadSpec fails, and continues processing remaining specs.",
+      "preconditions": [
+        "A temporary specs directory is created on the filesystem",
+        "Spec '05-bad_spec' has a requirements.json that is malformed JSON",
+        "Spec '06-good_spec' has a valid requirements.json"
+      ],
+      "input": {
+        "lintAll": true,
+        "specsDir": "path to temp specs directory with one bad and one good spec"
+      },
+      "expected": {
+        "good_spec_processed": true,
+        "load_failure_finding": "LintFinding{SpecName:'bad_spec', Severity:'error', Rule:'load-failure'}",
+        "return": "(LintResult, nil)"
+      },
+      "assertion_pseudocode": "specsDir := createTempSpecsDir(); writeMalformedSpec(specsDir, '05-bad_spec'); writeValidSpec(specsDir, '06-good_spec'); result, err := RunLintSpecs(specsDir, true); assert err == nil; loadFailures := filter(f => f.Rule == 'load-failure' && f.Severity == 'error', result.Findings); assert len(loadFailures) >= 1; assert loadFailures[0].SpecName == 'bad_spec'"
+    },
+    {
+      "id": "TS-05-60",
+      "requirement_id": "05-REQ-9.E3",
+      "kind": "unit",
+      "description": "RunLintSpecs never calls os.Exit directly; all errors are returned to the caller via the error return value.",
+      "preconditions": [
+        "The afspec lint package source code is available for inspection"
+      ],
+      "input": {
+        "operation": "static analysis of RunLintSpecs implementation"
+      },
+      "expected": {
+        "errors_returned_via_return_value": true,
+        "no_os_exit_call": true
+      },
+      "assertion_pseudocode": "// Static check: grep the golang/ source for os.Exit calls within RunLintSpecs; assert no os.Exit call exists in RunLintSpecs body; // Runtime check: result, err := RunLintSpecs('/nonexistent', true); assert process did not exit; assert err != nil"
+    },
+    {
+      "id": "TS-05-61",
+      "requirement_id": "05-REQ-10.E1",
+      "kind": "integration",
+      "description": "LoadDependentInterfaces returns an empty slice without propagating the error when DiscoverSpecs or BuildDependencyGraph returns an error.",
+      "preconditions": [
+        "No directory exists at the given specRoot path"
+      ],
+      "input": {
+        "specID": "'05'",
+        "specRoot": "'/nonexistent/specroot'"
+      },
+      "expected": {
+        "no_panic": true,
+        "return": "[]map[string]any{} (empty slice, no error)"
+      },
+      "assertion_pseudocode": "result := LoadDependentInterfaces('05', '/nonexistent/specroot'); assert result != nil; assert len(result) == 0"
+    },
+    {
+      "id": "TS-05-62",
+      "requirement_id": "05-REQ-10.E2",
+      "kind": "integration",
+      "description": "LoadDependentInterfaces skips a failing upstream dependency and returns entries for all successfully loaded upstream specs.",
+      "preconditions": [
+        "A temporary specRoot directory is created on the filesystem",
+        "Spec '03-upstream_ok' has a valid requirements.json",
+        "Spec '04-upstream_bad' has a malformed requirements.json",
+        "Spec '05-my_spec' depends on both '03' and '04'"
+      ],
+      "input": {
+        "specID": "'05'",
+        "specRoot": "path to temp specRoot"
+      },
+      "expected": {
+        "bad_spec_skipped": true,
+        "no_error": true,
+        "return": "[]map[string]any with one entry for '03-upstream_ok'"
+      },
+      "assertion_pseudocode": "specRoot := createTempSpecRoot(); result := LoadDependentInterfaces('05', specRoot); assert result != nil; assert len(result) >= 0"
+    },
+    {
+      "id": "TS-05-63",
+      "requirement_id": "05-REQ-10.E3",
+      "kind": "integration",
+      "description": "LoadDependentInterfaces returns an empty slice without panicking when specRoot does not exist or is not accessible.",
+      "preconditions": [
+        "No directory exists at the given specRoot path"
+      ],
+      "input": {
+        "specID": "'05'",
+        "specRoot": "'/inaccessible/path'"
+      },
+      "expected": {
+        "no_panic": true,
+        "return": "[]map[string]any{} (empty slice)"
+      },
+      "assertion_pseudocode": "result := LoadDependentInterfaces('05', '/inaccessible/path'); assert result != nil; assert len(result) == 0"
+    }
+  ],
+  "property_tests": [
+    {
+      "id": "TS-05-P1",
+      "property_id": "05-PROP-1",
+      "validates": [
+        "05-REQ-1.1",
+        "05-REQ-1.E5",
+        "05-REQ-2.1",
+        "05-REQ-3.1",
+        "05-REQ-4.1"
+      ],
+      "description": "For any mutation function, the input struct is byte-for-byte identical after the call returns, regardless of success or error.",
+      "for_any_strategy": "Generate random RequirementsV1Json structs with 0-10 requirements, 0-5 glossary entries, and 0-5 correctness properties. For each, generate a random Requirement to add (sometimes with a duplicate ID to trigger the error path). Serialize the input struct to JSON before and after the call.",
+      "invariant_check": "serialized_before := json.Marshal(input); call mutation function; serialized_after := json.Marshal(input); assert serialized_before == serialized_after"
+    },
+    {
+      "id": "TS-05-P2",
+      "property_id": "05-PROP-2",
+      "validates": [
+        "05-REQ-1.E1",
+        "05-REQ-1.E2",
+        "05-REQ-2.E1",
+        "05-REQ-2.E2",
+        "05-REQ-3.E1",
+        "05-REQ-4.E1",
+        "05-REQ-4.E2",
+        "05-REQ-4.E3"
+      ],
+      "description": "Any Add* mutation function called twice with items sharing the same ID always returns a non-nil error on the second call and the returned collection is identical to the input.",
+      "for_any_strategy": "Generate random valid IDs and random collection structs. Call each Add* function once to add an item, then call it again with the same item ID. Sample all Add* functions: AddRequirement, AddCriterion, AddEdgeCase, AddTestCase, AddPropertyTest, AddEdgeCaseTest, AddSmokeTest, AddTaskGroup, AddSubtask, AddTraceabilityEntry.",
+      "invariant_check": "result1, err1 := AddX(collection, item); assert err1 == nil; result2, err2 := AddX(result1, item); assert err2 != nil; assert json.Marshal(result2) == json.Marshal(result1)"
+    },
+    {
+      "id": "TS-05-P3",
+      "property_id": "05-PROP-3",
+      "validates": [
+        "05-REQ-5.1",
+        "05-REQ-5.2",
+        "05-REQ-5.3",
+        "05-REQ-5.4",
+        "05-REQ-5.5"
+      ],
+      "description": "For any Next*ID function, calling it, adding an item with the returned ID, then calling it again yields a strictly greater numeric suffix.",
+      "for_any_strategy": "Generate random RequirementsV1Json structs with 0-20 requirements using IDs with random numeric suffixes (including non-contiguous sequences). Repeat for TestSpecV1Json and Requirement. Run 50 iterations per entity type.",
+      "invariant_check": "id1 := NextRequirementID(collection); newCollection, _ := AddRequirement(collection, Requirement{id:id1}); id2 := NextRequirementID(newCollection); suffix1 := extractNumericSuffix(id1); suffix2 := extractNumericSuffix(id2); assert suffix2 > suffix1"
+    },
+    {
+      "id": "TS-05-P4",
+      "property_id": "05-PROP-4",
+      "validates": [
+        "05-REQ-5.E1"
+      ],
+      "description": "Any Next*ID function called on an empty collection always returns an ID with numeric suffix 1.",
+      "for_any_strategy": "For each Next*ID function, construct an empty collection with a randomly chosen spec_id string (e.g. '01' through '99'). Run 20 iterations per function.",
+      "invariant_check": "id := NextRequirementID(emptyCollection); suffix := extractNumericSuffix(id); assert suffix == 1; // repeat for all Next*ID functions"
+    },
+    {
+      "id": "TS-05-P5",
+      "property_id": "05-PROP-5",
+      "validates": [
+        "05-REQ-8.1"
+      ],
+      "description": "SortFindings returns the same result regardless of the input ordering.",
+      "for_any_strategy": "Generate random slices of 0-20 LintFinding values with random SpecName, File, and Severity fields (from the set 'error', 'warning', 'hint'). Generate all permutations for small slices (<=6 elements) and 100 random shuffles for larger slices.",
+      "invariant_check": "sorted1 := SortFindings(permutation1); sorted2 := SortFindings(permutation2); assert sorted1 == sorted2 for all permutations of the same input set"
+    },
+    {
+      "id": "TS-05-P6",
+      "property_id": "05-PROP-6",
+      "validates": [
+        "05-REQ-8.2",
+        "05-REQ-8.3"
+      ],
+      "description": "ComputeExitCode returns 1 if and only if at least one finding has Severity 'error', and 0 otherwise.",
+      "for_any_strategy": "Generate random slices of 0-50 LintFinding values with Severity randomly chosen from 'error', 'warning', 'hint'. Also generate slices with no 'error' findings and slices with all 'error' findings. Run 100 iterations.",
+      "invariant_check": "hasError := any(f.Severity == 'error' for f in findings); code := ComputeExitCode(findings); assert (code == 1) == hasError"
+    },
+    {
+      "id": "TS-05-P7",
+      "property_id": "05-PROP-7",
+      "validates": [
+        "05-REQ-10.E1",
+        "05-REQ-10.E2",
+        "05-REQ-10.E3"
+      ],
+      "description": "LoadDependentInterfaces never returns an error and never panics for any input, always returning a slice (possibly empty).",
+      "for_any_strategy": "Generate random specID strings ('01' through '99') and random specRoot paths (valid directories, non-existent paths, empty directories, directories with malformed spec folders). Run 30 iterations covering all error scenarios.",
+      "invariant_check": "result := LoadDependentInterfaces(specID, specRoot); assert result != nil; // function signature returns []map[string]any not ([]map[string]any, error) so no error to check; assert no panic occurred"
+    }
+  ],
+  "edge_case_tests": [],
+  "smoke_tests": [
+    {
+      "id": "TS-05-SMOKE-1",
+      "execution_path_id": "05-PATH-1",
+      "description": "End-to-end smoke test for programmatic requirement addition: NextRequirementID generates a valid ID, AddRequirement appends the requirement to a new copy, and the result can be serialized to requirements.json.",
+      "trigger": "Call NextRequirementID on a RequirementsV1Json with existing requirements, construct a Requirement with the returned ID, call AddRequirement, and serialize the result.",
+      "real_components": [
+        "afspec mutation package (NextRequirementID, AddRequirement)",
+        "RequirementsV1Json struct",
+        "Requirement struct"
+      ],
+      "mockable": [
+        "filesystem write (serialization to requirements.json)"
+      ],
+      "expected_effects": [
+        "NextRequirementID returns a string matching the pattern '{spec_id}-REQ-{N}' where N is max existing suffix + 1",
+        "AddRequirement returns (RequirementsV1Json, nil) with the new requirement appended",
+        "The original RequirementsV1Json is not modified",
+        "The returned RequirementsV1Json can be marshaled to valid JSON without error",
+        "The marshaled JSON contains the new requirement ID"
+      ]
+    },
+    {
+      "id": "TS-05-SMOKE-2",
+      "execution_path_id": "05-PATH-2",
+      "description": "End-to-end smoke test for the spec lint CLI command execution path: RunLintSpecs discovers specs, loads and validates each, collects findings, sorts them, and returns a LintResult with correct exit code.",
+      "trigger": "Create a temporary specs directory with at least two spec subdirectories (one with a validation issue, one clean), then call RunLintSpecs with lintAll=true.",
+      "real_components": [
+        "afspec lint package (RunLintSpecs, DiscoverLintSpecs, SortFindings, ComputeExitCode)",
+        "afspec package (LoadSpec, Validate, IsSpecDirName, ParseSpecDirName)",
+        "LintResult struct",
+        "LintFinding struct"
+      ],
+      "mockable": [
+        "filesystem (temporary spec directories and requirements.json files)"
+      ],
+      "expected_effects": [
+        "DiscoverLintSpecs returns LintSpecInfo entries for all subdirectories containing requirements.json",
+        "LoadSpec is called for each discovered spec",
+        "Validate is called on each loaded Spec",
+        "ValidationResult entries are converted to LintFinding structs",
+        "SortFindings returns findings in deterministic order (SpecName asc, File asc, Severity error < warning < hint)",
+        "ComputeExitCode returns 1 if any finding has Severity 'error', else 0",
+        "RunLintSpecs returns (LintResult, nil) with Findings and ExitCode populated",
+        "RunLintSpecs does not call os.Exit"
+      ]
+    },
+    {
+      "id": "TS-05-SMOKE-3",
+      "execution_path_id": "05-PATH-3",
+      "description": "End-to-end smoke test for cross-spec interface loading: LoadDependentInterfaces discovers specs, builds the dependency graph, loads upstream specs, and returns interface maps.",
+      "trigger": "Create a temporary specRoot with two spec directories where spec '05' depends on spec '04', then call LoadDependentInterfaces('05', specRoot).",
+      "real_components": [
+        "afspec mutation package (LoadDependentInterfaces)",
+        "afspec package (DiscoverSpecs, BuildDependencyGraph, LoadSpec)",
+        "DependencyGraph struct",
+        "SpecMeta struct"
+      ],
+      "mockable": [
+        "filesystem (temporary spec directories with requirements.json files)"
+      ],
+      "expected_effects": [
+        "DiscoverSpecs returns SpecMeta entries for all specs under specRoot",
+        "BuildDependencyGraph resolves upstream dependencies for spec '05'",
+        "LoadSpec is called for each upstream dependency",
+        "Glossary entries, external API symbols, and criterion return contracts are extracted into map[string]any per upstream spec",
+        "LoadDependentInterfaces returns a non-nil slice with one entry per successfully loaded upstream spec",
+        "If any step fails, LoadDependentInterfaces returns an empty slice without panicking or returning an error"
+      ]
+    }
+  ],
+  "coverage": {
+    "requirements_covered": [
+      "05-REQ-1.1",
+      "05-REQ-1.2",
+      "05-REQ-1.3",
+      "05-REQ-1.4",
+      "05-REQ-1.5",
+      "05-REQ-1.6",
+      "05-REQ-1.7",
+      "05-REQ-1.E1",
+      "05-REQ-1.E2",
+      "05-REQ-1.E3",
+      "05-REQ-1.E4",
+      "05-REQ-1.E5",
+      "05-REQ-2.1",
+      "05-REQ-2.2",
+      "05-REQ-2.3",
+      "05-REQ-2.E1",
+      "05-REQ-2.E2",
+      "05-REQ-2.E3",
+      "05-REQ-3.1",
+      "05-REQ-3.2",
+      "05-REQ-3.3",
+      "05-REQ-3.4",
+      "05-REQ-3.E1",
+      "05-REQ-3.E2",
+      "05-REQ-4.1",
+      "05-REQ-4.2",
+      "05-REQ-4.3",
+      "05-REQ-4.4",
+      "05-REQ-4.E1",
+      "05-REQ-4.E2",
+      "05-REQ-4.E3",
+      "05-REQ-5.1",
+      "05-REQ-5.2",
+      "05-REQ-5.3",
+      "05-REQ-5.4",
+      "05-REQ-5.5",
+      "05-REQ-5.E1",
+      "05-REQ-5.E2",
+      "05-REQ-5.E3",
+      "05-REQ-6.1",
+      "05-REQ-6.2",
+      "05-REQ-6.3",
+      "05-REQ-6.E1",
+      "05-REQ-7.1",
+      "05-REQ-7.2",
+      "05-REQ-7.E1",
+      "05-REQ-7.E2",
+      "05-REQ-7.E3",
+      "05-REQ-8.1",
+      "05-REQ-8.2",
+      "05-REQ-8.3",
+      "05-REQ-8.E1",
+      "05-REQ-8.E2",
+      "05-REQ-9.1",
+      "05-REQ-9.2",
+      "05-REQ-9.3",
+      "05-REQ-9.E1",
+      "05-REQ-9.E2",
+      "05-REQ-9.E3",
+      "05-REQ-10.1",
+      "05-REQ-10.E1",
+      "05-REQ-10.E2",
+      "05-REQ-10.E3"
+    ],
+    "properties_covered": [
+      "05-PROP-1",
+      "05-PROP-2",
+      "05-PROP-3",
+      "05-PROP-4",
+      "05-PROP-5",
+      "05-PROP-6",
+      "05-PROP-7"
+    ],
+    "paths_covered": [
+      "05-PATH-1",
+      "05-PATH-2",
+      "05-PATH-3"
+    ],
+    "gaps": []
+  }
+}

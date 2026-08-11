@@ -1,0 +1,1153 @@
+{
+  "$schema": null,
+  "spec_id": "04",
+  "spec_name": "afspec_go_validation",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "go test ./golang/... -run TestValidate -count=1 -v",
+    "all_tests": "go test ./... -count=1",
+    "linter": "go vet ./..."
+  },
+  "dependencies": [],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Write tests: cross-file rules 3, 4, 5 (property, smoke, test_spec_id)",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Write test for property test coverage rule (04-REQ-1)",
+          "details": [
+            "In golang/validate_test.go, add TestValidateCrossFile_PropertyTestCoverage",
+            "Case: spec with correctness_property whose property_id has no matching property_test — expect ValidationEntry with rule='cross_file_3', category='integrity'",
+            "Case: all correctness_properties covered — expect no error for this rule",
+            "Use table-driven test pattern with t.Run sub-tests"
+          ],
+          "test_spec_refs": [
+            "TS-04-1",
+            "TS-04-2"
+          ],
+          "requirement_refs": [
+            "04-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.2",
+          "title": "Write test for execution path smoke test coverage rule (04-REQ-2)",
+          "details": [
+            "Add TestValidateCrossFile_ExecutionPathSmokeCoverage in golang/validate_test.go",
+            "Case: execution_path with no matching smoke_test by execution_path_id — expect error with rule='cross_file_4'",
+            "Case: all execution_paths covered — no error",
+            "Verify error message includes the uncovered execution_path ID"
+          ],
+          "test_spec_refs": [
+            "TS-04-3"
+          ],
+          "requirement_refs": [
+            "04-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.3",
+          "title": "Write test for test_spec_id resolution rule (04-REQ-3)",
+          "details": [
+            "Add TestValidateCrossFile_TestSpecIDResolution in golang/validate_test.go",
+            "Case: traceability entry with test_spec_id not matching any test_case/property_test/edge_case_test/smoke_test — expect error rule='cross_file_5'",
+            "Case: subtask test_spec_refs entry that does not resolve — expect error",
+            "Case: all IDs resolve — no error"
+          ],
+          "test_spec_refs": [
+            "TS-04-4"
+          ],
+          "requirement_refs": [
+            "04-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.4",
+          "title": "Write tests for glossary backtick term check (04-REQ-4)",
+          "details": [
+            "Add TestValidateCrossFile_GlossaryBacktickTerms in golang/validate_test.go",
+            "Case: criterion action contains a backtick-wrapped term with no glossary entry — expect error rule='cross_file_6'",
+            "Case: backtick term is numeric (e.g. -1, 3.14), single char, quoted string, or longer than 80 chars — expect no error (excluded)",
+            "Case: correctness_property for_any/invariant fields checked similarly",
+            "Case: term exists in glossary — no error"
+          ],
+          "test_spec_refs": [
+            "TS-04-5",
+            "TS-04-6"
+          ],
+          "requirement_refs": [
+            "04-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.5",
+          "title": "Write tests for traceability deduplication rule (04-REQ-5)",
+          "details": [
+            "Add TestValidateCrossFile_TraceabilityDeduplication in golang/validate_test.go",
+            "Case: two traceability entries with same (requirement_id, test_spec_id) pair — expect error rule='cross_file_8'",
+            "Case: all pairs unique — no error",
+            "Verify error message identifies the duplicate pair"
+          ],
+          "test_spec_refs": [
+            "TS-04-7"
+          ],
+          "requirement_refs": [
+            "04-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "1.6",
+          "title": "Write tests for subtask requirement_refs resolution rule (04-REQ-6)",
+          "details": [
+            "Add TestValidateCrossFile_SubtaskRequirementRefs in golang/validate_test.go",
+            "Case: subtask requirement_refs contains ID not matching any requirement, criterion, or edge case — expect error rule='cross_file_9'",
+            "Case: all refs resolve — no error",
+            "Ensure edge case IDs (e.g. 04-REQ-1.E1) are accepted as valid"
+          ],
+          "test_spec_refs": [
+            "TS-04-8"
+          ],
+          "requirement_refs": [
+            "04-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "1.V",
+        "checks": [
+          "All six test functions compile and run without errors using go test ./golang/... -run TestValidateCrossFile -count=1 -v",
+          "Table-driven sub-tests use t.Run and cover both positive (no error) and negative (error expected) cases",
+          "Each test asserts the correct rule name (cross_file_3 through cross_file_9) and category='integrity' on returned ValidationEntry values",
+          "go vet ./golang/... reports no issues on the new test file"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "tests",
+      "title": "Write tests: cross-file rules 7, 8, 9, 10 and task group structure",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Write test for unwanted pattern return_contract rule (04-REQ-7)",
+          "details": [
+            "Add TestValidateCrossFile_UnwantedReturnContract in golang/validate_test.go",
+            "Case: criterion with ears_pattern='unwanted' and null return_contract — expect error rule='cross_file_10'",
+            "Case: criterion with ears_pattern='unwanted' and non-null return_contract — no error",
+            "Case: criterion with other ears_pattern and null return_contract — no error from this rule"
+          ],
+          "test_spec_refs": [
+            "TS-04-9"
+          ],
+          "requirement_refs": [
+            "04-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.2",
+          "title": "Write tests for task group structure validation (04-REQ-8)",
+          "details": [
+            "Add TestValidateCrossFile_TaskGroupStructure in golang/validate_test.go",
+            "Case: first task group has kind != 'tests' — expect error category='schema', rule='task_group_structure'",
+            "Case: last task group has kind != 'wiring_verification' — expect error category='schema'",
+            "Case: correct structure (first=tests, last=wiring_verification) — no structural errors"
+          ],
+          "test_spec_refs": [
+            "TS-04-10",
+            "TS-04-11"
+          ],
+          "requirement_refs": [
+            "04-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.3",
+          "title": "Write tests for wiring verification group semantics (04-REQ-9)",
+          "details": [
+            "Add TestValidateCrossFile_WiringVerificationSemantics in golang/validate_test.go",
+            "Case: wiring group has all subtasks with empty test_spec_refs — expect error",
+            "Case: wiring group has test_spec_refs but none match the TS-*-SMOKE-* pattern — expect error",
+            "Case: wiring group has no subtask mentioning 'stub' or 'dead' in title/details — expect error",
+            "Case: fully valid wiring group — no errors from these checks"
+          ],
+          "test_spec_refs": [
+            "TS-04-12",
+            "TS-04-13",
+            "TS-04-14"
+          ],
+          "requirement_refs": [
+            "04-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.4",
+          "title": "Write tests for cross-spec duplicate API symbol rule (04-REQ-10)",
+          "details": [
+            "Add TestValidateCrossSpec_DuplicateAPISymbol in golang/validate_test.go",
+            "Case: two connected specs declare external API symbol with same name but different signature — expect error rule='cross_spec_1'",
+            "Case: same name and same signature — no error",
+            "Case: same name but specs not connected by dependency edge — no error"
+          ],
+          "test_spec_refs": [
+            "TS-04-15"
+          ],
+          "requirement_refs": [
+            "04-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.5",
+          "title": "Write tests for cross-spec unknown dependency and interface contract rules (04-REQ-11, 04-REQ-12)",
+          "details": [
+            "Add TestValidateCrossSpec_UnknownDependency in golang/validate_test.go",
+            "Case: depends_on_spec references spec_id not in provided map — expect error rule='cross_spec_3'",
+            "Add TestValidateCrossSpec_InterfaceContractMismatch",
+            "Case: downstream criterion action references symbol defined upstream with different return_contract — expect error rule='cross_spec_4'",
+            "Case: contracts match — no error"
+          ],
+          "test_spec_refs": [
+            "TS-04-16",
+            "TS-04-17"
+          ],
+          "requirement_refs": [
+            "04-REQ-11",
+            "04-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "2.6",
+          "title": "Write tests for cross-spec missing boundary coverage rule (04-REQ-13)",
+          "details": [
+            "Add TestValidateCrossSpec_MissingBoundaryCoverage in golang/validate_test.go",
+            "Case: execution_path actor names a spec in dependency graph with no corresponding smoke test — expect error rule='cross_spec_5'",
+            "Case: boundary covered by smoke test — no error",
+            "Case: actor does not name a known spec — no error"
+          ],
+          "test_spec_refs": [
+            "TS-04-18"
+          ],
+          "requirement_refs": [
+            "04-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "2.V",
+        "checks": [
+          "All six test functions in group 2 compile and pass under go test ./golang/... -run TestValidateCrossFile|TestValidateCrossSpec -count=1 -v",
+          "Tests for cross_file_10 confirm that an unwanted criterion without return_contract produces exactly one ValidationEntry with rule='cross_file_10'",
+          "Tests for task_group_structure confirm category='schema' is set on structural errors",
+          "Tests for cross_spec_* rules confirm category='integrity' and the correct rule name on each entry",
+          "go vet ./golang/... reports no issues"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "kind": "tests",
+      "title": "Write tests: warning rules and ValidateStructured output shape",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Write tests for group test_spec_refs ceiling and subtask count warnings (04-REQ-14, 04-REQ-15)",
+          "details": [
+            "Add TestValidate_WarningGroupTestSpecRefsCeiling in golang/validate_test.go",
+            "Case: task group with total test_spec_refs count > 15 — expect warning",
+            "Case: count <= 15 — no warning",
+            "Add TestValidate_WarningGroupSubtaskCount",
+            "Case: task group with > 6 non-verification subtasks — expect warning",
+            "Case: <= 6 — no warning"
+          ],
+          "test_spec_refs": [
+            "TS-04-19",
+            "TS-04-20"
+          ],
+          "requirement_refs": [
+            "04-REQ-14",
+            "04-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.2",
+          "title": "Write tests for subtask test_spec_refs ceiling and error path return_contract warnings (04-REQ-16, 04-REQ-17)",
+          "details": [
+            "Add TestValidate_WarningSubtaskTestSpecRefsCeiling",
+            "Case: single subtask with > 8 test_spec_refs — expect warning",
+            "Case: <= 8 — no warning",
+            "Add TestValidate_WarningErrorPathReturnContract",
+            "Case: criterion with error_condition field and null return_contract — expect warning",
+            "Case: criterion action contains error-indicating keyword and null return_contract — expect warning",
+            "Case: return_contract present — no warning"
+          ],
+          "test_spec_refs": [
+            "TS-04-21",
+            "TS-04-22"
+          ],
+          "requirement_refs": [
+            "04-REQ-16",
+            "04-REQ-17"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.3",
+          "title": "Write tests for vague language and scope limit warnings (04-REQ-18, 04-REQ-19)",
+          "details": [
+            "Add TestValidate_WarningVagueLanguage",
+            "Case: criterion field contains 'appropriate' — expect warning with term and field identified",
+            "Case: criterion field contains 'properly', 'correctly', 'adequate', 'sufficient' — each produces warning",
+            "Case: no vague words — no warning",
+            "Add TestValidate_WarningScopeLimit",
+            "Case: spec with > 10 requirements — expect warning suggesting spec may be too large",
+            "Case: <= 10 requirements — no warning"
+          ],
+          "test_spec_refs": [
+            "TS-04-23",
+            "TS-04-24",
+            "TS-04-25"
+          ],
+          "requirement_refs": [
+            "04-REQ-18",
+            "04-REQ-19"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "3.4",
+          "title": "Write tests for ValidateStructured output shape alignment (04-REQ-20)",
+          "details": [
+            "Add TestValidateStructured_OutputShape in golang/validate_test.go",
+            "Case: spec with errors — returned map has keys 'errors', 'warnings', 'valid'; valid=false; each error has 'category', 'rule', 'message', 'file', 'path'",
+            "Case: spec with warnings only — valid=true, warnings list non-empty, each warning has 'message' and 'entity_id'",
+            "Case: clean spec — valid=true, errors=[], warnings=[]",
+            "Assert category='schema' for JSON Schema / EARS errors, category='integrity' for cross-file/cross-spec errors"
+          ],
+          "test_spec_refs": [
+            "TS-04-26",
+            "TS-04-27",
+            "TS-04-28"
+          ],
+          "requirement_refs": [
+            "04-REQ-20"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "3.V",
+        "checks": [
+          "All warning test functions compile and pass under go test ./golang/... -run TestValidate_Warning|TestValidateStructured -count=1 -v",
+          "Warning tests confirm entries appear in result.Warnings (not result.Errors) and carry the correct message and entity_id fields",
+          "ValidateStructured output shape tests assert the map contains exactly the keys 'errors', 'warnings', and 'valid'",
+          "go vet ./golang/... reports no issues on the new test file"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "kind": "standard",
+      "title": "Implement cross-file rules 3 and 4: property and smoke test coverage",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Implement property test coverage check (cross-file rule 3) in ValidateCrossFile",
+          "details": [
+            "In golang/validate.go, add rule 3 to (*Spec).ValidateCrossFile()",
+            "Build a set of property_ids from test_spec.property_tests",
+            "Iterate spec.Requirements[*].CorrectnessProperties; for each, check if property_id is in the set",
+            "If missing, append ValidationEntry{Category: \"integrity\", Rule: \"cross_file_3\", Message: \"...\", EntityID: property_id}",
+            "Return all collected entries"
+          ],
+          "test_spec_refs": [
+            "TS-04-1",
+            "TS-04-2"
+          ],
+          "requirement_refs": [
+            "04-REQ-1"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.2",
+          "title": "Implement execution path smoke test coverage check (cross-file rule 4) in ValidateCrossFile",
+          "details": [
+            "In golang/validate.go, add rule 4 to (*Spec).ValidateCrossFile()",
+            "Build a set of execution_path_ids from test_spec.smoke_tests",
+            "Iterate spec.Requirements[*].ExecutionPaths; for each, check if execution_path_id is in the set",
+            "If missing, append ValidationEntry{Category: \"integrity\", Rule: \"cross_file_4\", EntityID: execution_path_id}",
+            "Ensure error message includes the uncovered path ID"
+          ],
+          "test_spec_refs": [
+            "TS-04-3"
+          ],
+          "requirement_refs": [
+            "04-REQ-2"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "4.3",
+          "title": "Implement test_spec_id resolution check (cross-file rule 5) in ValidateCrossFile",
+          "details": [
+            "In golang/validate.go, add rule 5 to (*Spec).ValidateCrossFile()",
+            "Build a set of all known test IDs from test_spec (test_cases, property_tests, edge_case_tests, smoke_tests)",
+            "Check each traceability entry's test_spec_id against the set",
+            "Check each subtask's test_spec_refs entries against the set",
+            "Produce ValidationEntry{Category: \"integrity\", Rule: \"cross_file_5\"} for each unresolvable ID"
+          ],
+          "test_spec_refs": [
+            "TS-04-4"
+          ],
+          "requirement_refs": [
+            "04-REQ-3"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "4.V",
+        "checks": [
+          "go test ./golang/... -run TestValidateCrossFile_PropertyTestCoverage|TestValidateCrossFile_ExecutionPathSmokeCoverage|TestValidateCrossFile_TestSpecIDResolution -count=1 -v passes with all sub-tests green",
+          "Rule functions for cross_file_3, cross_file_4, and cross_file_5 are each called from ValidateCrossFile and not left as stubs (no panic or bare return)",
+          "go vet ./golang/... reports no issues after implementation"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "kind": "standard",
+      "title": "Implement cross-file rules 6, 8, 9, 10: glossary backtick, deduplication, refs, unwanted",
+      "subtasks": [
+        {
+          "id": "5.1",
+          "title": "Implement glossary backtick term check (cross-file rule 6) in ValidateCrossFile",
+          "details": [
+            "Compile a package-level regex for backtick extraction matching one or more non-backtick characters surrounded by backticks",
+            "Compile exclusion patterns: numeric (including negatives/decimals), single char, quoted strings, length > 80",
+            "In ValidateCrossFile, extract backtick terms from criterion fields (action, trigger, condition, error_condition, state, feature) and correctness property fields (for_any, invariant)",
+            "For each non-excluded term, check against spec.Glossary keys; if missing, produce ValidationEntry{Category: \"integrity\", Rule: \"cross_file_6\"}",
+            "Place regex vars in golang/validate.go at package level"
+          ],
+          "test_spec_refs": [
+            "TS-04-5",
+            "TS-04-6"
+          ],
+          "requirement_refs": [
+            "04-REQ-4"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.2",
+          "title": "Implement traceability deduplication check (cross-file rule 8) in ValidateCrossFile",
+          "details": [
+            "In ValidateCrossFile, iterate traceability entries and track (requirement_id, test_spec_id) pairs in a map[string]bool",
+            "On second occurrence of the same pair, produce ValidationEntry{Category: \"integrity\", Rule: \"cross_file_8\"}",
+            "Error message must identify the duplicate pair"
+          ],
+          "test_spec_refs": [
+            "TS-04-7"
+          ],
+          "requirement_refs": [
+            "04-REQ-5"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.3",
+          "title": "Implement subtask requirement_refs resolution check (cross-file rule 9) in ValidateCrossFile",
+          "details": [
+            "Build a set of all valid requirement IDs, criterion IDs, and edge case IDs from spec.Requirements",
+            "Iterate all subtasks across all task groups; for each requirement_refs entry, check against the set",
+            "Produce ValidationEntry{Category: \"integrity\", Rule: \"cross_file_9\"} for unresolvable refs",
+            "Note: checkMissingSubtaskRefs already handles empty refs; this rule handles non-empty but unresolvable refs"
+          ],
+          "test_spec_refs": [
+            "TS-04-8"
+          ],
+          "requirement_refs": [
+            "04-REQ-6"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "5.4",
+          "title": "Implement unwanted pattern return_contract check (cross-file rule 10) in ValidateCrossFile",
+          "details": [
+            "In ValidateCrossFile, iterate all criteria across all requirements",
+            "For each criterion where EarsPattern == \"unwanted\" and ReturnContract is nil or empty string, produce ValidationEntry{Category: \"integrity\", Rule: \"cross_file_10\"}",
+            "Include criterion ID and requirement ID in the error entry"
+          ],
+          "test_spec_refs": [
+            "TS-04-9"
+          ],
+          "requirement_refs": [
+            "04-REQ-7"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "5.V",
+        "checks": [
+          "go test ./golang/... -run TestValidateCrossFile_GlossaryBacktickTerms|TestValidateCrossFile_TraceabilityDeduplication|TestValidateCrossFile_SubtaskRequirementRefs|TestValidateCrossFile_UnwantedReturnContract -count=1 -v passes with all sub-tests green",
+          "Package-level regex variables for backtick extraction and exclusion patterns are defined and reused (not re-compiled per call)",
+          "cross_file_10 rule produces an error only when EarsPattern is exactly 'unwanted' and ReturnContract is absent",
+          "go vet ./golang/... reports no issues"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "kind": "standard",
+      "title": "Implement task group structure and wiring verification semantics",
+      "subtasks": [
+        {
+          "id": "6.1",
+          "title": "Implement task group structure validation (04-REQ-8) in ValidateCrossFile",
+          "details": [
+            "In ValidateCrossFile, check len(spec.Tasks.TaskGroups) > 0",
+            "If first group kind != 'tests', produce ValidationEntry{Category: \"schema\", Rule: \"task_group_structure\", Message: \"first task group must have kind: tests\"}",
+            "If last group kind != 'wiring_verification', produce ValidationEntry{Category: \"schema\", Rule: \"task_group_structure\", Message: \"last task group must have kind: wiring_verification\"}",
+            "Handle edge case: single group (both first and last checks apply)"
+          ],
+          "test_spec_refs": [
+            "TS-04-10",
+            "TS-04-11"
+          ],
+          "requirement_refs": [
+            "04-REQ-8"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "6.2",
+          "title": "Implement wiring verification group semantics (04-REQ-9) in ValidateCrossFile",
+          "details": [
+            "In ValidateCrossFile, after confirming last group is wiring_verification, apply three sub-checks:",
+            "Sub-check A: at least one subtask has non-empty test_spec_refs; if not, produce error",
+            "Sub-check B: at least one test_spec_refs entry matches the regexp TS-.*-SMOKE-.* ; if not, produce error",
+            "Sub-check C: at least one subtask title or detail (case-insensitive) contains 'stub' or 'dead'; if not, produce error",
+            "Compile the smoke test pattern regex at package level"
+          ],
+          "test_spec_refs": [
+            "TS-04-12",
+            "TS-04-13",
+            "TS-04-14"
+          ],
+          "requirement_refs": [
+            "04-REQ-9"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "6.V",
+        "checks": [
+          "go test ./golang/... -run TestValidateCrossFile_TaskGroupStructure|TestValidateCrossFile_WiringVerificationSemantics -count=1 -v passes with all sub-tests green",
+          "Structure errors carry category='schema' and rule='task_group_structure'",
+          "Wiring verification sub-checks A, B, and C each produce distinct, descriptive error messages",
+          "go vet ./golang/... reports no issues"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "kind": "standard",
+      "title": "Implement cross-spec rules 1, 3, 4, 5 in ValidateCrossSpec",
+      "subtasks": [
+        {
+          "id": "7.1",
+          "title": "Implement duplicate API symbol check (cross-spec rule 1) in ValidateCrossSpec",
+          "details": [
+            "In golang/validate.go, add rule 1 to ValidateCrossSpec(specs map[string]*Spec, graph *DependencyGraph)",
+            "Iterate dependency edges; for each edge, compare external API symbols declared by both upstream and downstream specs",
+            "If two connected specs declare a symbol with the same name but different signature, produce ValidationEntry{Category: \"integrity\", Rule: \"cross_spec_1\"}",
+            "Include both spec IDs and the symbol name in the error"
+          ],
+          "test_spec_refs": [
+            "TS-04-15"
+          ],
+          "requirement_refs": [
+            "04-REQ-10"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.2",
+          "title": "Implement unknown dependency check (cross-spec rule 3) in ValidateCrossSpec",
+          "details": [
+            "In ValidateCrossSpec, iterate all specs' task dependencies",
+            "For each depends_on_spec value, check if it exists as a key in the specs map",
+            "If not found, produce ValidationEntry{Category: \"integrity\", Rule: \"cross_spec_3\", Message: \"unknown dependency spec_id: <id>\"}",
+            "Include the referencing spec ID and the unknown depends_on_spec value in the entry"
+          ],
+          "test_spec_refs": [
+            "TS-04-16"
+          ],
+          "requirement_refs": [
+            "04-REQ-11"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.3",
+          "title": "Implement interface contract mismatch check (cross-spec rule 4) in ValidateCrossSpec",
+          "details": [
+            "Extract backtick-wrapped terms from criterion action fields using the package-level regex",
+            "Pair each term with the criterion's return_contract",
+            "Along dependency edges, if downstream spec references a symbol also defined in upstream spec with a return_contract, compare contracts",
+            "If mismatch, produce ValidationEntry{Category: \"integrity\", Rule: \"cross_spec_4\"}",
+            "Include symbol name, both contracts, and both spec IDs in the error"
+          ],
+          "test_spec_refs": [
+            "TS-04-17"
+          ],
+          "requirement_refs": [
+            "04-REQ-12"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "7.4",
+          "title": "Implement missing boundary coverage check (cross-spec rule 5) in ValidateCrossSpec",
+          "details": [
+            "For each execution_path in each spec, extract actor names from path steps",
+            "If an actor name matches a spec_id in the dependency graph, check that a smoke_test covers that boundary (execution_path_id or actor reference)",
+            "If no smoke test covers the boundary, produce ValidationEntry{Category: \"integrity\", Rule: \"cross_spec_5\"}",
+            "Include the actor/spec name and execution_path ID in the error"
+          ],
+          "test_spec_refs": [
+            "TS-04-18"
+          ],
+          "requirement_refs": [
+            "04-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "7.V",
+        "checks": [
+          "go test ./golang/... -run TestValidateCrossSpec -count=1 -v passes with all sub-tests green",
+          "Each cross-spec rule function is called from ValidateCrossSpec and not left as a stub",
+          "All ValidationEntry values produced by cross-spec rules carry category='integrity' and a non-empty rule field",
+          "go vet ./golang/... reports no issues"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "kind": "standard",
+      "title": "Implement warning rules in Validate",
+      "subtasks": [
+        {
+          "id": "8.1",
+          "title": "Implement group test_spec_refs ceiling and subtask count warnings (04-REQ-14, 04-REQ-15)",
+          "details": [
+            "In golang/validate.go, add warning checks to (*Spec).Validate()",
+            "For each task group, sum test_spec_refs across all subtasks; if > 15, append warning ValidationEntry{Category: \"warning\", Message: \"group test_spec_refs count exceeds 15\", EntityID: group_id}",
+            "For each task group, count non-verification subtasks; if > 6, append warning",
+            "Apply to all group kinds (tests, standard, checkpoint, wiring_verification)"
+          ],
+          "test_spec_refs": [
+            "TS-04-19",
+            "TS-04-20"
+          ],
+          "requirement_refs": [
+            "04-REQ-14",
+            "04-REQ-15"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.2",
+          "title": "Implement subtask test_spec_refs ceiling and error path return_contract warnings (04-REQ-16, 04-REQ-17)",
+          "details": [
+            "For each subtask, if len(test_spec_refs) > 8, append warning ValidationEntry{EntityID: subtask_id}",
+            "For each criterion with non-empty error_condition or error-indicating keywords in action (e.g. 'error', 'fail', 'invalid') and null/empty return_contract, append warning",
+            "Compile the error-keyword pattern at package level"
+          ],
+          "test_spec_refs": [
+            "TS-04-21",
+            "TS-04-22"
+          ],
+          "requirement_refs": [
+            "04-REQ-16",
+            "04-REQ-17"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.3",
+          "title": "Implement vague language detection warning (04-REQ-18)",
+          "details": [
+            "Compile a package-level case-insensitive regex matching the words: appropriate, properly, correctly, adequate, sufficient",
+            "Iterate all criterion fields (action, trigger, condition, error_condition, state, feature)",
+            "For each match, append warning ValidationEntry{Message: \"vague term in field <field>\", EntityID: criterion_id}",
+            "One warning per (criterion, field, term) occurrence"
+          ],
+          "test_spec_refs": [
+            "TS-04-23",
+            "TS-04-24"
+          ],
+          "requirement_refs": [
+            "04-REQ-18"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "8.4",
+          "title": "Implement spec scope limit warning (04-REQ-19)",
+          "details": [
+            "In Validate(), count len(spec.Requirements)",
+            "If > 10, append warning ValidationEntry{Message: \"spec has <N> requirements; consider splitting into smaller specs\", EntityID: spec.SpecID}",
+            "Threshold is exactly 10: specs with 10 requirements do not warn, specs with 11+ do"
+          ],
+          "test_spec_refs": [
+            "TS-04-25"
+          ],
+          "requirement_refs": [
+            "04-REQ-19"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "8.V",
+        "checks": [
+          "go test ./golang/... -run TestValidate_Warning -count=1 -v passes with all sub-tests green",
+          "Warning entries appear in result.Warnings and not in result.Errors",
+          "All four warning categories (group ceiling, subtask ceiling, vague language, scope limit) are exercised by at least one passing test",
+          "go vet ./golang/... reports no issues"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "kind": "standard",
+      "title": "Align ValidateStructured output shape with Python validate_structured",
+      "subtasks": [
+        {
+          "id": "9.1",
+          "title": "Restructure ValidateStructured to return errors/warnings/valid map (04-REQ-20)",
+          "details": [
+            "In golang/validate.go, rewrite (*Spec).ValidateStructured() map[string]any",
+            "Call Validate() to get ValidationResult",
+            "Build errors slice: for each entry in result.Errors, produce map with keys 'category', 'rule', 'message', 'file', 'path'",
+            "Build warnings slice: for each entry in result.Warnings, produce map with keys 'message', 'entity_id'",
+            "Set 'valid' key to len(errors) == 0",
+            "Return map[string]any{\"errors\": errors, \"warnings\": warnings, \"valid\": valid}"
+          ],
+          "test_spec_refs": [
+            "TS-04-26",
+            "TS-04-27",
+            "TS-04-28"
+          ],
+          "requirement_refs": [
+            "04-REQ-20"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.2",
+          "title": "Ensure category field values are correct: 'schema' vs 'integrity'",
+          "details": [
+            "Audit all ValidationEntry creation sites in validate.go and validate_missing_refs.go",
+            "JSON Schema and EARS pattern errors must use Category=\"schema\"",
+            "Cross-file and cross-spec rule violations must use Category=\"integrity\"",
+            "Task group structure errors use Category=\"schema\" per 04-REQ-8",
+            "Add a helper function setCategory(entry *ValidationEntry, ruleType string) if needed to centralize logic"
+          ],
+          "test_spec_refs": [
+            "TS-04-26",
+            "TS-04-27"
+          ],
+          "requirement_refs": [
+            "04-REQ-20"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "9.3",
+          "title": "Ensure all ValidationEntry fields are populated consistently across all rules",
+          "details": [
+            "Review all ValidationEntry construction across validate.go and validate_missing_refs.go",
+            "Ensure Rule field is always set (non-empty string matching rule name convention)",
+            "Ensure Message field is always a human-readable description",
+            "Ensure File/Artifact field is set to the relevant artifact name (e.g. 'requirements', 'test_spec', 'tasks')",
+            "Ensure Path field is set to a JSON-path-like string identifying the offending element"
+          ],
+          "test_spec_refs": [
+            "TS-04-28"
+          ],
+          "requirement_refs": [
+            "04-REQ-20"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "9.V",
+        "checks": [
+          "go test ./golang/... -run TestValidateStructured_OutputShape -count=1 -v passes with all three shape cases (errors, warnings-only, clean) green",
+          "ValidateStructured return value always contains exactly the keys 'errors', 'warnings', and 'valid' with correct types",
+          "Category values across all rules are audited and confirmed to be either 'schema' or 'integrity' (no other values)",
+          "go vet ./golang/... reports no issues"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "kind": "wiring_verification",
+      "title": "Wiring verification: end-to-end integration and stub audit",
+      "subtasks": [
+        {
+          "id": "10.1",
+          "title": "Trace execution paths through ValidateCrossFile and ValidateCrossSpec — verify no stubs remain",
+          "details": [
+            "Search golang/ for panic(\"not implemented\"), bare return nil in non-trivial validation paths, and TODO markers",
+            "Confirm ValidateCrossFile calls all 10 rule sub-functions (rules 3–10 plus existing rules 1–2)",
+            "Confirm ValidateCrossSpec calls all 5 rule sub-functions (rules 1, 3, 4, 5 plus existing rule 2)",
+            "Confirm Validate() calls warning checks for all 6 warning categories",
+            "Dead-code audit: verify no rule function is defined but not called from its parent"
+          ],
+          "test_spec_refs": [
+            "TS-04-SMOKE-1",
+            "TS-04-SMOKE-2",
+            "TS-04-SMOKE-3"
+          ],
+          "requirement_refs": [
+            "04-REQ-1",
+            "04-REQ-2",
+            "04-REQ-3",
+            "04-REQ-4",
+            "04-REQ-5",
+            "04-REQ-6",
+            "04-REQ-7",
+            "04-REQ-8",
+            "04-REQ-9",
+            "04-REQ-10",
+            "04-REQ-11",
+            "04-REQ-12",
+            "04-REQ-13"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.2",
+          "title": "Verify return value propagation from all validation functions into ValidationResult",
+          "details": [
+            "Confirm (*Spec).Validate() appends all entries from ValidateCrossFile() into result.Errors",
+            "Confirm (*Spec).Validate() appends all warning entries into result.Warnings",
+            "Confirm ValidateStructured() correctly reads result.Errors and result.Warnings",
+            "Confirm ValidateCrossSpec entries are surfaced when called from CLI or integration layer",
+            "Check that no rule silently discards errors (e.g. early return before append)"
+          ],
+          "test_spec_refs": [
+            "TS-04-SMOKE-1",
+            "TS-04-SMOKE-2",
+            "TS-04-SMOKE-3"
+          ],
+          "requirement_refs": [
+            "04-REQ-20"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.3",
+          "title": "Run all smoke tests and confirm full validation parity with Python",
+          "details": [
+            "Run go test ./golang/... -count=1 -v and confirm all tests pass",
+            "Run go vet ./golang/... and confirm no issues",
+            "If integration/golden-file tests exist, run them against a known-good spec fixture and compare output structure with Python validate_structured output",
+            "Confirm valid=true for clean specs, valid=false for specs with errors"
+          ],
+          "test_spec_refs": [
+            "TS-04-SMOKE-1",
+            "TS-04-SMOKE-2",
+            "TS-04-SMOKE-3"
+          ],
+          "requirement_refs": [
+            "04-REQ-1",
+            "04-REQ-2",
+            "04-REQ-3",
+            "04-REQ-4",
+            "04-REQ-5",
+            "04-REQ-6",
+            "04-REQ-7",
+            "04-REQ-8",
+            "04-REQ-9",
+            "04-REQ-10",
+            "04-REQ-11",
+            "04-REQ-12",
+            "04-REQ-13",
+            "04-REQ-14",
+            "04-REQ-15",
+            "04-REQ-16",
+            "04-REQ-17",
+            "04-REQ-18",
+            "04-REQ-19",
+            "04-REQ-20"
+          ],
+          "state": "pending",
+          "optional": false
+        },
+        {
+          "id": "10.4",
+          "title": "Cross-spec entry point and call-site verification for ValidateCrossSpec",
+          "details": [
+            "Confirm ValidateCrossSpec is called from production code (e.g. CLI validate command in spec_cli_go) and not only from tests",
+            "Confirm ValidateStructured is called from at least one production entry point",
+            "Search for any function defined in validate.go that has no call site outside of test files",
+            "Stub/dead-code audit: grep for panic(\"not implemented\") and TODO comments in golang/validate*.go"
+          ],
+          "test_spec_refs": [
+            "TS-04-SMOKE-1",
+            "TS-04-SMOKE-2",
+            "TS-04-SMOKE-3"
+          ],
+          "requirement_refs": [
+            "04-REQ-20"
+          ],
+          "state": "pending",
+          "optional": false
+        }
+      ],
+      "verification": {
+        "id": "10.V",
+        "checks": [
+          "go test ./... -count=1 exits with code 0 and all tests pass",
+          "go vet ./... reports zero issues across the entire repository",
+          "grep -r 'panic(\"not implemented\")' golang/validate*.go returns no results",
+          "ValidateCrossSpec and ValidateStructured each have at least one non-test call site confirmed by code search",
+          "Golden-file or integration comparison confirms ValidateStructured output structure matches the Python validate_structured contract (keys: errors, warnings, valid)"
+        ]
+      }
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "04-REQ-1.1",
+      "test_spec_id": "TS-04-1",
+      "task_id": "4.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-1.1",
+      "test_spec_id": "TS-04-2",
+      "task_id": "4.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-2.1",
+      "test_spec_id": "TS-04-3",
+      "task_id": "4.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-3.1",
+      "test_spec_id": "TS-04-4",
+      "task_id": "4.3",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-4.1",
+      "test_spec_id": "TS-04-5",
+      "task_id": "5.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-4.1",
+      "test_spec_id": "TS-04-6",
+      "task_id": "5.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-5.1",
+      "test_spec_id": "TS-04-7",
+      "task_id": "5.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-6.1",
+      "test_spec_id": "TS-04-8",
+      "task_id": "5.3",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-7.1",
+      "test_spec_id": "TS-04-9",
+      "task_id": "5.4",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-8.1",
+      "test_spec_id": "TS-04-10",
+      "task_id": "6.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-8.1",
+      "test_spec_id": "TS-04-11",
+      "task_id": "6.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-9.1",
+      "test_spec_id": "TS-04-12",
+      "task_id": "6.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-9.1",
+      "test_spec_id": "TS-04-13",
+      "task_id": "6.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-9.1",
+      "test_spec_id": "TS-04-14",
+      "task_id": "6.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-10.1",
+      "test_spec_id": "TS-04-15",
+      "task_id": "7.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-11.1",
+      "test_spec_id": "TS-04-16",
+      "task_id": "7.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-12.1",
+      "test_spec_id": "TS-04-17",
+      "task_id": "7.3",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-13.1",
+      "test_spec_id": "TS-04-18",
+      "task_id": "7.4",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-14.1",
+      "test_spec_id": "TS-04-19",
+      "task_id": "8.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-15.1",
+      "test_spec_id": "TS-04-20",
+      "task_id": "8.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-16.1",
+      "test_spec_id": "TS-04-21",
+      "task_id": "8.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-17.1",
+      "test_spec_id": "TS-04-22",
+      "task_id": "8.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-18.1",
+      "test_spec_id": "TS-04-23",
+      "task_id": "8.3",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-18.1",
+      "test_spec_id": "TS-04-24",
+      "task_id": "8.3",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-19.1",
+      "test_spec_id": "TS-04-25",
+      "task_id": "8.4",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-20.1",
+      "test_spec_id": "TS-04-26",
+      "task_id": "9.1",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-20.1",
+      "test_spec_id": "TS-04-27",
+      "task_id": "9.2",
+      "test_path": "golang/validate_test.go"
+    },
+    {
+      "requirement_id": "04-REQ-20.1",
+      "test_spec_id": "TS-04-28",
+      "task_id": "9.3",
+      "test_path": "golang/validate_test.go"
+    }
+  ]
+}
