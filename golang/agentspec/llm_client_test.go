@@ -419,6 +419,88 @@ func TestSpec07_AICall_RetryOnServerError(t *testing.T) {
 	}
 }
 
+// TestSpec07_AICall_RetryOnConnectionError verifies that connection errors
+// (non-APIError, non-context errors) trigger retries, succeeding when the
+// error resolves.
+// Requirement: 07-REQ-2.3
+func TestSpec07_AICall_RetryOnConnectionError(t *testing.T) {
+	connErr := errors.New("dial tcp: connection refused")
+	mock := newMockDoer(
+		mockResult{err: connErr},
+		mockResult{err: connErr},
+		mockResult{resp: &MessageResponse{
+			Content: []ContentBlock{{Type: "text", Text: "connected"}},
+		}},
+	)
+
+	delays := &delayCapturer{}
+	ctx := context.Background()
+	opts := AICallOptions{
+		ModelTier: "SIMPLE",
+		Messages:  []Message{{Role: "user", Content: "test"}},
+		Doer:      mock,
+		SleepFunc: delays.sleep,
+	}
+
+	text, _, err := AICall(ctx, opts)
+	if err != nil {
+		t.Fatalf("AICall() returned error: %v", err)
+	}
+	if text != "connected" {
+		t.Errorf("text = %q; want %q", text, "connected")
+	}
+	if len(mock.calls) != 3 {
+		t.Errorf("mock call count = %d; want 3", len(mock.calls))
+	}
+	if len(delays.delays) != 2 {
+		t.Errorf("len(delays) = %d; want 2", len(delays.delays))
+	}
+}
+
+// TestSpec07_AICall_ConnectionErrorExhausted verifies that persistent
+// connection errors are eventually returned as AgentError after max retries.
+// Requirement: 07-REQ-2.3, 07-REQ-2.6
+func TestSpec07_AICall_ConnectionErrorExhausted(t *testing.T) {
+	connErr := errors.New("dial tcp: connection refused")
+	mock := newMockDoer(
+		mockResult{err: connErr},
+		mockResult{err: connErr},
+		mockResult{err: connErr},
+		mockResult{err: connErr},
+	)
+
+	delays := &delayCapturer{}
+	ctx := context.Background()
+	opts := AICallOptions{
+		ModelTier: "SIMPLE",
+		Messages:  []Message{{Role: "user", Content: "test"}},
+		Doer:      mock,
+		SleepFunc: delays.sleep,
+	}
+
+	text, raw, err := AICall(ctx, opts)
+	if err == nil {
+		t.Fatal("AICall() returned nil error; want AgentError after max retries on connection error")
+	}
+	if text != "" {
+		t.Errorf("text = %q; want empty string", text)
+	}
+	if raw != nil {
+		t.Errorf("raw = %v; want nil", raw)
+	}
+
+	var agentErr *AgentError
+	if !errors.As(err, &agentErr) {
+		t.Fatalf("error type = %T; want *AgentError", err)
+	}
+	if agentErr.Retryable {
+		t.Error("AgentError.Retryable = true; want false")
+	}
+	if len(mock.calls) != 4 {
+		t.Errorf("mock call count = %d; want 4", len(mock.calls))
+	}
+}
+
 // TestSpec07_AICall_NonRetryableError verifies that non-retryable errors
 // (e.g. 400 Bad Request) are returned immediately without retrying.
 // Requirement: 07-REQ-2.3
@@ -849,5 +931,40 @@ func TestSpec07_AICall_MissingTextContentEmptyBlocks(t *testing.T) {
 	}
 	if raw == nil {
 		t.Error("rawResponse = nil; want non-nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// IsRetryable unit tests
+// ---------------------------------------------------------------------------
+
+// TestSpec07_IsRetryable verifies IsRetryable classification of various
+// error types per 07-REQ-2.3.
+func TestSpec07_IsRetryable(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"rate_limit_429", &APIError{StatusCode: 429, Msg: "rate limited"}, true},
+		{"server_500", &APIError{StatusCode: 500, Msg: "internal server error"}, true},
+		{"server_502", &APIError{StatusCode: 502, Msg: "bad gateway"}, true},
+		{"server_503", &APIError{StatusCode: 503, Msg: "service unavailable"}, true},
+		{"bad_request_400", &APIError{StatusCode: 400, Msg: "bad request"}, false},
+		{"unauthorized_401", &APIError{StatusCode: 401, Msg: "unauthorized"}, false},
+		{"forbidden_403", &APIError{StatusCode: 403, Msg: "forbidden"}, false},
+		{"not_found_404", &APIError{StatusCode: 404, Msg: "not found"}, false},
+		{"connection_error", errors.New("dial tcp: connection refused"), true},
+		{"dns_error", errors.New("no such host"), true},
+		{"context_canceled", context.Canceled, false},
+		{"context_deadline", context.DeadlineExceeded, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsRetryable(tt.err)
+			if got != tt.want {
+				t.Errorf("IsRetryable(%v) = %v; want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }

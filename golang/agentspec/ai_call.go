@@ -107,7 +107,7 @@ func IsRetryable(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
-	return false
+	return true
 }
 
 // isCacheRejection checks whether the error is a cache_control rejection
