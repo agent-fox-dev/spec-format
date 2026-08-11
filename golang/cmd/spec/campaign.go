@@ -2,6 +2,8 @@ package spec
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -18,10 +20,7 @@ func newCampaignCmd() *cobra.Command {
 		Short: "Create a named campaign to group related specs",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = path
-			_ = name
-			_ = description
-			return fmt.Errorf("spec campaign: not implemented")
+			return runCreateCampaign(cmd, path, name, description)
 		},
 	}
 
@@ -34,4 +33,38 @@ func newCampaignCmd() *cobra.Command {
 	cmd.MarkFlagRequired("name")
 
 	return cmd
+}
+
+// runCreateCampaign creates a campaign at the given path with the given
+// name and optional description. It writes campaign.yaml atomically and
+// prints a confirmation message to stderr on success.
+//
+// Returns an error (CampaignError semantics) if campaign.yaml already
+// exists at the path.
+func runCreateCampaign(cmd *cobra.Command, path, name, description string) error {
+	// Check if campaign.yaml already exists at the target path.
+	yamlPath := filepath.Join(path, "campaign.yaml")
+	if _, err := os.Stat(yamlPath); err == nil {
+		return fmt.Errorf("campaign already exists at %q: %s already contains a campaign.yaml", path, path)
+	}
+
+	// Create the campaign directory if it doesn't exist.
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return fmt.Errorf("cannot create campaign directory %q: %w", path, err)
+	}
+
+	// Build campaign.yaml content.
+	content := fmt.Sprintf("name: %s\n", name)
+	if description != "" {
+		content += fmt.Sprintf("description: %s\n", description)
+	}
+
+	// Write campaign.yaml atomically.
+	if err := os.WriteFile(yamlPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("cannot write campaign.yaml: %w", err)
+	}
+
+	// Print confirmation message to stderr.
+	fmt.Fprintf(cmd.ErrOrStderr(), "Campaign %q created at %s\n", name, path)
+	return nil
 }
