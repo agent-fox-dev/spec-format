@@ -17,7 +17,7 @@ type ConfigError struct {
 }
 
 func (e *ConfigError) Error() string   { return e.Msg }
-func (e *ConfigError) Category() string { return "" }
+func (e *ConfigError) Category() string { return "config" }
 func (e *ConfigError) Unwrap() error   { return e.Cause }
 
 // CampaignError is returned for campaign directory operation failures
@@ -28,7 +28,7 @@ type CampaignError struct {
 }
 
 func (e *CampaignError) Error() string   { return e.Msg }
-func (e *CampaignError) Category() string { return "" }
+func (e *CampaignError) Category() string { return "campaign" }
 func (e *CampaignError) Unwrap() error   { return e.Cause }
 
 // SessionError is returned for illegal state transitions or invalid
@@ -39,7 +39,7 @@ type SessionError struct {
 }
 
 func (e *SessionError) Error() string   { return e.Msg }
-func (e *SessionError) Category() string { return "" }
+func (e *SessionError) Category() string { return "state" }
 func (e *SessionError) Unwrap() error   { return e.Cause }
 
 // AgentError is the richest error type, carrying structured details about
@@ -53,5 +53,5 @@ type AgentError struct {
 }
 
 func (e *AgentError) Error() string   { return e.Detail }
-func (e *AgentError) Category() string { return "" }
+func (e *AgentError) Category() string { return e.ErrorCategory }
 func (e *AgentError) Unwrap() error   { return e.Cause }
