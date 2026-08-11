@@ -7,6 +7,16 @@ import (
 	"path/filepath"
 )
 
+// validSessionStates enumerates all recognized SessionState values.
+var validSessionStates = map[SessionState]bool{
+	StateInit:        true,
+	StateAssessing:   true,
+	StateRefining:    true,
+	StatePRDAccepted: true,
+	StateGenerating:  true,
+	StateGenerated:   true,
+}
+
 // SessionState enumerates the valid states of a SpecSession.
 type SessionState string
 
@@ -67,15 +77,32 @@ func (s *SpecSession) SpecDir() string {
 // Assessment returns a pointer to the most recent Assessment in the
 // session's assessment history, or nil if the history is empty.
 func (s *SpecSession) Assessment() *Assessment {
-	// TODO: implement
-	return nil
+	if len(s.AssessmentHistory) == 0 {
+		return nil
+	}
+	return &s.AssessmentHistory[len(s.AssessmentHistory)-1]
 }
 
 // AcceptPRD transitions the session state to StatePRDAccepted and
 // persists the updated state to _session.json atomically. Returns a
 // SessionError if the current state is not StateAssessing or StateRefining.
+// If the atomic persistence fails, the in-memory state is reverted.
 func (s *SpecSession) AcceptPRD() error {
-	// TODO: implement
+	if s.Current != StateAssessing && s.Current != StateRefining {
+		return &SessionError{
+			Msg: fmt.Sprintf("cannot accept PRD from state %q; must be %q or %q",
+				s.Current, StateAssessing, StateRefining),
+		}
+	}
+
+	prevState := s.Current
+	s.Current = StatePRDAccepted
+
+	if err := s.persistSession(); err != nil {
+		// Revert in-memory state on persistence failure.
+		s.Current = prevState
+		return err
+	}
 	return nil
 }
 
@@ -83,42 +110,29 @@ func (s *SpecSession) AcceptPRD() error {
 // that have not yet been answered via QA exchanges. Returns an empty
 // slice if there are no pending questions or the assessment history is empty.
 func (s *SpecSession) PendingQuestions() []map[string]any {
-	// TODO: implement
-	return nil
+	a := s.Assessment()
+	if a == nil || len(a.Questions) == 0 {
+		return []map[string]any{}
+	}
+	return a.Questions
 }
 
-// CreateSession initializes a new SpecSession in StateInit and persists
-// it to _session.json inside specDir using the atomic temp-file-and-rename
-// pattern. Returns a SessionError on failure.
-func CreateSession(specDir, mode, source string) (*SpecSession, error) {
-	if specDir == "" {
-		return nil, &SessionError{Msg: "specDir must not be empty"}
-	}
-
-	session := &SpecSession{
-		specDir:            specDir,
-		Current:            StateInit,
-		Mode:               mode,
-		PRDPath:            source,
-		AssessmentHistory:  []Assessment{},
-		QAExchanges:        []QAExchange{},
-		GeneratedArtifacts: []string{},
-	}
-
-	// Marshal session to JSON.
-	data, err := json.Marshal(session)
+// persistSession writes the session state to _session.json inside specDir
+// using the atomic temp-file-and-rename pattern. Returns a SessionError
+// on failure and cleans up the temporary file.
+func (s *SpecSession) persistSession() error {
+	data, err := json.Marshal(s)
 	if err != nil {
-		return nil, &SessionError{
+		return &SessionError{
 			Msg:   fmt.Sprintf("failed to marshal session: %v", err),
 			Cause: err,
 		}
 	}
 
-	// Atomic write: write to temp file in same directory, then rename.
-	sessionPath := filepath.Join(specDir, "_session.json")
-	tmpFile, err := os.CreateTemp(specDir, "_session.json.tmp.*")
+	sessionPath := filepath.Join(s.specDir, "_session.json")
+	tmpFile, err := os.CreateTemp(s.specDir, "_session.json.tmp.*")
 	if err != nil {
-		return nil, &SessionError{
+		return &SessionError{
 			Msg:   fmt.Sprintf("failed to create temp file for _session.json: %v", err),
 			Cause: err,
 		}
@@ -134,34 +148,92 @@ func CreateSession(specDir, mode, source string) (*SpecSession, error) {
 
 	if _, err := tmpFile.Write(data); err != nil {
 		tmpFile.Close()
-		return nil, &SessionError{
+		return &SessionError{
 			Msg:   fmt.Sprintf("failed to write _session.json temp file: %v", err),
 			Cause: err,
 		}
 	}
 	if err := tmpFile.Close(); err != nil {
-		return nil, &SessionError{
+		return &SessionError{
 			Msg:   fmt.Sprintf("failed to close _session.json temp file: %v", err),
 			Cause: err,
 		}
 	}
 
 	if err := os.Rename(tmpPath, sessionPath); err != nil {
-		return nil, &SessionError{
+		return &SessionError{
 			Msg:   fmt.Sprintf("failed to rename temp file to _session.json: %v", err),
 			Cause: err,
 		}
 	}
 
 	success = true
+	return nil
+}
+
+// CreateSession initializes a new SpecSession in StateInit and persists
+// it to _session.json inside specDir using the atomic temp-file-and-rename
+// pattern. Returns a SessionError on failure.
+func CreateSession(specDir, mode, source string) (*SpecSession, error) {
+	if specDir == "" {
+		return nil, &SessionError{Msg: "specDir must not be empty"}
+	}
+
+	// Validate that specDir exists.
+	if _, err := os.Stat(specDir); err != nil {
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("specDir does not exist: %s", specDir),
+			Cause: err,
+		}
+	}
+
+	session := &SpecSession{
+		specDir:            specDir,
+		Current:            StateInit,
+		Mode:               mode,
+		PRDPath:            source,
+		AssessmentHistory:  []Assessment{},
+		QAExchanges:        []QAExchange{},
+		GeneratedArtifacts: []string{},
+	}
+
+	if err := session.persistSession(); err != nil {
+		return nil, err
+	}
+
 	return session, nil
 }
 
 // ResumeSession reads _session.json from specDir and reconstructs a
 // SpecSession. Returns a SessionError if the file is missing or invalid.
 func ResumeSession(specDir string) (*SpecSession, error) {
-	// TODO: implement
-	return nil, nil
+	sessionPath := filepath.Join(specDir, "_session.json")
+
+	data, err := os.ReadFile(sessionPath)
+	if err != nil {
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("failed to read _session.json from %s: %v", specDir, err),
+			Cause: err,
+		}
+	}
+
+	var session SpecSession
+	if err := json.Unmarshal(data, &session); err != nil {
+		return nil, &SessionError{
+			Msg:   fmt.Sprintf("failed to parse _session.json from %s: %v", specDir, err),
+			Cause: err,
+		}
+	}
+
+	// Validate that the state is a recognized SessionState.
+	if !validSessionStates[session.Current] {
+		return nil, &SessionError{
+			Msg: fmt.Sprintf("unrecognized session state %q in _session.json", session.Current),
+		}
+	}
+
+	session.specDir = specDir
+	return &session, nil
 }
 
 // SessionValidationResult holds the result of validating artifacts in a
