@@ -46,9 +46,23 @@ func newLintCmd() *cobra.Command {
 
 // runLint runs lint checks across all specs in the spec directory.
 func runLint(specDir string, lintAll, quiet bool, w interface{ Write([]byte) (int, error) }, cmd *cobra.Command) error {
-	// Handle non-existent spec directory gracefully.
+	// Handle non-existent spec directory: emit no-specs finding with error severity.
 	if _, err := os.Stat(specDir); os.IsNotExist(err) {
-		return emitOKTo(w, "findings", []lintFinding{})
+		findings := []lintFinding{{
+			Spec:     "",
+			Rule:     "no-specs",
+			Severity: "error",
+			Message:  "Specs directory not found",
+		}}
+		result := map[string]any{
+			"ok":        false,
+			"findings":  findings,
+			"exit_code": 1,
+		}
+		if err := emitTo(w, result); err != nil {
+			return err
+		}
+		return fmt.Errorf("lint found 1 issue(s)")
 	}
 
 	// Check if directory is readable.
@@ -65,8 +79,9 @@ func runLint(specDir string, lintAll, quiet bool, w interface{ Write([]byte) (in
 
 	// Emit findings as JSON.
 	result := map[string]any{
-		"ok":       exitCode == 0,
-		"findings": findings,
+		"ok":        exitCode == 0,
+		"findings":  findings,
+		"exit_code": exitCode,
 	}
 	if err := emitTo(w, result); err != nil {
 		return err
@@ -79,9 +94,28 @@ func runLint(specDir string, lintAll, quiet bool, w interface{ Write([]byte) (in
 }
 
 // runLintSpecs scans spec directories and produces lint findings.
-// Returns findings and an exit code (0 = clean, 1 = issues found).
+// Returns findings and an exit code (0 = clean or warnings only, 1 = error-severity findings).
 // When lintAll is false, specs with state "implemented" are skipped.
 func runLintSpecs(entries []os.DirEntry, specDir string, lintAll bool) ([]lintFinding, int) {
+	// Check if there are any lintable spec subdirectories.
+	hasLintable := false
+	for _, e := range entries {
+		if e.IsDir() && specDirPattern.MatchString(e.Name()) {
+			hasLintable = true
+			break
+		}
+	}
+
+	if !hasLintable {
+		findings := []lintFinding{{
+			Spec:     "",
+			Rule:     "no-specs",
+			Severity: "error",
+			Message:  "Specs directory not found",
+		}}
+		return findings, 1
+	}
+
 	var findings []lintFinding
 
 	for _, e := range entries {
@@ -112,9 +146,13 @@ func runLintSpecs(entries []os.DirEntry, specDir string, lintAll bool) ([]lintFi
 		findings = []lintFinding{}
 	}
 
+	// Only exit 1 for error-severity findings; warnings alone → exit 0.
 	exitCode := 0
-	if len(findings) > 0 {
-		exitCode = 1
+	for _, f := range findings {
+		if f.Severity == "error" {
+			exitCode = 1
+			break
+		}
 	}
 
 	return findings, exitCode

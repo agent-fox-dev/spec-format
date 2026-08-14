@@ -54,15 +54,33 @@ func TestTS08_36_LintRunsAndEmitsFindings(t *testing.T) {
 		t.Fatal("parsed.findings is not an array")
 	}
 
-	// If there are findings, exit code should be 1.
-	if len(findings) > 0 && err == nil {
-		t.Error("exit code 0 with lint findings present; want exit 1")
+	// exit_code must be present.
+	exitCodeVal, exists := parsed["exit_code"]
+	if !exists {
+		t.Fatal("parsed missing 'exit_code' field")
+	}
+
+	// If there are error-severity findings, exit code should be 1.
+	hasError := false
+	for _, f := range findings {
+		fm := f.(map[string]any)
+		if fm["severity"] == "error" {
+			hasError = true
+			break
+		}
+	}
+	if hasError && err == nil {
+		t.Error("exit code 0 with error-severity findings present; want exit 1")
+	}
+	if hasError && exitCodeVal.(float64) != 1 {
+		t.Errorf("exit_code = %v; want 1 with error-severity findings", exitCodeVal)
 	}
 }
 
 // TestTS08_36_LintExitCode1OnNonZeroExitCode verifies that when
-// RunLintSpecs returns a non-zero exit_code, the lint command exits 1.
-// Covers: TS-08-36, Requirement: 08-REQ-12.1
+// lint finds error-severity findings, the lint command exits 1 and
+// exit_code=1.
+// Covers: NS-REQ-3, TS-NS-3
 func TestTS08_36_LintExitCode1OnNonZeroExitCode(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
@@ -86,29 +104,34 @@ func TestTS08_36_LintExitCode1OnNonZeroExitCode(t *testing.T) {
 	err := cmd.Execute()
 
 	output := stdoutBuf.String()
-	if len(output) == 0 {
-		// If no output at all, the stub hasn't been implemented yet.
-		if err == nil {
-			t.Error("Execute() returned nil; want error for unimplemented lint")
-		}
-		return
-	}
-
 	var parsed map[string]any
 	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	// When lint finds issues, exit code should be 1.
-	findings, _ := parsed["findings"].([]any)
-	if len(findings) > 0 && err == nil {
-		t.Error("exit code 0 but lint has findings; want exit 1")
+	// cmd.Execute() should return error (exit 1).
+	if err == nil {
+		t.Error("Execute() returned nil; want error (exit 1) when error-severity findings exist")
+	}
+
+	// exit_code must be present and equal to 1.
+	exitCode, exists := parsed["exit_code"]
+	if !exists {
+		t.Fatal("parsed missing 'exit_code' field")
+	}
+	if exitCode.(float64) != 1 {
+		t.Errorf("exit_code = %v; want 1", exitCode)
+	}
+
+	// ok must be false.
+	if okVal, _ := parsed["ok"].(bool); okVal {
+		t.Error("ok = true; want false when error-severity findings exist")
 	}
 }
 
 // TestTS08_36_LintEmitsJSONWithOK verifies that the lint output
-// contains an "ok" field and a "findings" array in the JSON envelope.
-// Covers: TS-08-36, Requirement: 08-REQ-12.1
+// contains "ok", "findings", and "exit_code" fields in the JSON envelope.
+// Covers: NS-REQ-1, TS-NS-1
 func TestTS08_36_LintEmitsJSONWithOK(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
@@ -135,6 +158,89 @@ func TestTS08_36_LintEmitsJSONWithOK(t *testing.T) {
 	}
 	if _, exists := parsed["findings"]; !exists {
 		t.Error("parsed missing 'findings' field")
+	}
+	if _, exists := parsed["exit_code"]; !exists {
+		t.Error("parsed missing 'exit_code' field")
+	}
+}
+
+// --- NS-REQ-2: Warnings-only findings → exit 0, exit_code=0 ---
+
+// TestLintWarningsOnlyExitCode0 verifies that when all findings have
+// severity 'warning' (no error-severity findings), the lint command
+// exits 0 with exit_code=0 and ok=true.
+// Covers: NS-REQ-2, TS-NS-2
+func TestLintWarningsOnlyExitCode0(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create a spec that triggers only warning findings:
+	// - All required JSON files present (no missing-file errors)
+	// - Empty prd.md triggers "empty-prd" (severity: warning)
+	// - Missing _session.json triggers "missing-session" (severity: warning)
+	specPath := filepath.Join(specDir, "08_warnings_only")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Empty prd.md → warning.
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// All required JSON files with valid content.
+	for _, f := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
+		if err := os.WriteFile(filepath.Join(specPath, f), []byte(`{"valid": true}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// No _session.json → warning.
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "lint"})
+
+	err := cmd.Execute()
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	// cmd.Execute() should return nil (exit 0).
+	if err != nil {
+		t.Errorf("Execute() returned error %v; want nil (exit 0) for warnings-only", err)
+	}
+
+	// exit_code must be 0.
+	exitCode, exists := parsed["exit_code"]
+	if !exists {
+		t.Fatal("parsed missing 'exit_code' field")
+	}
+	if exitCode.(float64) != 0 {
+		t.Errorf("exit_code = %v; want 0", exitCode)
+	}
+
+	// ok must be true.
+	if okVal, _ := parsed["ok"].(bool); !okVal {
+		t.Errorf("ok = %v; want true for warnings-only", parsed["ok"])
+	}
+
+	// Should have at least one warning finding.
+	findings, ok := parsed["findings"].([]any)
+	if !ok {
+		t.Fatal("parsed.findings is not an array")
+	}
+	if len(findings) == 0 {
+		t.Error("expected at least one warning finding, got none")
+	}
+	// Verify all findings are warnings.
+	for i, f := range findings {
+		fm := f.(map[string]any)
+		if fm["severity"] != "warning" {
+			t.Errorf("findings[%d].severity = %v; want 'warning'", i, fm["severity"])
+		}
 	}
 }
 
@@ -248,12 +354,12 @@ func TestTS08_36_LintErrorPropagation(t *testing.T) {
 	}
 }
 
-// --- 08-REQ-12.E2: Empty spec directory emits empty findings ---
+// --- NS-REQ-5: Empty spec directory emits no-specs finding ---
 
 // TestTS08_36_LintEmptySpecDir verifies that when the spec directory
-// is empty or contains no lintable specs, the lint command emits an
-// empty findings array and exits 0.
-// Covers: 08-REQ-12.E2
+// exists but contains no lintable spec subdirectories, the lint command
+// emits a no-specs finding with severity 'error' and exits 1.
+// Covers: NS-REQ-5, TS-NS-5
 func TestTS08_36_LintEmptySpecDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
@@ -268,8 +374,8 @@ func TestTS08_36_LintEmptySpecDir(t *testing.T) {
 	cmd.SetArgs([]string{"--spec-dir", specDir, "lint"})
 
 	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("Execute() on empty spec dir returned error: %v; want exit 0", err)
+	if err == nil {
+		t.Fatal("Execute() on empty spec dir returned nil; want error (exit 1)")
 	}
 
 	output := stdoutBuf.String()
@@ -278,25 +384,38 @@ func TestTS08_36_LintEmptySpecDir(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	if ok, _ := parsed["ok"].(bool); !ok {
-		t.Errorf("parsed.ok = %v; want true", parsed["ok"])
+	// exit_code must be 1.
+	exitCode, exists := parsed["exit_code"]
+	if !exists {
+		t.Fatal("parsed missing 'exit_code' field")
+	}
+	if exitCode.(float64) != 1 {
+		t.Errorf("exit_code = %v; want 1", exitCode)
 	}
 
 	findings, ok := parsed["findings"].([]any)
 	if !ok {
 		t.Fatal("parsed.findings is not an array")
 	}
-	if len(findings) != 0 {
-		t.Errorf("findings has %d entries; want 0 for empty spec dir", len(findings))
+	if len(findings) < 1 {
+		t.Fatal("findings is empty; want at least one no-specs finding")
+	}
+
+	f0 := findings[0].(map[string]any)
+	if f0["rule"] != "no-specs" {
+		t.Errorf("findings[0].rule = %v; want 'no-specs'", f0["rule"])
+	}
+	if f0["severity"] != "error" {
+		t.Errorf("findings[0].severity = %v; want 'error'", f0["severity"])
 	}
 }
 
-// --- 08-REQ-12.E2: Non-existent spec directory emits empty findings ---
+// --- NS-REQ-4: Non-existent spec directory emits no-specs finding ---
 
 // TestTS08_36_LintNonexistentSpecDir verifies that when the spec
-// directory does not exist, the lint command emits an empty findings
-// array and exits 0 (consistent with list behavior).
-// Covers: 08-REQ-12.E2
+// directory does not exist, the lint command emits a no-specs finding
+// with severity 'error' and exits 1.
+// Covers: NS-REQ-4, TS-NS-4
 func TestTS08_36_LintNonexistentSpecDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs_nonexistent")
@@ -308,8 +427,8 @@ func TestTS08_36_LintNonexistentSpecDir(t *testing.T) {
 	cmd.SetArgs([]string{"--spec-dir", specDir, "lint"})
 
 	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("Execute() on non-existent spec dir returned error: %v; want exit 0", err)
+	if err == nil {
+		t.Fatal("Execute() on non-existent spec dir returned nil; want error (exit 1)")
 	}
 
 	output := stdoutBuf.String()
@@ -318,16 +437,29 @@ func TestTS08_36_LintNonexistentSpecDir(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	if ok, _ := parsed["ok"].(bool); !ok {
-		t.Errorf("parsed.ok = %v; want true", parsed["ok"])
+	// exit_code must be 1.
+	exitCode, exists := parsed["exit_code"]
+	if !exists {
+		t.Fatal("parsed missing 'exit_code' field")
+	}
+	if exitCode.(float64) != 1 {
+		t.Errorf("exit_code = %v; want 1", exitCode)
 	}
 
 	findings, ok := parsed["findings"].([]any)
 	if !ok {
 		t.Fatal("parsed.findings is not an array")
 	}
-	if len(findings) != 0 {
-		t.Errorf("findings has %d entries; want 0 for non-existent spec dir", len(findings))
+	if len(findings) < 1 {
+		t.Fatal("findings is empty; want at least one no-specs finding")
+	}
+
+	f0 := findings[0].(map[string]any)
+	if f0["rule"] != "no-specs" {
+		t.Errorf("findings[0].rule = %v; want 'no-specs'", f0["rule"])
+	}
+	if f0["severity"] != "error" {
+		t.Errorf("findings[0].severity = %v; want 'error'", f0["severity"])
 	}
 }
 
