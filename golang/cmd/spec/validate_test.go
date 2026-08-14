@@ -258,7 +258,8 @@ schema_version: 1
 // Covers: TS-08-32, TS-NS-2, Requirement: 08-REQ-11.1, NS-REQ-2
 func TestTS08_32_ValidateSingleSpecAllPresent(t *testing.T) {
 	tmpDir := t.TempDir()
-	specDir := setupValidSpec(t, tmpDir, "08_my_spec")
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupLoadableSpec(t, specDir, "08_my_spec", nil)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -306,7 +307,8 @@ func TestTS08_32_ValidateSingleSpecAllPresent(t *testing.T) {
 // Covers: TS-08-32, 08-PROP-4, Requirement: 08-REQ-11.1
 func TestTS08_32_ValidateSingleSpecExitCodeReflectsErrors(t *testing.T) {
 	tmpDir := t.TempDir()
-	specDir := setupValidSpec(t, tmpDir, "08_my_spec")
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupLoadableSpec(t, specDir, "08_my_spec", nil)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -772,7 +774,8 @@ func TestTS_NS4_LoadSpecFailure(t *testing.T) {
 // Covers: TS-08-35, TS-NS-2, Requirement: 08-REQ-11.4, NS-REQ-2
 func TestTS08_35_ValidateShort(t *testing.T) {
 	tmpDir := t.TempDir()
-	specDir := setupValidSpec(t, tmpDir, "08_my_spec")
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupLoadableSpec(t, specDir, "08_my_spec", nil)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -827,7 +830,8 @@ func TestTS08_35_ValidateShort(t *testing.T) {
 // Covers: TS-08-35, TS-NS-2, Requirement: 08-REQ-11.4, NS-REQ-2
 func TestTS08_35_ValidateShortFieldsOnly(t *testing.T) {
 	tmpDir := t.TempDir()
-	specDir := setupValidSpec(t, tmpDir, "08_my_spec")
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupLoadableSpec(t, specDir, "08_my_spec", nil)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -854,6 +858,423 @@ func TestTS08_35_ValidateShortFieldsOnly(t *testing.T) {
 		if !allowedKeys[key] {
 			t.Errorf("--short output contains unexpected key %q; want only valid/error_count/warning_count (and ok when valid)", key)
 		}
+	}
+}
+
+// --- TS-NS-1: Single-spec validate invokes library validation and surfaces
+//     schema/integrity errors (cross-file integrity violation). ---
+
+// TestTS_NS1_SingleSpecIntegrityError verifies that when a spec has a
+// cross-file integrity violation (test case referencing a non-existent
+// requirement), spec validate <SPEC> exits 1, error_count > 0, and the
+// errors array contains an integrity-category message.
+// Covers: TS-NS-1, NS-REQ-1
+func TestTS_NS1_SingleSpecIntegrityError(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create a loadable spec then break it by adding a dangling reference.
+	setupLoadableSpec(t, specDir, "08_broken", nil)
+
+	// Overwrite test_spec.json to reference a non-existent requirement.
+	testSpec := `{
+  "$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+  "spec_id": "08",
+  "spec_name": "08_broken",
+  "schema_version": 1,
+  "test_cases": [{
+    "id": "TS-08-1",
+    "requirement_id": "08-REQ-999.1",
+    "kind": "unit",
+    "description": "Test referencing non-existent requirement",
+    "preconditions": [],
+    "input": {},
+    "expected": {},
+    "assertion_pseudocode": "assert true"
+  }],
+  "property_tests": [],
+  "edge_case_tests": [],
+  "smoke_tests": [{
+    "id": "TS-08-SMOKE-1",
+    "execution_path_id": "08-PATH-1",
+    "description": "Smoke test",
+    "trigger": "run",
+    "real_components": ["all"],
+    "mockable": [],
+    "expected_effects": ["works"]
+  }],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}`
+	if err := os.WriteFile(filepath.Join(specDir, "08_broken", "test_spec.json"), []byte(testSpec), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "08_broken"})
+
+	err := cmd.Execute()
+
+	// Must exit 1 (validation errors present).
+	if err == nil {
+		t.Fatal("Execute() returned nil; want exit 1 for cross-file integrity error")
+	}
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	// error_count > 0
+	errorCount, ok := parsed["error_count"].(float64)
+	if !ok || errorCount < 1 {
+		t.Errorf("expected error_count > 0, got %v", parsed["error_count"])
+	}
+
+	// errors array contains an integrity-category message (not just file-missing or parse error).
+	errorsArr, ok := parsed["errors"].([]any)
+	if !ok {
+		t.Fatalf("expected errors to be an array, got %T", parsed["errors"])
+	}
+	foundIntegrity := false
+	for _, e := range errorsArr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		msg, _ := em["message"].(string)
+		// Cross-file integrity errors mention "non-existent" or "does not exist" or "coverage"
+		if strings.Contains(msg, "non-existent") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "coverage") {
+			foundIntegrity = true
+			break
+		}
+	}
+	if !foundIntegrity {
+		t.Errorf("expected an integrity error message (not just file-missing or parse), got errors: %s", output)
+	}
+}
+
+// --- TS-NS-2: Single-spec validate on conforming spec reports valid=true, exit 0. ---
+
+// TestTS_NS2_SingleSpecValid verifies that spec validate on a fully
+// conforming spec exits 0, valid=true, error_count=0, ok=true.
+// Covers: TS-NS-2, NS-REQ-2
+func TestTS_NS2_SingleSpecValid(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupLoadableSpec(t, specDir, "08_good_spec", nil)
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "08_good_spec"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("Execute() returned error: %v; want exit 0 for valid spec\noutput: %s", err, stdoutBuf.String())
+	}
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	if valid, _ := parsed["valid"].(bool); !valid {
+		t.Errorf("expected valid=true, got %v\noutput: %s", parsed["valid"], output)
+	}
+	if ec, _ := parsed["error_count"].(float64); ec != 0 {
+		t.Errorf("expected error_count=0, got %v\noutput: %s", ec, output)
+	}
+	if okVal, exists := parsed["ok"]; !exists {
+		t.Error("expected 'ok' key present when valid=true")
+	} else if okBool, isBool := okVal.(bool); !isBool || !okBool {
+		t.Errorf("expected ok=true, got %v", okVal)
+	}
+}
+
+// --- TS-NS-3: Multi-spec validate invokes library validation for each spec. ---
+
+// TestTS_NS3_MultiSpecLibraryErrors verifies that multi-spec validate
+// (no --cross) invokes library validation per-spec and reports library-
+// sourced errors for invalid specs while valid specs show error_count=0.
+// Covers: TS-NS-3, NS-REQ-3
+func TestTS_NS3_MultiSpecLibraryErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create one fully valid spec.
+	setupLoadableSpec(t, specDir, "08_valid_spec", nil)
+
+	// Create one spec with a cross-file integrity error (dangling test reference).
+	setupLoadableSpec(t, specDir, "09_invalid_spec", nil)
+	// Overwrite test_spec.json to reference a non-existent requirement.
+	testSpec := `{
+  "$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+  "spec_id": "09",
+  "spec_name": "09_invalid_spec",
+  "schema_version": 1,
+  "test_cases": [{
+    "id": "TS-09-1",
+    "requirement_id": "09-REQ-999.1",
+    "kind": "unit",
+    "description": "Test referencing non-existent requirement",
+    "preconditions": [],
+    "input": {},
+    "expected": {},
+    "assertion_pseudocode": "assert true"
+  }],
+  "property_tests": [],
+  "edge_case_tests": [],
+  "smoke_tests": [{
+    "id": "TS-09-SMOKE-1",
+    "execution_path_id": "09-PATH-1",
+    "description": "Smoke test",
+    "trigger": "run",
+    "real_components": ["all"],
+    "mockable": [],
+    "expected_effects": ["works"]
+  }],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}`
+	if err := os.WriteFile(filepath.Join(specDir, "09_invalid_spec", "test_spec.json"), []byte(testSpec), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate"})
+
+	err := cmd.Execute()
+
+	// Must exit 1 because one spec is invalid.
+	if err == nil {
+		t.Fatal("Execute() returned nil; want exit 1 because 09_invalid_spec has errors")
+	}
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	// Top-level valid=false.
+	if valid, _ := parsed["valid"].(bool); valid {
+		t.Error("expected top-level valid=false")
+	}
+
+	specsMap, ok := parsed["specs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'specs' key, got %T", parsed["specs"])
+	}
+
+	// Valid spec should have error_count=0.
+	validEntry, ok := specsMap["08_valid_spec"].(map[string]any)
+	if !ok {
+		t.Fatal("missing '08_valid_spec' in specs map")
+	}
+	if ec, _ := validEntry["error_count"].(float64); ec != 0 {
+		t.Errorf("valid spec error_count=%v, want 0\nentry: %v", ec, validEntry)
+	}
+
+	// Invalid spec should have error_count > 0 with library-sourced errors.
+	invalidEntry, ok := specsMap["09_invalid_spec"].(map[string]any)
+	if !ok {
+		t.Fatal("missing '09_invalid_spec' in specs map")
+	}
+	if ec, _ := invalidEntry["error_count"].(float64); ec < 1 {
+		t.Errorf("invalid spec error_count=%v, want > 0", ec)
+	}
+
+	// Check that errors contain a library-sourced message (integrity/schema).
+	errorsArr, ok := invalidEntry["errors"].([]any)
+	if !ok {
+		t.Fatalf("expected errors to be an array, got %T", invalidEntry["errors"])
+	}
+	foundLibrary := false
+	for _, e := range errorsArr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		msg, _ := em["message"].(string)
+		// Library errors reference schema/integrity violations, not 'malformed JSON'.
+		if !strings.Contains(msg, "malformed JSON") && msg != "" {
+			foundLibrary = true
+			break
+		}
+	}
+	if !foundLibrary {
+		t.Error("expected library-sourced error (not just 'malformed JSON')")
+	}
+}
+
+// --- TS-NS-4: Library warnings counted in warning_count. ---
+
+// TestTS_NS4_WarningsInWarningCount verifies that library warnings
+// (e.g. vague language) are counted in warning_count, that exit code
+// is 0 (warnings don't cause exit 1), and valid=true.
+// Covers: TS-NS-4, NS-REQ-4
+func TestTS_NS4_WarningsInWarningCount(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create a valid spec, then inject a vague term in a criterion action.
+	setupLoadableSpec(t, specDir, "08_vague_spec", nil)
+
+	// Overwrite requirements.json with a criterion containing vague language.
+	requirements := `{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v1.json",
+  "spec_id": "08",
+  "spec_name": "08_vague_spec",
+  "schema_version": 1,
+  "introduction": "Test spec.",
+  "glossary": {},
+  "requirements": [{
+    "id": "08-REQ-1",
+    "title": "Requirement 1",
+    "user_story": {"role": "dev", "goal": "test", "benefit": "test"},
+    "acceptance_criteria": [{
+      "id": "08-REQ-1.1",
+      "ears_pattern": "ubiquitous",
+      "system": "the system",
+      "action": "handle the input in an appropriate manner and return data",
+      "return_contract": null
+    }],
+    "edge_cases": []
+  }],
+  "correctness_properties": [],
+  "execution_paths": [{
+    "id": "08-PATH-1",
+    "title": "Main path",
+    "steps": [{"actor": "user", "action": "do"}, {"actor": "system", "action": "respond"}]
+  }],
+  "error_handling": []
+}`
+	if err := os.WriteFile(filepath.Join(specDir, "08_vague_spec", "requirements.json"), []byte(requirements), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "08_vague_spec"})
+
+	err := cmd.Execute()
+
+	// Exit 0 — warnings do NOT cause exit 1.
+	if err != nil {
+		t.Fatalf("Execute() returned error: %v; want exit 0 (warnings only)\noutput: %s", err, stdoutBuf.String())
+	}
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	// valid=true (no errors).
+	if valid, _ := parsed["valid"].(bool); !valid {
+		t.Errorf("expected valid=true, got %v\noutput: %s", parsed["valid"], output)
+	}
+
+	// warning_count > 0 (vague language detected).
+	wc, _ := parsed["warning_count"].(float64)
+	if wc < 1 {
+		t.Errorf("expected warning_count > 0, got %v\noutput: %s", wc, output)
+	}
+}
+
+// --- TS-NS-5: File-existence pre-flight errors reported before library load. ---
+
+// TestTS_NS5_PreflightMissingFile verifies that when a required file
+// is missing, the error explicitly names the missing file (pre-flight
+// error), and exits 1.
+// Covers: TS-NS-5, NS-REQ-5
+func TestTS_NS5_PreflightMissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "08_missing")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create all files except tasks.json.
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"),
+		[]byte("# Test PRD\nContent."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"),
+		[]byte(`{"requirements": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "test_spec.json"),
+		[]byte(`{"tests": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// tasks.json intentionally missing.
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "08_missing"})
+
+	err := cmd.Execute()
+
+	// Must exit 1.
+	if err == nil {
+		t.Fatal("Execute() returned nil; want exit 1 for missing required file")
+	}
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	// error_count > 0.
+	ec, _ := parsed["error_count"].(float64)
+	if ec < 1 {
+		t.Errorf("expected error_count > 0, got %v", ec)
+	}
+
+	// Error message explicitly names the missing file.
+	errorsArr, ok := parsed["errors"].([]any)
+	if !ok {
+		t.Fatalf("expected errors array, got %T", parsed["errors"])
+	}
+	foundMissing := false
+	for _, e := range errorsArr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		msg, _ := em["message"].(string)
+		if strings.Contains(msg, "tasks.json") && strings.Contains(msg, "missing") {
+			foundMissing = true
+			break
+		}
+	}
+	if !foundMissing {
+		t.Errorf("expected error message naming 'tasks.json' as missing, got: %s", output)
 	}
 }
 
@@ -1039,12 +1460,7 @@ func TestTS08_32_ValidateExitCodeProperty(t *testing.T) {
 			name:      "all_files_valid",
 			wantError: false,
 			setup: func(t *testing.T, specDir string) {
-				specPath := filepath.Join(specDir, "08_my_spec")
-				os.MkdirAll(specPath, 0755)
-				os.WriteFile(filepath.Join(specPath, "prd.md"), []byte("# PRD"), 0644)
-				os.WriteFile(filepath.Join(specPath, "requirements.json"), []byte(`{"requirements":[]}`), 0644)
-				os.WriteFile(filepath.Join(specPath, "test_spec.json"), []byte(`{"tests":[]}`), 0644)
-				os.WriteFile(filepath.Join(specPath, "tasks.json"), []byte(`{"tasks":[]}`), 0644)
+				setupLoadableSpec(t, specDir, "08_my_spec", nil)
 			},
 		},
 		{

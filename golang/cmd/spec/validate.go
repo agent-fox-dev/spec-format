@@ -218,10 +218,14 @@ func runValidateCross(specDir string, short, quiet bool, w interface{ Write([]by
 }
 
 // validateSpec checks a single spec directory for required files,
-// JSON readability, and structural validity.
+// JSON readability, and structural validity. After pre-flight checks
+// pass, it loads the spec via afspec.LoadSpec and runs library
+// validation (schema + cross-file + warnings) via spec.Validate().
 func validateSpec(specPath string) *validationResult {
 	result := &validationResult{Valid: true}
 
+	// --- Pre-flight: file existence and JSON readability ---
+	preflightFailed := false
 	for _, f := range requiredFiles {
 		p := filepath.Join(specPath, f)
 		data, err := os.ReadFile(p)
@@ -234,6 +238,7 @@ func validateSpec(specPath string) *validationResult {
 				})
 				result.ErrorCount++
 				result.Valid = false
+				preflightFailed = true
 				continue
 			}
 			result.Errors = append(result.Errors, validationError{
@@ -243,6 +248,7 @@ func validateSpec(specPath string) *validationResult {
 			})
 			result.ErrorCount++
 			result.Valid = false
+			preflightFailed = true
 			continue
 		}
 
@@ -268,7 +274,52 @@ func validateSpec(specPath string) *validationResult {
 			})
 			result.ErrorCount++
 			result.Valid = false
+			preflightFailed = true
 		}
+	}
+
+	// If pre-flight failed, return early with clear file-level errors
+	// before attempting a full library load.
+	if preflightFailed {
+		return result
+	}
+
+	// --- Library validation: schema + cross-file + warnings ---
+	spec, loadErr := afspec.LoadSpec(specPath)
+	if loadErr != nil {
+		result.Errors = append(result.Errors, validationError{
+			File:     filepath.Base(specPath),
+			Severity: "error",
+			Message:  fmt.Sprintf("cannot load spec: %s", loadErr),
+		})
+		result.ErrorCount++
+		result.Valid = false
+		return result
+	}
+
+	libResult := spec.Validate()
+
+	// Map library errors to CLI format.
+	for _, entry := range libResult.Errors {
+		result.Errors = append(result.Errors, validationError{
+			File:     entry.Artifact,
+			Severity: "error",
+			Message:  entry.Message,
+		})
+		result.ErrorCount++
+	}
+	if len(libResult.Errors) > 0 {
+		result.Valid = false
+	}
+
+	// Map library warnings to CLI format.
+	for _, entry := range libResult.Warnings {
+		result.Errors = append(result.Errors, validationError{
+			File:     entry.Artifact,
+			Severity: "warning",
+			Message:  entry.Message,
+		})
+		result.WarningCount++
 	}
 
 	return result
