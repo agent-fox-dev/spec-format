@@ -3002,6 +3002,166 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 				wiringErrors, result.Errors)
 		}
 	})
+
+	// buildWiringSpecWithChecks creates a spec with a proper first group (tests)
+	// and a wiring_verification group containing the given subtasks, with custom
+	// Verification.Checks on the wiring group.
+	buildWiringSpecWithChecks := func(subtasks []Subtask, checks []string) *Spec {
+		s := buildCrossFileBaseSpec()
+		s.Tasks.TaskGroups = []TaskGroup{
+			{
+				Id: 1, Title: "Tests", Kind: TaskGroupKindTests,
+				Subtasks:     []Subtask{},
+				Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}},
+			},
+			{
+				Id: 2, Title: "Wiring", Kind: TaskGroupKindWiringVerification,
+				Subtasks:     subtasks,
+				Verification: VerificationSubtask{Id: "2.V", Checks: checks},
+			},
+		}
+		return s
+	}
+
+	// TS-NS-1: Verification.Checks fallback — "audit dead code" in checks
+	// suppresses the stub-audit error even without subtask mentions.
+	t.Run("verification_checks_fallback", func(t *testing.T) {
+		spec := buildWiringSpecWithChecks(
+			[]Subtask{
+				{
+					Id: "2.1", Title: "Run smoke tests", State: SubtaskStatePending,
+					Details: []string{"Execute integration tests"}, RequirementRefs: []string{},
+					TestSpecRefs: []string{"TS-04-SMOKE-1"},
+				},
+			},
+			[]string{"audit dead code"},
+		)
+		result := spec.ValidateCrossFile()
+
+		var stubErrors []ValidationEntry
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				stubErrors = append(stubErrors, e)
+			}
+		}
+		if len(stubErrors) != 0 {
+			t.Errorf("expected 0 stub-audit errors when Verification.Checks contains 'audit dead code', got %d; errors: %v",
+				len(stubErrors), stubErrors)
+		}
+	})
+
+	// TS-NS-4: Verification.Checks with "dead_code" satisfies sub-check C.
+	t.Run("verification_checks_dead_code_underscore", func(t *testing.T) {
+		spec := buildWiringSpecWithChecks(
+			[]Subtask{
+				{
+					Id: "2.1", Title: "Run smoke tests", State: SubtaskStatePending,
+					Details: []string{"Execute integration tests"}, RequirementRefs: []string{},
+					TestSpecRefs: []string{"TS-04-SMOKE-1"},
+				},
+			},
+			[]string{"remove dead_code paths"},
+		)
+		result := spec.ValidateCrossFile()
+
+		var stubErrors []ValidationEntry
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				stubErrors = append(stubErrors, e)
+			}
+		}
+		if len(stubErrors) != 0 {
+			t.Errorf("expected 0 stub-audit errors when Verification.Checks contains 'dead_code', got %d; errors: %v",
+				len(stubErrors), stubErrors)
+		}
+	})
+
+	// TS-NS-4: Verification.Checks with "deadline" does NOT satisfy sub-check C.
+	t.Run("verification_checks_deadline_does_not_match", func(t *testing.T) {
+		spec := buildWiringSpecWithChecks(
+			[]Subtask{
+				{
+					Id: "2.1", Title: "Run smoke tests", State: SubtaskStatePending,
+					Details: []string{"Execute integration tests"}, RequirementRefs: []string{},
+					TestSpecRefs: []string{"TS-04-SMOKE-1"},
+				},
+			},
+			[]string{"remove deadline checks"},
+		)
+		result := spec.ValidateCrossFile()
+
+		var stubErrors []ValidationEntry
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				stubErrors = append(stubErrors, e)
+			}
+		}
+		if len(stubErrors) < 1 {
+			t.Errorf("expected at least 1 stub-audit error when Verification.Checks has 'deadline' (not 'dead code'), got %d; errors: %v",
+				len(stubErrors), result.Errors)
+		}
+	})
+
+	// TS-NS-3: Subtask title "Remove deadline entries" does NOT satisfy sub-check C.
+	t.Run("dead_word_alone_does_not_match", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{
+			{
+				Id: "2.1", Title: "Run smoke tests", State: SubtaskStatePending,
+				Details: []string{"detail"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-SMOKE-1"},
+			},
+			{
+				Id: "2.2", Title: "Remove deadline entries", State: SubtaskStatePending,
+				Details: []string{"Check deadline handling"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-SMOKE-2"},
+			},
+		})
+		result := spec.ValidateCrossFile()
+
+		var stubErrors []ValidationEntry
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				stubErrors = append(stubErrors, e)
+			}
+		}
+		if len(stubErrors) < 1 {
+			t.Errorf("expected at least 1 stub-audit error when subtask title has 'deadline' (bare 'dead'), got %d; errors: %v",
+				len(stubErrors), result.Errors)
+		}
+	})
+
+	// TS-NS-3: Subtask title "Remove dead-code artifacts" DOES satisfy sub-check C.
+	t.Run("dead_code_phrase_matches", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{
+			{
+				Id: "2.1", Title: "Run smoke tests", State: SubtaskStatePending,
+				Details: []string{"detail"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-SMOKE-1"},
+			},
+			{
+				Id: "2.2", Title: "Remove dead-code artifacts", State: SubtaskStatePending,
+				Details: []string{"Clean up"}, RequirementRefs: []string{},
+				TestSpecRefs: []string{"TS-04-SMOKE-2"},
+			},
+		})
+		result := spec.ValidateCrossFile()
+
+		var stubErrors []ValidationEntry
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				stubErrors = append(stubErrors, e)
+			}
+		}
+		if len(stubErrors) != 0 {
+			t.Errorf("expected 0 stub-audit errors when subtask title has 'dead-code', got %d; errors: %v",
+				len(stubErrors), stubErrors)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

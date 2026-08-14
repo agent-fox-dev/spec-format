@@ -448,6 +448,12 @@ var criterionIDPattern = regexp.MustCompile(`^\w+-REQ-\d+\.\d+$|^\w+-REQ-\d+\.E\
 // group test_spec_refs (e.g. "TS-04-SMOKE-1"). Compiled at package level.
 var wiringSmokeRefPattern = regexp.MustCompile(`^TS-.*-SMOKE-.*$`)
 
+// stubDeadCodeRe matches stub or dead-code references using the same pattern
+// as Python's _STUB_DEAD_CODE_RE: "stub" or "dead" followed by optional
+// whitespace/underscore/hyphen and "code". Bare "dead" (e.g. in "deadline")
+// does not match.
+var stubDeadCodeRe = regexp.MustCompile(`(?i)stub|dead[\s_-]?code`)
+
 // backtickTermRe extracts backtick-wrapped terms from text fields.
 // Compiled at package initialization time per 04-REQ-4.2.
 var backtickTermRe = regexp.MustCompile("`([^`]+)`")
@@ -1373,23 +1379,31 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 				})
 			}
 
-			// Sub-check C: at least one subtask mentions 'stub' or 'dead' in title or details
+			// Sub-check C: at least one subtask title/details or verification check
+			// mentions stub or dead-code (using regex aligned with Python's pattern).
 			hasStubMention := false
 			for _, sub := range lastGroup.Subtasks {
-				lower := strings.ToLower(sub.Title)
-				if strings.Contains(lower, "stub") || strings.Contains(lower, "dead") {
+				if stubDeadCodeRe.MatchString(sub.Title) {
 					hasStubMention = true
 					break
 				}
 				for _, detail := range sub.Details {
-					lower = strings.ToLower(detail)
-					if strings.Contains(lower, "stub") || strings.Contains(lower, "dead") {
+					if stubDeadCodeRe.MatchString(detail) {
 						hasStubMention = true
 						break
 					}
 				}
 				if hasStubMention {
 					break
+				}
+			}
+			// Fallback: check Verification.Checks of the wiring group
+			if !hasStubMention {
+				for _, check := range lastGroup.Verification.Checks {
+					if stubDeadCodeRe.MatchString(check) {
+						hasStubMention = true
+						break
+					}
 				}
 			}
 			if !hasStubMention {
