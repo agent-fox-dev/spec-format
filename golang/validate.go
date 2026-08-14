@@ -218,6 +218,30 @@ func validateArtifactSchema(artifact any, schemaName, artifactName string) []Val
 }
 
 // ---------------------------------------------------------------------------
+// PRD frontmatter schema validation helper
+// ---------------------------------------------------------------------------
+
+// prdFrontmatterForSchema is a lightweight struct containing only the 12
+// fields defined in prd-frontmatter.v1.json. It is used exclusively by
+// ValidateSchema to marshal the Spec's PRD frontmatter fields to JSON
+// for schema validation, avoiding spurious additionalProperties errors
+// from non-schema fields on the Spec struct.
+type prdFrontmatterForSchema struct {
+	SpecID        string   `json:"spec_id"`
+	SpecName      string   `json:"spec_name"`
+	Title         string   `json:"title"`
+	Status        string   `json:"status"`
+	CreatedAt     string   `json:"created_at"`
+	UpdatedAt     string   `json:"updated_at"`
+	Owner         string   `json:"owner"`
+	Source        string   `json:"source"`
+	Supersedes    []string `json:"supersedes,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	IntentHash    *string  `json:"intent_hash"`
+	SchemaVersion int      `json:"schema_version"`
+}
+
+// ---------------------------------------------------------------------------
 // Spec.ValidateSchema
 // ---------------------------------------------------------------------------
 
@@ -227,6 +251,24 @@ func validateArtifactSchema(artifact any, schemaName, artifactName string) []Val
 // ValidationResult.
 func (s *Spec) ValidateSchema() ValidationResult {
 	var allErrors []ValidationEntry
+
+	// Validate prd.md frontmatter
+	fm := prdFrontmatterForSchema{
+		SpecID:        s.SpecID,
+		SpecName:      s.SpecName,
+		Title:         s.Title,
+		Status:        s.Status,
+		CreatedAt:     s.CreatedAt,
+		UpdatedAt:     s.UpdatedAt,
+		Owner:         s.Owner,
+		Source:        s.Source,
+		Supersedes:    s.Supersedes,
+		Tags:          s.Tags,
+		IntentHash:    s.IntentHash,
+		SchemaVersion: s.SchemaVersion,
+	}
+	errs := validateArtifactSchema(fm, "prd-frontmatter.v1.json", "prd.md")
+	allErrors = append(allErrors, errs...)
 
 	// Validate requirements.json
 	if s.Requirements != nil {

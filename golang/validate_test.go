@@ -229,6 +229,84 @@ func TestValidateSchema_MultipleArtifactErrors(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// PRD frontmatter schema validation tests (Issue #6)
+// ---------------------------------------------------------------------------
+
+// TestValidateSchema_InvalidPRDStatus verifies that ValidateSchema returns
+// at least one schema-category error with Artifact == "prd.md" when the
+// Spec carries an invalid Status value not in the enum.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateSchema_InvalidPRDStatus(t *testing.T) {
+	spec := buildSpecWithDanglingRef("01-REQ-1") // valid base spec
+	spec.Status = "unknown"                       // invalid status
+
+	result := spec.ValidateSchema()
+	if result.Valid {
+		t.Error("ValidateSchema().Valid = true, want false for invalid PRD status")
+	}
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Category == "schema" && e.Check == "json_schema" && e.Artifact == "prd.md" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one error with Category=schema, Check=json_schema, Artifact=prd.md; got errors: %v", result.Errors)
+	}
+}
+
+// TestValidateSchema_InvalidPRDSchemaVersion verifies that ValidateSchema
+// returns a schema error with Artifact == "prd.md" when SchemaVersion != 1.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestValidateSchema_InvalidPRDSchemaVersion(t *testing.T) {
+	spec := buildSpecWithDanglingRef("01-REQ-1") // valid base spec
+	spec.SchemaVersion = 0                        // violates const: 1
+
+	result := spec.ValidateSchema()
+	if result.Valid {
+		t.Error("ValidateSchema().Valid = true, want false for invalid schema_version")
+	}
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Artifact == "prd.md" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one error with Artifact=prd.md; got errors: %v", result.Errors)
+	}
+}
+
+// TestValidateSchema_MissingPRDSpecID verifies that ValidateSchema returns
+// a schema error with Artifact == "prd.md" when a required frontmatter
+// field (spec_id) is empty.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestValidateSchema_MissingPRDSpecID(t *testing.T) {
+	spec := buildSpecWithDanglingRef("01-REQ-1") // valid base spec
+	spec.SpecID = ""                              // violates minLength: 1
+
+	result := spec.ValidateSchema()
+	if result.Valid {
+		t.Error("ValidateSchema().Valid = true, want false for empty spec_id")
+	}
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Artifact == "prd.md" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one error with Artifact=prd.md; got errors: %v", result.Errors)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Completeness guard tests (Issue #8)
 // ---------------------------------------------------------------------------
 
