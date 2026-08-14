@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	afspec "github.com/agent-fox-dev/spec-format"
 	"github.com/spf13/cobra"
 )
 
@@ -65,17 +67,14 @@ func runLint(specDir string, lintAll, quiet bool, w interface{ Write([]byte) (in
 		return fmt.Errorf("lint found 1 issue(s)")
 	}
 
-	// Check if directory is readable.
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		return fmt.Errorf("cannot read spec directory %q: %w", specDir, err)
-	}
-
 	spinner := NewStatusSpinner("Linting specs...", cmd.ErrOrStderr(), quiet, false)
 	spinner.Start()
 	defer spinner.Stop()
 
-	findings, exitCode := runLintSpecs(entries, specDir, lintAll)
+	findings, exitCode, err := runLintSpecs(specDir, lintAll)
+	if err != nil {
+		return err
+	}
 
 	// Emit findings as JSON.
 	result := map[string]any{
@@ -93,132 +92,159 @@ func runLint(specDir string, lintAll, quiet bool, w interface{ Write([]byte) (in
 	return nil
 }
 
-// runLintSpecs scans spec directories and produces lint findings.
-// Returns findings and an exit code (0 = clean or warnings only, 1 = error-severity findings).
-// When lintAll is false, specs with state "implemented" are skipped.
-func runLintSpecs(entries []os.DirEntry, specDir string, lintAll bool) ([]lintFinding, int) {
-	// Check if there are any lintable spec subdirectories.
-	hasLintable := false
-	for _, e := range entries {
-		if e.IsDir() && specDirPattern.MatchString(e.Name()) {
-			hasLintable = true
-			break
+// runLintSpecs uses the library's DiscoverLintSpecs to find spec directories,
+// then LoadSpec + Validate for structural validation, and appends CLI-only
+// extras (empty-artifact, missing-session). Returns findings, exit code, and
+// any fatal error (e.g. unreadable directory).
+func runLintSpecs(specDir string, lintAll bool) ([]lintFinding, int, error) {
+	// Use library discovery to find spec directories.
+	infos, err := afspec.DiscoverLintSpecs(specDir, "")
+	if err != nil {
+		// "no specs found" → emit no-specs finding (not a fatal error).
+		if strings.Contains(err.Error(), "no specs found") {
+			findings := []lintFinding{{
+				Spec:     "",
+				Rule:     "no-specs",
+				Severity: "error",
+				Message:  "Specs directory not found",
+			}}
+			return findings, 1, nil
 		}
+		// Other errors (unreadable directory) → propagate as fatal.
+		return nil, 0, fmt.Errorf("cannot read spec directory %q: %w", specDir, err)
 	}
 
-	if !hasLintable {
-		findings := []lintFinding{{
-			Spec:     "",
-			Rule:     "no-specs",
-			Severity: "error",
-			Message:  "Specs directory not found",
-		}}
-		return findings, 1
-	}
+	var libFindings []afspec.LintFinding
 
-	var findings []lintFinding
-
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if !specDirPattern.MatchString(e.Name()) {
-			continue
-		}
-
-		specPath := filepath.Join(specDir, e.Name())
-
+	for _, info := range infos {
 		// Skip fully-implemented specs unless --all is set.
-		if !lintAll {
-			state := readSpecState(specPath)
-			if state == "implemented" {
-				continue
+		if !lintAll && isSpecFullyImplemented(info) {
+			continue
+		}
+
+		// Library structural validation: LoadSpec + Validate.
+		spec, loadErr := afspec.LoadSpec(info.Path)
+		if loadErr != nil {
+			libFindings = append(libFindings, afspec.LintFinding{
+				SpecName: info.Name,
+				File:     "requirements.json",
+				Rule:     "load-failure",
+				Severity: "error",
+				Message:  loadErr.Error(),
+			})
+		} else {
+			result := spec.Validate()
+			for _, e := range result.Errors {
+				libFindings = append(libFindings, convertValidationEntry(info.Name, e))
+			}
+			for _, w := range result.Warnings {
+				libFindings = append(libFindings, convertValidationEntry(info.Name, w))
 			}
 		}
 
-		// Lint this spec.
-		specFindings := lintSingleSpec(specPath, e.Name())
-		findings = append(findings, specFindings...)
+		// CLI-only extras: empty-artifact and missing-session.
+		libFindings = append(libFindings, cliLintExtras(info.Path, info.Name)...)
+	}
+
+	sorted := afspec.SortFindings(libFindings)
+	exitCode := afspec.ComputeExitCode(sorted)
+
+	// Convert library findings to CLI format.
+	findings := make([]lintFinding, len(sorted))
+	for i, f := range sorted {
+		findings[i] = lintFinding{
+			Spec:     f.SpecName,
+			Rule:     f.Rule,
+			Severity: f.Severity,
+			Message:  f.Message,
+			File:     f.File,
+		}
 	}
 
 	// Ensure findings is never nil (always an array in JSON).
-	if findings == nil {
+	if len(findings) == 0 {
 		findings = []lintFinding{}
 	}
 
-	// Only exit 1 for error-severity findings; warnings alone → exit 0.
-	exitCode := 0
-	for _, f := range findings {
-		if f.Severity == "error" {
-			exitCode = 1
-			break
+	return findings, exitCode, nil
+}
+
+// convertValidationEntry converts a library ValidationEntry into a
+// LintFinding. Severity is "warning" for warning-category entries,
+// "error" for all others. Rule is the Check name if present, otherwise
+// the Category.
+func convertValidationEntry(specName string, entry afspec.ValidationEntry) afspec.LintFinding {
+	severity := "error"
+	if entry.Category == "warning" {
+		severity = "warning"
+	}
+	rule := entry.Check
+	if rule == "" {
+		rule = entry.Category
+	}
+	return afspec.LintFinding{
+		SpecName: specName,
+		File:     entry.Artifact,
+		Rule:     rule,
+		Severity: severity,
+		Message:  entry.Message,
+	}
+}
+
+// isSpecFullyImplemented checks whether all subtasks in a spec's tasks.json
+// are in state "done" or "dropped". Returns false if tasks.json is absent,
+// unreadable, or has any subtask in another state.
+func isSpecFullyImplemented(info afspec.LintSpecInfo) bool {
+	if !info.HasTasks {
+		return false
+	}
+
+	tasksPath := filepath.Join(info.Path, "tasks.json")
+	data, err := os.ReadFile(tasksPath)
+	if err != nil {
+		return false
+	}
+
+	var tasks struct {
+		TaskGroups []struct {
+			Subtasks []struct {
+				State string `json:"state"`
+			} `json:"subtasks"`
+		} `json:"task_groups"`
+	}
+	if err := json.Unmarshal(data, &tasks); err != nil {
+		return false
+	}
+
+	for _, group := range tasks.TaskGroups {
+		for _, sub := range group.Subtasks {
+			if sub.State != "done" && sub.State != "dropped" {
+				return false
+			}
 		}
 	}
 
-	return findings, exitCode
+	return true
 }
 
-// lintSingleSpec runs lint checks on a single spec directory and returns findings.
-func lintSingleSpec(specPath, specName string) []lintFinding {
-	var findings []lintFinding
+// cliLintExtras runs CLI-only lint checks on a spec directory and returns
+// findings for empty JSON artifacts and missing _session.json.
+func cliLintExtras(specPath, specName string) []afspec.LintFinding {
+	var findings []afspec.LintFinding
 
-	// Check for required files.
-	for _, f := range requiredFiles {
+	// Check JSON artifact files for empty objects.
+	jsonFiles := []string{"requirements.json", "test_spec.json", "tasks.json"}
+	for _, f := range jsonFiles {
 		p := filepath.Join(specPath, f)
 		data, err := os.ReadFile(p)
 		if err != nil {
-			if os.IsNotExist(err) {
-				findings = append(findings, lintFinding{
-					Spec:     specName,
-					Rule:     "missing-file",
-					Severity: "error",
-					Message:  fmt.Sprintf("required file %s is missing", f),
-					File:     f,
-				})
-				continue
-			}
-			findings = append(findings, lintFinding{
-				Spec:     specName,
-				Rule:     "unreadable-file",
-				Severity: "error",
-				Message:  fmt.Sprintf("cannot read %s: %v", f, err),
-				File:     f,
-			})
-			continue
+			continue // Missing/unreadable files are handled by library validation.
 		}
-
-		// prd.md is not JSON.
-		if f == "prd.md" {
-			if len(data) == 0 {
-				findings = append(findings, lintFinding{
-					Spec:     specName,
-					Rule:     "empty-prd",
-					Severity: "warning",
-					Message:  "prd.md is empty",
-					File:     f,
-				})
-			}
-			continue
-		}
-
-		// Verify JSON is parseable.
-		if !json.Valid(data) {
-			findings = append(findings, lintFinding{
-				Spec:     specName,
-				Rule:     "invalid-json",
-				Severity: "error",
-				Message:  fmt.Sprintf("%s contains malformed JSON", f),
-				File:     f,
-			})
-			continue
-		}
-
-		// Check for empty content in JSON files.
 		var parsed map[string]any
 		if err := json.Unmarshal(data, &parsed); err == nil {
 			if len(parsed) == 0 {
-				findings = append(findings, lintFinding{
-					Spec:     specName,
+				findings = append(findings, afspec.LintFinding{
+					SpecName: specName,
 					Rule:     "empty-artifact",
 					Severity: "warning",
 					Message:  fmt.Sprintf("%s has no content", f),
@@ -228,11 +254,11 @@ func lintSingleSpec(specPath, specName string) []lintFinding {
 		}
 	}
 
-	// Check for _session.json.
+	// Check for missing _session.json.
 	sessionPath := filepath.Join(specPath, "_session.json")
 	if _, err := os.Stat(sessionPath); os.IsNotExist(err) {
-		findings = append(findings, lintFinding{
-			Spec:     specName,
+		findings = append(findings, afspec.LintFinding{
+			SpecName: specName,
 			Rule:     "missing-session",
 			Severity: "warning",
 			Message:  "_session.json is missing",

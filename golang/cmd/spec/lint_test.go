@@ -3,8 +3,10 @@ package spec
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -164,35 +166,164 @@ func TestTS08_36_LintEmitsJSONWithOK(t *testing.T) {
 	}
 }
 
+// writeValidSpecDir creates a complete, valid spec directory that passes
+// library LoadSpec + Validate. The spec uses NN_snake_case naming convention.
+// subtaskStates controls task_groups subtask states; nil means no subtasks.
+// reqSpecIDOverride, if non-empty, replaces spec_id in requirements.json
+// to create a deliberate spec_id mismatch for validation error testing.
+func writeValidSpecDir(t *testing.T, dir, specID, specName string, subtaskStates []string, reqSpecIDOverride string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	effectiveReqSpecID := specID
+	if reqSpecIDOverride != "" {
+		effectiveReqSpecID = reqSpecIDOverride
+	}
+
+	prd := fmt.Sprintf("---\nspec_id: %q\nspec_name: %q\ntitle: %q\nstatus: \"draft\"\n"+
+		"created_at: \"2026-01-01T00:00:00Z\"\nupdated_at: \"2026-01-01T00:00:00Z\"\n"+
+		"owner: \"test\"\nsource: \"test\"\nschema_version: 1\n---\n# %s\n",
+		specID, specName, specName, specName)
+	if err := os.WriteFile(filepath.Join(dir, "prd.md"), []byte(prd), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := fmt.Sprintf(
+		`{`+
+			`"$schema":"https://agent-fox.dev/schemas/requirements.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,"introduction":"Test",`+
+			`"glossary":{"system":"The test system."},`+
+			`"requirements":[{`+
+			`"id":"%s-REQ-1","title":"Feature",`+
+			`"user_story":{"role":"user","goal":"test","benefit":"testing"},`+
+			`"acceptance_criteria":[{`+
+			`"id":"%s-REQ-1.1","ears_pattern":"event_driven",`+
+			`"trigger":"a request is made","system":"the system",`+
+			`"action":"process it","return_contract":"a result"`+
+			`}],"edge_cases":[{`+
+			`"id":"%s-REQ-1.E1","ears_pattern":"unwanted",`+
+			`"error_condition":"input is invalid","system":"the system",`+
+			`"action":"reject it","return_contract":"raises an error"`+
+			`}]}],`+
+			`"correctness_properties":[{`+
+			`"id":"%s-PROP-1","title":"Idempotency",`+
+			`"for_any":"valid input","invariant":"processing is idempotent",`+
+			`"validates":["%s-REQ-1.1"]}],`+
+			`"execution_paths":[{`+
+			`"id":"%s-PATH-1","title":"Main path",`+
+			`"steps":[{"actor":"user","action":"send request"},`+
+			`{"actor":"system","action":"process request"}]}],`+
+			`"error_handling":[{`+
+			`"id":"%s-ERR-1","condition":"Invalid input",`+
+			`"behavior":"Return error","requirement_id":"%s-REQ-1.E1"}]}`,
+		effectiveReqSpecID, specName,
+		effectiveReqSpecID, effectiveReqSpecID, effectiveReqSpecID,
+		effectiveReqSpecID, effectiveReqSpecID,
+		effectiveReqSpecID,
+		effectiveReqSpecID, effectiveReqSpecID)
+	if err := os.WriteFile(filepath.Join(dir, "requirements.json"), []byte(req), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := fmt.Sprintf(
+		`{`+
+			`"$schema":"https://agent-fox.dev/schemas/test_spec.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+			`"test_cases":[{`+
+			`"id":"TS-%s-1","requirement_id":"%s-REQ-1.1","kind":"unit",`+
+			`"description":"Test feature","preconditions":[],`+
+			`"input":{},"expected":{"ok":true},`+
+			`"assertion_pseudocode":"assert ok"}],`+
+			`"property_tests":[{`+
+			`"id":"TS-%s-P1","property_id":"%s-PROP-1","validates":["%s-REQ-1.1"],`+
+			`"description":"Idempotency","for_any_strategy":"valid input",`+
+			`"invariant_check":"f(f(x)) == f(x)"}],`+
+			`"edge_case_tests":[{`+
+			`"id":"TS-%s-E1","requirement_id":"%s-REQ-1.E1","kind":"unit",`+
+			`"description":"Invalid input","preconditions":[],`+
+			`"input":{},"expected":{"error":true},`+
+			`"assertion_pseudocode":"assert error"}],`+
+			`"smoke_tests":[{`+
+			`"id":"TS-%s-SMOKE-1","execution_path_id":"%s-PATH-1",`+
+			`"description":"End-to-end","trigger":"run",`+
+			`"real_components":["io"],"mockable":[],`+
+			`"expected_effects":["Success"]}],`+
+			`"coverage":{`+
+			`"requirements_covered":["%s-REQ-1.1","%s-REQ-1.E1"],`+
+			`"properties_covered":["%s-PROP-1"],`+
+			`"paths_covered":["%s-PATH-1"],"gaps":[]}}`,
+		specID, specName,
+		specID, specID,
+		specID, specID, specID,
+		specID, specID,
+		specID, specID,
+		specID, specID,
+		specID,
+		specID)
+	if err := os.WriteFile(filepath.Join(dir, "test_spec.json"), []byte(ts), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	taskGroupsJSON := "[]"
+	if subtaskStates != nil {
+		var subtasks []string
+		for i, state := range subtaskStates {
+			subtasks = append(subtasks, fmt.Sprintf(
+				`{"id":"1.%d","title":"Subtask %d","details":["d"],`+
+					`"test_spec_refs":["TS-%s-1"],"requirement_refs":["%s-REQ-1.1"],`+
+					`"state":%q,"optional":false}`,
+				i+1, i+1, specID, specID, state))
+		}
+		// Use proper task group kinds: first group "tests", last group
+		// "wiring_verification" — library validation requires this structure.
+		taskGroupsJSON = fmt.Sprintf(
+			`[{"id":1,"kind":"tests","title":"Write tests","subtasks":[%s],`+
+				`"verification":{"id":"1.V","checks":["All tests pass"]}},`+
+				`{"id":2,"kind":"wiring_verification","title":"Wiring verification","subtasks":[`+
+				`{"id":"2.1","title":"Stub and dead-code audit, trace execution paths end-to-end",`+
+				`"details":["Verify all paths are wired","Confirm no stubs remain"],`+
+				`"test_spec_refs":["TS-%s-SMOKE-1"],"requirement_refs":["%s-REQ-1.1"],`+
+				`"state":%q,"optional":false}],`+
+				`"verification":{"id":"2.V","checks":["All smoke tests pass"]}}]`,
+			strings.Join(subtasks, ","), specID, specID, subtaskStates[0])
+	}
+	tasks := fmt.Sprintf(
+		`{`+
+			`"$schema":"https://agent-fox.dev/schemas/tasks.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+			`"test_commands":{"spec_tests":"go test","all_tests":"go test","linter":"go vet"},`+
+			`"dependencies":[],`+
+			`"task_groups":%s,`+
+			`"traceability":[`+
+			`{"requirement_id":"%s-REQ-1.1","test_spec_id":"TS-%s-1","task_id":"1.1","test_path":null},`+
+			`{"requirement_id":"%s-REQ-1.E1","test_spec_id":"TS-%s-E1","task_id":"1.1","test_path":null}`+
+			`]}`,
+		specID, specName, taskGroupsJSON,
+		specID, specID,
+		specID, specID)
+	if err := os.WriteFile(filepath.Join(dir, "tasks.json"), []byte(tasks), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // --- NS-REQ-2: Warnings-only findings → exit 0, exit_code=0 ---
 
 // TestLintWarningsOnlyExitCode0 verifies that when all findings have
 // severity 'warning' (no error-severity findings), the lint command
 // exits 0 with exit_code=0 and ok=true.
-// Covers: NS-REQ-2, TS-NS-2
+// Covers: NS-REQ-4, TS-NS-4
 func TestLintWarningsOnlyExitCode0(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
 
-	// Create a spec that triggers only warning findings:
-	// - All required JSON files present (no missing-file errors)
-	// - Empty prd.md triggers "empty-prd" (severity: warning)
-	// - Missing _session.json triggers "missing-session" (severity: warning)
+	// Create a valid spec (passes library validation) but without
+	// _session.json → triggers missing-session warning (CLI extra).
+	// Include a pending subtask so the spec is not treated as fully implemented.
 	specPath := filepath.Join(specDir, "08_warnings_only")
-	if err := os.MkdirAll(specPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	// Empty prd.md → warning.
-	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte(""), 0644); err != nil {
-		t.Fatal(err)
-	}
-	// All required JSON files with valid content.
-	for _, f := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
-		if err := os.WriteFile(filepath.Join(specPath, f), []byte(`{"valid": true}`), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// No _session.json → warning.
+	writeValidSpecDir(t, specPath, "08", "warnings_only", []string{"pending"}, "")
+	// No _session.json → missing-session warning.
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -227,7 +358,7 @@ func TestLintWarningsOnlyExitCode0(t *testing.T) {
 		t.Errorf("ok = %v; want true for warnings-only", parsed["ok"])
 	}
 
-	// Should have at least one warning finding.
+	// Should have at least one warning finding (missing-session).
 	findings, ok := parsed["findings"].([]any)
 	if !ok {
 		t.Fatal("parsed.findings is not an array")
@@ -239,7 +370,7 @@ func TestLintWarningsOnlyExitCode0(t *testing.T) {
 	for i, f := range findings {
 		fm := f.(map[string]any)
 		if fm["severity"] != "warning" {
-			t.Errorf("findings[%d].severity = %v; want 'warning'", i, fm["severity"])
+			t.Errorf("findings[%d] = %v; severity = %v; want 'warning'", i, fm, fm["severity"])
 		}
 	}
 }
@@ -263,59 +394,75 @@ func TestTS08_37_LintAllFlagRegistered(t *testing.T) {
 
 // TestTS08_37_LintAllIncludesImplementedSpecs verifies that running
 // spec lint --all includes fully-implemented specs in the lint findings.
-// Covers: TS-08-37, Requirement: 08-REQ-12.2
+// Without --all, implemented specs are skipped. With --all, they are linted.
+// Covers: NS-REQ-2, TS-NS-2
 func TestTS08_37_LintAllIncludesImplementedSpecs(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
 
-	// Create a fully-implemented spec (all required artifacts present).
+	// Create a fully-implemented spec (all subtasks done) with a
+	// deliberate spec_id mismatch to produce a validation error.
 	specPath := filepath.Join(specDir, "08_complete_spec")
-	if err := os.MkdirAll(specPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range []string{"prd.md", "requirements.json", "test_spec.json", "tasks.json"} {
-		content := "# PRD"
-		if f != "prd.md" {
-			content = `{"valid": true}`
-		}
-		if err := os.WriteFile(filepath.Join(specPath, f), []byte(content), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// Mark session as fully implemented.
-	sessionData := map[string]any{
-		"state":               "implemented",
-		"generated_artifacts": []string{"requirements.json", "test_spec.json", "tasks.json"},
-	}
-	sessionJSON, _ := json.Marshal(sessionData)
-	if err := os.WriteFile(filepath.Join(specPath, "_session.json"), sessionJSON, 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeValidSpecDir(t, specPath, "08", "complete_spec",
+		[]string{"done", "done"}, // all subtasks done → fully implemented
+		"99",                     // spec_id mismatch: prd has "08", requirements has "99"
+	)
 
+	// Without --all: the implemented spec should be skipped.
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
 	cmd.SetOut(stdoutBuf)
 	cmd.SetErr(new(bytes.Buffer))
-	cmd.SetArgs([]string{"--spec-dir", specDir, "lint", "--all"})
+	cmd.SetArgs([]string{"--spec-dir", specDir, "lint"})
 
-	err := cmd.Execute()
+	_ = cmd.Execute()
 
 	output := stdoutBuf.String()
 	var parsed map[string]any
-	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+	if jsonErr := json.Unmarshal(stdoutBuf.Bytes(), &parsed); jsonErr != nil {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
-
-	// With --all, the output should include findings (or an empty array
-	// if the implemented spec has no issues). The key requirement is that
-	// the fully-implemented spec was included in the lint scope.
-	if _, exists := parsed["findings"]; !exists {
-		t.Error("parsed missing 'findings' field; --all should still emit findings array")
+	findings, ok := parsed["findings"].([]any)
+	if !ok {
+		t.Fatal("parsed.findings is not an array")
+	}
+	// The implemented spec should be skipped → no findings for it.
+	for _, f := range findings {
+		fm := f.(map[string]any)
+		if fm["spec"] == "complete_spec" {
+			t.Errorf("without --all, implemented spec should be skipped; got finding: %v", fm)
+		}
 	}
 
-	// Verify the command completed (stub currently errors).
-	if err != nil {
-		t.Logf("lint --all returned error (expected until implementation): %v", err)
+	// With --all: the implemented spec should be linted and produce findings.
+	cmd2 := newRootCmd()
+	stdoutBuf2 := new(bytes.Buffer)
+	cmd2.SetOut(stdoutBuf2)
+	cmd2.SetErr(new(bytes.Buffer))
+	cmd2.SetArgs([]string{"--spec-dir", specDir, "lint", "--all"})
+
+	_ = cmd2.Execute()
+
+	var parsed2 map[string]any
+	if jsonErr := json.Unmarshal(stdoutBuf2.Bytes(), &parsed2); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, stdoutBuf2.String())
+	}
+	findings2, ok := parsed2["findings"].([]any)
+	if !ok {
+		t.Fatal("parsed.findings is not an array")
+	}
+
+	// With --all, findings should include at least one for the implemented spec.
+	hasSpecFinding := false
+	for _, f := range findings2 {
+		fm := f.(map[string]any)
+		if fm["spec"] == "complete_spec" {
+			hasSpecFinding = true
+			break
+		}
+	}
+	if !hasSpecFinding {
+		t.Error("with --all, expected findings for implemented spec 'complete_spec'")
 	}
 }
 
@@ -485,4 +632,134 @@ func TestTS08_36_LintBannerSuppressed(t *testing.T) {
 	// output should be suppressed.
 	stderrOutput := stderrBuf.String()
 	_ = stderrOutput // Stub: implementation will validate spinner suppression.
+}
+
+// --- NS-REQ-1: Spec-id mismatch detected via library validation ---
+
+// TestTSNS1_SpecIdMismatchFromLibrary verifies that the lint command
+// reports a library-level validation error (not missing-file or invalid-json)
+// when a spec has a spec_id mismatch between prd.md and requirements.json.
+// Covers: NS-REQ-1, TS-NS-1
+func TestTSNS1_SpecIdMismatchFromLibrary(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create a spec with a deliberate spec_id mismatch:
+	// prd.md has spec_id "08", requirements.json has spec_id "99".
+	// Include a pending subtask so the spec is not treated as fully implemented.
+	specPath := filepath.Join(specDir, "08_mismatch_spec")
+	writeValidSpecDir(t, specPath, "08", "mismatch_spec", []string{"pending"}, "99")
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "lint"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() returned nil; want error for spec_id mismatch")
+	}
+
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal(stdoutBuf.Bytes(), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, stdoutBuf.String())
+	}
+
+	findings, ok := parsed["findings"].([]any)
+	if !ok {
+		t.Fatal("parsed.findings is not an array")
+	}
+
+	// Should contain at least one finding from library validation with
+	// severity "error" and a rule that is NOT "missing-file" or "invalid-json"
+	// (those were the old shallow checks).
+	hasLibraryError := false
+	for _, f := range findings {
+		fm := f.(map[string]any)
+		rule, _ := fm["rule"].(string)
+		severity, _ := fm["severity"].(string)
+		if severity == "error" && rule != "missing-file" && rule != "invalid-json" {
+			hasLibraryError = true
+			break
+		}
+	}
+	if !hasLibraryError {
+		t.Error("expected a library-level validation error finding (not missing-file/invalid-json); got none")
+		t.Logf("findings: %v", findings)
+	}
+
+	// exit_code must be 1.
+	if ec, _ := parsed["exit_code"].(float64); ec != 1 {
+		t.Errorf("exit_code = %v; want 1", ec)
+	}
+}
+
+// --- NS-REQ-4: CLI-only extras (empty-artifact + missing-session) ---
+
+// TestTSNS4_CLIExtrasEmptyArtifactAndMissingSession verifies that the
+// findings array includes both empty-artifact and missing-session warnings
+// after library validation findings.
+// Covers: NS-REQ-4, TS-NS-4
+func TestTSNS4_CLIExtrasEmptyArtifactAndMissingSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create a spec with valid structure but with an empty JSON object
+	// for requirements.json and no _session.json.
+	// Include a pending subtask so the spec is not treated as fully implemented.
+	specPath := filepath.Join(specDir, "08_extras_spec")
+	writeValidSpecDir(t, specPath, "08", "extras_spec", []string{"pending"}, "")
+
+	// Overwrite requirements.json with an empty JSON object to trigger
+	// empty-artifact warning.
+	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// No _session.json → triggers missing-session warning.
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "lint"})
+
+	_ = cmd.Execute()
+
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal(stdoutBuf.Bytes(), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, stdoutBuf.String())
+	}
+
+	findings, ok := parsed["findings"].([]any)
+	if !ok {
+		t.Fatal("parsed.findings is not an array")
+	}
+
+	hasEmptyArtifact := false
+	hasMissingSession := false
+	for _, f := range findings {
+		fm := f.(map[string]any)
+		rule, _ := fm["rule"].(string)
+		severity, _ := fm["severity"].(string)
+		switch rule {
+		case "empty-artifact":
+			if severity != "warning" {
+				t.Errorf("empty-artifact severity = %q; want 'warning'", severity)
+			}
+			hasEmptyArtifact = true
+		case "missing-session":
+			if severity != "warning" {
+				t.Errorf("missing-session severity = %q; want 'warning'", severity)
+			}
+			hasMissingSession = true
+		}
+	}
+
+	if !hasEmptyArtifact {
+		t.Error("expected finding with rule 'empty-artifact'; none found")
+	}
+	if !hasMissingSession {
+		t.Error("expected finding with rule 'missing-session'; none found")
+	}
 }
