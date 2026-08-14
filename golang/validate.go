@@ -431,6 +431,33 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	var errors []ValidationEntry
 	var warnings []ValidationEntry
 
+	// --- Completeness guard ---
+	// If any artifact has an empty SpecId, the spec is incomplete and
+	// downstream cross-file checks would produce misleading errors.
+	// Return a single completeness error listing the incomplete artifacts.
+	{
+		var incomplete []string
+		if s.Requirements != nil && s.Requirements.SpecId == "" {
+			incomplete = append(incomplete, "requirements")
+		}
+		if s.TestSpec != nil && s.TestSpec.SpecId == "" {
+			incomplete = append(incomplete, "test_spec")
+		}
+		if s.Tasks != nil && s.Tasks.SpecId == "" {
+			incomplete = append(incomplete, "tasks")
+		}
+		if len(incomplete) > 0 {
+			return ValidationResult{
+				Valid: false,
+				Errors: []ValidationEntry{{
+					Category: "integrity",
+					Check:    "completeness",
+					Message:  fmt.Sprintf("Spec is incomplete: %s", strings.Join(incomplete, ", ")),
+				}},
+			}
+		}
+	}
+
 	// Collect all known requirement IDs (including criterion IDs)
 	reqIDs := map[string]bool{}
 	topReqIDs := map[string]bool{}       // top-level requirement IDs only

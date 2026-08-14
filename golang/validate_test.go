@@ -228,9 +228,243 @@ func TestValidateSchema_MultipleArtifactErrors(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Completeness guard tests (Issue #8)
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_CompletenessGuard_AllEmpty verifies that
+// ValidateCrossFile returns a single 'completeness' error when all three
+// artifacts have empty SpecId, and no other cross-file errors.
+// Test Spec: TS-NS-1, TS-NS-5. Requirements: NS-REQ-1, NS-REQ-5.
+func TestValidateCrossFile_CompletenessGuard_AllEmpty(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "", // empty
+			SpecName:              "test",
+			SchemaVersion:         1,
+			Introduction:          "Test.",
+			Glossary:              RequirementsV1JsonGlossary{},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "", // empty
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "", // empty
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false for incomplete spec")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+
+	e := result.Errors[0]
+	if e.Category != "integrity" {
+		t.Errorf("error Category = %q, want %q", e.Category, "integrity")
+	}
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	// Message must mention all three artifact names
+	for _, name := range []string{"requirements", "test_spec", "tasks"} {
+		if !strings.Contains(e.Message, name) {
+			t.Errorf("error Message %q does not contain %q", e.Message, name)
+		}
+	}
+}
+
+// TestValidateCrossFile_CompletenessGuard_OneEmpty verifies that
+// ValidateCrossFile returns a completeness error naming only the
+// incomplete artifact when exactly one has an empty SpecId.
+// Test Spec: TS-NS-2. Requirement: NS-REQ-2.
+func TestValidateCrossFile_CompletenessGuard_OneEmpty(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "01",
+			SpecName:              "test",
+			SchemaVersion:         1,
+			Introduction:          "Test.",
+			Glossary:              RequirementsV1JsonGlossary{},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "", // only tasks is empty
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false for incomplete spec")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+
+	e := result.Errors[0]
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	if !strings.Contains(e.Message, "tasks") {
+		t.Errorf("error Message %q does not contain %q", e.Message, "tasks")
+	}
+	if strings.Contains(e.Message, "requirements") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "requirements")
+	}
+	if strings.Contains(e.Message, "test_spec") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "test_spec")
+	}
+}
+
+// TestValidateCrossFile_CompletenessGuard_SkipsDownstream verifies that
+// when the completeness guard fires, no downstream rule errors
+// (coverage_gap, dangling_reference, etc.) are emitted.
+// Test Spec: TS-NS-3. Requirement: NS-REQ-3.
+func TestValidateCrossFile_CompletenessGuard_SkipsDownstream(t *testing.T) {
+	// Build a spec where requirements have criteria that would normally
+	// produce coverage_gap errors, but test_spec has empty SpecId.
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Requirement 1",
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "", // empty — triggers completeness guard
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{}, // no coverage → would normally be coverage_gap
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	// Only the completeness error should be present
+	for _, e := range result.Errors {
+		if e.Check != "completeness" {
+			t.Errorf("unexpected non-completeness error: Check=%q Message=%q", e.Check, e.Message)
+		}
+	}
+	if len(result.Errors) != 1 {
+		t.Errorf("expected exactly 1 error (completeness), got %d: %v", len(result.Errors), result.Errors)
+	}
+}
+
+// TestValidateCrossFile_CompletenessGuard_NoRegression verifies that
+// ValidateCrossFile proceeds normally with zero errors for a fully
+// populated valid spec (existing test, but explicitly re-confirmed).
+// Test Spec: TS-NS-4. Requirement: NS-REQ-4.
+// (Covered by TestValidateCrossFile_ConsistentReferences below)
+
 // TestValidateCrossFile_ConsistentReferences verifies that ValidateCrossFile
 // on a spec with consistent cross-file references returns Valid true.
-// Test Spec: TS-01-12, Requirement: 01-REQ-6.1
+// Test Spec: TS-01-12, TS-NS-4. Requirement: 01-REQ-6.1, NS-REQ-4.
 func TestValidateCrossFile_ConsistentReferences(t *testing.T) {
 	defer requireImplemented(t)
 
