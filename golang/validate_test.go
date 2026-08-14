@@ -794,7 +794,8 @@ func buildSpecWithDanglingRef(danglingID string) *Spec {
 }
 
 // buildSpecWithWarnings creates a Spec that passes validation but triggers
-// at least one warning (a requirement with no test coverage).
+// at least one warning (vague language in a criterion action field).
+// All criteria have test coverage so no coverage_gap errors are produced.
 func buildSpecWithWarnings() *Spec {
 	return &Spec{
 		SpecID:        "01",
@@ -827,26 +828,7 @@ func buildSpecWithWarnings() *Spec {
 							Id:             "01-REQ-1.1",
 							EarsPattern:    CriterionEarsPatternUbiquitous,
 							System:         "the system",
-							Action:         "return a populated Spec",
-							ReturnContract: nil,
-						},
-					},
-					EdgeCases: []Criterion{},
-				},
-				{
-					Id:    "01-REQ-2",
-					Title: "Uncovered Requirement",
-					UserStory: UserStory{
-						Role:    "developer",
-						Goal:    "have tests",
-						Benefit: "confidence",
-					},
-					AcceptanceCriteria: []Criterion{
-						{
-							Id:             "01-REQ-2.1",
-							EarsPattern:    CriterionEarsPatternUbiquitous,
-							System:         "the system",
-							Action:         "do something",
+							Action:         "properly return a populated Spec",
 							ReturnContract: nil,
 						},
 					},
@@ -872,7 +854,6 @@ func buildSpecWithWarnings() *Spec {
 					AssertionPseudocode: "assert true",
 				},
 			},
-			// No test for 01-REQ-2 — triggers a coverage warning
 			PropertyTests: []PropertyTest{},
 			EdgeCaseTests: []EdgeCaseTest{},
 			SmokeTests:    []SmokeTest{},
@@ -4315,5 +4296,409 @@ func TestValidate_EarsConstraints_WiredIntoValidate(t *testing.T) {
 
 	if !found {
 		t.Errorf("expected Validate() error mentioning 'trigger' and '01-REQ-1.1', got errors: %v", result.Errors)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Coverage gap severity and no-criteria tests (issue #10)
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_CoverageGapCriterionIsError verifies that an uncovered
+// acceptance criterion produces an error (not a warning) with Check "coverage_gap".
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestValidateCrossFile_CoverageGapCriterionIsError(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test_cov",
+		Title:         "Coverage Gap Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test_cov",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Some Requirement",
+					UserStory: UserStory{
+						Role:    "developer",
+						Goal:    "test coverage",
+						Benefit: "confidence",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test_cov",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{}, // No test covering 01-REQ-1.1
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test_cov",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false for uncovered acceptance criterion")
+	}
+
+	foundInErrors := false
+	for _, e := range result.Errors {
+		if e.Check == "coverage_gap" && e.Category == "integrity" {
+			foundInErrors = true
+			break
+		}
+	}
+	if !foundInErrors {
+		t.Errorf("expected coverage_gap entry in Errors with category 'integrity', got errors: %v", result.Errors)
+	}
+
+	// Ensure coverage_gap does NOT appear in warnings
+	for _, w := range result.Warnings {
+		if w.Check == "coverage_gap" {
+			t.Error("coverage_gap entry found in Warnings — should be in Errors only")
+		}
+	}
+}
+
+// TestValidateCrossFile_CoverageGapEdgeCaseIsError verifies that an uncovered
+// edge case criterion produces an error (not a warning) with Check "coverage_gap".
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateCrossFile_CoverageGapEdgeCaseIsError(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test_cov_ec",
+		Title:         "Coverage Gap Edge Case Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test_cov_ec",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Some Requirement",
+					UserStory: UserStory{
+						Role:    "developer",
+						Goal:    "test coverage",
+						Benefit: "confidence",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{
+						{
+							Id:          "01-REQ-1.E1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "handle edge case",
+						},
+					},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test_cov_ec",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-01-1",
+					RequirementId:       "01-REQ-1.1",
+					Kind:                "unit",
+					Description:         "covers acceptance criterion",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{}, // No edge case test covering 01-REQ-1.E1
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{RequirementsCovered: []string{"01-REQ-1.1"}},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test_cov_ec",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false for uncovered edge case")
+	}
+
+	foundInErrors := false
+	for _, e := range result.Errors {
+		if e.Check == "coverage_gap" && e.Category == "integrity" {
+			foundInErrors = true
+			break
+		}
+	}
+	if !foundInErrors {
+		t.Errorf("expected coverage_gap entry in Errors with category 'integrity', got errors: %v", result.Errors)
+	}
+
+	// Ensure coverage_gap does NOT appear in warnings
+	for _, w := range result.Warnings {
+		if w.Check == "coverage_gap" {
+			t.Error("coverage_gap entry found in Warnings — should be in Errors only")
+		}
+	}
+}
+
+// TestValidateCrossFile_NoCriteria verifies that a requirement with no
+// acceptance criteria and no edge cases produces an error with Check "no_criteria".
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestValidateCrossFile_NoCriteria(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test_no_criteria",
+		Title:         "No Criteria Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test_no_criteria",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Empty Requirement",
+					UserStory: UserStory{
+						Role:    "developer",
+						Goal:    "test no criteria",
+						Benefit: "parity",
+					},
+					AcceptanceCriteria: []Criterion{},
+					EdgeCases:          []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test_no_criteria",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test_no_criteria",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false for requirement with no criteria")
+	}
+
+	foundNoCriteria := false
+	for _, e := range result.Errors {
+		if e.Check == "no_criteria" && strings.Contains(e.RequirementID, "01-REQ-1") {
+			foundNoCriteria = true
+			break
+		}
+	}
+	if !foundNoCriteria {
+		t.Errorf("expected no_criteria error referencing 01-REQ-1, got errors: %v", result.Errors)
+	}
+}
+
+// TestValidateCrossFile_FullyCoveredSpec verifies that a spec where every
+// criterion has test coverage and every requirement has at least one criterion
+// passes with no coverage_gap errors.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestValidateCrossFile_FullyCoveredSpec(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test_full_cov",
+		Title:         "Fully Covered Spec",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test_full_cov",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Covered Requirement",
+					UserStory: UserStory{
+						Role:    "developer",
+						Goal:    "full coverage",
+						Benefit: "confidence",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "return data",
+						},
+					},
+					EdgeCases: []Criterion{
+						{
+							Id:          "01-REQ-1.E1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "handle edge case",
+						},
+					},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test_full_cov",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-01-1",
+					RequirementId:       "01-REQ-1.1",
+					Kind:                "unit",
+					Description:         "covers acceptance criterion",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{
+				{
+					Id:                  "TS-01-E1",
+					RequirementId:       "01-REQ-1.E1",
+					Kind:                "unit",
+					Description:         "covers edge case",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: strPtr("assert true"),
+				},
+			},
+			SmokeTests: []SmokeTest{},
+			Coverage: Coverage{
+				RequirementsCovered: []string{"01-REQ-1.1", "01-REQ-1.E1"},
+			},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test_full_cov",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	// Check no coverage_gap errors
+	for _, e := range result.Errors {
+		if e.Check == "coverage_gap" {
+			t.Errorf("unexpected coverage_gap error: %v", e)
+		}
+	}
+	// Check no coverage_gap warnings
+	for _, w := range result.Warnings {
+		if w.Check == "coverage_gap" {
+			t.Errorf("unexpected coverage_gap warning: %v", w)
+		}
+	}
+
+	if !result.Valid {
+		t.Errorf("ValidateCrossFile().Valid = false, want true for fully covered spec; errors = %v", result.Errors)
 	}
 }

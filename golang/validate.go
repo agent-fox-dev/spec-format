@@ -634,14 +634,15 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 		}
 	}
 
-	// --- Coverage gap warnings ---
-	// Check all acceptance criteria and edge case criteria for test coverage
+	// --- Coverage gap errors ---
+	// Check all acceptance criteria and edge case criteria for test coverage.
+	// Coverage gaps are blocking errors (matching Python cross-file-2 behavior).
 	if s.Requirements != nil {
 		for _, req := range s.Requirements.Requirements {
 			for _, ac := range req.AcceptanceCriteria {
 				if !coveredReqIDs[ac.Id] {
-					warnings = append(warnings, ValidationEntry{
-						Category:      "warning",
+					errors = append(errors, ValidationEntry{
+						Category:      "integrity",
 						Check:         "coverage_gap",
 						Message:       fmt.Sprintf("requirement criterion %s has no test coverage", ac.Id),
 						Artifact:      "test_spec.json",
@@ -652,8 +653,8 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 			}
 			for _, ec := range req.EdgeCases {
 				if !coveredReqIDs[ec.Id] {
-					warnings = append(warnings, ValidationEntry{
-						Category:      "warning",
+					errors = append(errors, ValidationEntry{
+						Category:      "integrity",
 						Check:         "coverage_gap",
 						Message:       fmt.Sprintf("edge case criterion %s has no test coverage", ec.Id),
 						Artifact:      "test_spec.json",
@@ -661,6 +662,24 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 						EntityID:      ec.Id,
 					})
 				}
+			}
+		}
+	}
+
+	// --- No criteria check ---
+	// Requirements with no acceptance_criteria AND no edge_cases are errors
+	// (matching Python cross-file-2 behavior).
+	if s.Requirements != nil {
+		for _, req := range s.Requirements.Requirements {
+			if len(req.AcceptanceCriteria) == 0 && len(req.EdgeCases) == 0 {
+				errors = append(errors, ValidationEntry{
+					Category:      "integrity",
+					Check:         "no_criteria",
+					Message:       fmt.Sprintf("requirement %s has no acceptance criteria and no edge cases", req.Id),
+					Artifact:      "requirements.json",
+					RequirementID: req.Id,
+					EntityID:      req.Id,
+				})
 			}
 		}
 	}
