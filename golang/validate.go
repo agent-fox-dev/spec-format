@@ -433,16 +433,19 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 
 	// Collect all known requirement IDs (including criterion IDs)
 	reqIDs := map[string]bool{}
-	topReqIDs := map[string]bool{} // top-level requirement IDs only
+	topReqIDs := map[string]bool{}       // top-level requirement IDs only
+	criterionIDs := map[string]bool{}    // acceptance_criteria + edge_case IDs only
 	if s.Requirements != nil {
 		for _, req := range s.Requirements.Requirements {
 			reqIDs[req.Id] = true
 			topReqIDs[req.Id] = true
 			for _, ac := range req.AcceptanceCriteria {
 				reqIDs[ac.Id] = true
+				criterionIDs[ac.Id] = true
 			}
 			for _, ec := range req.EdgeCases {
 				reqIDs[ec.Id] = true
+				criterionIDs[ec.Id] = true
 			}
 		}
 	}
@@ -460,6 +463,41 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	if s.Requirements != nil {
 		for _, cp := range s.Requirements.CorrectnessProperties {
 			propIDs[cp.Id] = true
+		}
+	}
+
+	// --- Cross-file rule 1: Traceability requirement_id resolution ---
+	// Each traceability entry's requirement_id must resolve to a known
+	// criterion (acceptance_criteria or edge_case) ID.
+	if s.Tasks != nil {
+		for _, te := range s.Tasks.Traceability {
+			if te.RequirementId != "" && !criterionIDs[te.RequirementId] {
+				errors = append(errors, ValidationEntry{
+					Category:      "integrity",
+					Check:         "cross_file_1",
+					Message:       fmt.Sprintf("traceability entry references requirement_id '%s' which does not exist in requirements", te.RequirementId),
+					Artifact:      "tasks.json",
+					RequirementID: te.RequirementId,
+				})
+			}
+		}
+	}
+
+	// --- Cross-file rule 1: ErrorHandling requirement_id resolution ---
+	// Each error_handling entry's requirement_id must resolve to a known
+	// requirement, criterion, or edge_case ID.
+	if s.Requirements != nil {
+		for _, eh := range s.Requirements.ErrorHandling {
+			if eh.RequirementId != "" && !reqIDs[eh.RequirementId] {
+				errors = append(errors, ValidationEntry{
+					Category:      "integrity",
+					Check:         "cross_file_1",
+					Message:       fmt.Sprintf("error handling entry %s references requirement_id '%s' which does not exist in requirements", eh.Id, eh.RequirementId),
+					Artifact:      "requirements.json",
+					RequirementID: eh.RequirementId,
+					EntityID:      eh.Id,
+				})
+			}
 		}
 	}
 

@@ -4702,3 +4702,231 @@ func TestValidateCrossFile_FullyCoveredSpec(t *testing.T) {
 		t.Errorf("ValidateCrossFile().Valid = false, want true for fully covered spec; errors = %v", result.Errors)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Cross-file rule 1: Traceability requirement_id resolution
+// TS-NS-1, TS-NS-3
+// ---------------------------------------------------------------------------
+
+// TestCrossFile1_TraceabilityDanglingRef verifies that a traceability entry
+// referencing a non-existent criterion/edge_case ID produces a cross_file_1
+// error, and that a valid criterion ID does not.
+// Test Spec: TS-NS-1, TS-NS-3
+// Requirements: NS-REQ-1, NS-REQ-3
+func TestCrossFile1_TraceabilityDanglingRef(t *testing.T) {
+	tests := []struct {
+		name        string
+		reqID       string // traceability entry's RequirementId
+		wantError   bool
+		wantCheck   string
+		wantArtifact string
+	}{
+		{
+			name:         "bogus requirement_id produces cross_file_1 error",
+			reqID:        "04-REQ-GHOST",
+			wantError:    true,
+			wantCheck:    "cross_file_1",
+			wantArtifact: "tasks.json",
+		},
+		{
+			name:      "valid criterion ID produces no cross_file_1 error",
+			reqID:     "04-REQ-1.1",
+			wantError: false,
+		},
+		{
+			name:         "top-level requirement ID (not a criterion) produces cross_file_1 error",
+			reqID:        "04-REQ-1",
+			wantError:    true,
+			wantCheck:    "cross_file_1",
+			wantArtifact: "tasks.json",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := makeMinimalSpec()
+			spec.Requirements.Requirements = []Requirement{
+				{
+					Id:    "04-REQ-1",
+					Title: "Test Requirement",
+					UserStory: UserStory{
+						Role:    "author",
+						Goal:    "test",
+						Benefit: "coverage",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "04-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			}
+			spec.TestSpec.TestCases = []TestCase{
+				{
+					Id:                  "TS-04-1",
+					RequirementId:       "04-REQ-1.1",
+					Kind:                "unit",
+					Description:         "basic test",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: "assert true",
+				},
+			}
+			spec.Tasks.Traceability = []TraceabilityEntry{
+				{
+					RequirementId: tc.reqID,
+					TestSpecId:    "TS-04-1",
+					TaskId:        "1.1",
+				},
+			}
+
+			result := spec.ValidateCrossFile()
+
+			// Filter for cross_file_1 errors
+			var crossFile1Errors []ValidationEntry
+			for _, e := range result.Errors {
+				if e.Check == "cross_file_1" {
+					crossFile1Errors = append(crossFile1Errors, e)
+				}
+			}
+
+			if tc.wantError {
+				if len(crossFile1Errors) == 0 {
+					t.Fatalf("expected cross_file_1 error for RequirementId=%q, got none; all errors: %v", tc.reqID, result.Errors)
+				}
+				e := crossFile1Errors[0]
+				if e.Category != "integrity" {
+					t.Errorf("cross_file_1 error Category = %q, want 'integrity'", e.Category)
+				}
+				if e.Artifact != tc.wantArtifact {
+					t.Errorf("cross_file_1 error Artifact = %q, want %q", e.Artifact, tc.wantArtifact)
+				}
+				if !strings.Contains(e.Message, tc.reqID) {
+					t.Errorf("cross_file_1 error Message = %q, want it to contain %q", e.Message, tc.reqID)
+				}
+			} else {
+				if len(crossFile1Errors) > 0 {
+					t.Errorf("expected no cross_file_1 errors for RequirementId=%q, got %v", tc.reqID, crossFile1Errors)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-file rule 1: ErrorHandling requirement_id resolution
+// TS-NS-2, TS-NS-4
+// ---------------------------------------------------------------------------
+
+// TestCrossFile1_ErrorHandlingDanglingRef verifies that an error_handling entry
+// referencing a non-existent requirement/criterion/edge_case ID produces a
+// cross_file_1 error, and that valid IDs do not.
+// Test Spec: TS-NS-2, TS-NS-4
+// Requirements: NS-REQ-2, NS-REQ-4
+func TestCrossFile1_ErrorHandlingDanglingRef(t *testing.T) {
+	tests := []struct {
+		name         string
+		reqID        string // error_handling entry's RequirementId
+		wantError    bool
+		wantCheck    string
+		wantArtifact string
+	}{
+		{
+			name:         "bogus requirement_id produces cross_file_1 error",
+			reqID:        "04-REQ-999",
+			wantError:    true,
+			wantCheck:    "cross_file_1",
+			wantArtifact: "requirements.json",
+		},
+		{
+			name:      "valid top-level requirement ID produces no cross_file_1 error",
+			reqID:     "04-REQ-1",
+			wantError: false,
+		},
+		{
+			name:      "valid criterion ID produces no cross_file_1 error",
+			reqID:     "04-REQ-1.1",
+			wantError: false,
+		},
+		{
+			name:      "valid edge_case ID produces no cross_file_1 error",
+			reqID:     "04-REQ-1.E1",
+			wantError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := makeMinimalSpec()
+			spec.Requirements.Requirements = []Requirement{
+				{
+					Id:    "04-REQ-1",
+					Title: "Test Requirement",
+					UserStory: UserStory{
+						Role:    "author",
+						Goal:    "test",
+						Benefit: "coverage",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "04-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{
+						{
+							Id:          "04-REQ-1.E1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "handle edge case",
+						},
+					},
+				},
+			}
+			spec.Requirements.ErrorHandling = []ErrorHandlingEntry{
+				{
+					Id:            "04-ERR-1",
+					Condition:     "invalid input",
+					Behavior:      "return error",
+					RequirementId: tc.reqID,
+				},
+			}
+
+			result := spec.ValidateCrossFile()
+
+			// Filter for cross_file_1 errors
+			var crossFile1Errors []ValidationEntry
+			for _, e := range result.Errors {
+				if e.Check == "cross_file_1" {
+					crossFile1Errors = append(crossFile1Errors, e)
+				}
+			}
+
+			if tc.wantError {
+				if len(crossFile1Errors) == 0 {
+					t.Fatalf("expected cross_file_1 error for RequirementId=%q, got none; all errors: %v", tc.reqID, result.Errors)
+				}
+				e := crossFile1Errors[0]
+				if e.Category != "integrity" {
+					t.Errorf("cross_file_1 error Category = %q, want 'integrity'", e.Category)
+				}
+				if e.Artifact != tc.wantArtifact {
+					t.Errorf("cross_file_1 error Artifact = %q, want %q", e.Artifact, tc.wantArtifact)
+				}
+				if !strings.Contains(e.Message, tc.reqID) {
+					t.Errorf("cross_file_1 error Message = %q, want it to contain %q", e.Message, tc.reqID)
+				}
+			} else {
+				if len(crossFile1Errors) > 0 {
+					t.Errorf("expected no cross_file_1 errors for RequirementId=%q, got %v", tc.reqID, crossFile1Errors)
+				}
+			}
+		})
+	}
+}
