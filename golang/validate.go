@@ -375,32 +375,32 @@ func validateEarsConstraints(req *RequirementsV1Json) []ValidationEntry {
 // Spec.ValidateCrossFile
 // ---------------------------------------------------------------------------
 
-// requirementIDPattern matches valid requirement IDs like "01-REQ-1" or "01-REQ-1.1" or "01-REQ-1.E1".
-var requirementIDPattern = regexp.MustCompile(`^\d{2}-REQ-\d+(\.\d+|\.E\d+)?$`)
+// requirementIDPattern matches valid requirement IDs like "01-REQ-1", "abc-REQ-1.1", or "myspec-REQ-1.E1".
+var requirementIDPattern = regexp.MustCompile(`^\w+-REQ-\d+(\.\d+|\.E\d+)?$`)
 
-// testCaseIDPattern matches valid test case IDs like "TS-01-1".
-var testCaseIDPattern = regexp.MustCompile(`^TS-\d{2}-\d+$`)
+// testCaseIDPattern matches valid test case IDs like "TS-01-1" or "TS-abc-1".
+var testCaseIDPattern = regexp.MustCompile(`^TS-\w+-\d+$`)
 
-// propertyIDPattern matches valid property IDs like "01-PROP-1".
-var propertyIDPattern = regexp.MustCompile(`^\d{2}-PROP-\d+$`)
+// propertyIDPattern matches valid property IDs like "01-PROP-1" or "abc-PROP-1".
+var propertyIDPattern = regexp.MustCompile(`^\w+-PROP-\d+$`)
 
-// pathIDPattern matches valid execution path IDs like "01-PATH-1".
-var pathIDPattern = regexp.MustCompile(`^\d{2}-PATH-\d+$`)
+// pathIDPattern matches valid execution path IDs like "01-PATH-1" or "abc-PATH-1".
+var pathIDPattern = regexp.MustCompile(`^\w+-PATH-\d+$`)
 
-// errorHandlingIDPattern matches valid error handling IDs like "01-ERR-1".
-var errorHandlingIDPattern = regexp.MustCompile(`^\d{2}-ERR-\d+$`)
+// errorHandlingIDPattern matches valid error handling IDs like "01-ERR-1" or "abc-ERR-1".
+var errorHandlingIDPattern = regexp.MustCompile(`^\w+-ERR-\d+$`)
 
-// smokeTestIDPattern matches valid smoke test IDs like "TS-01-SMOKE-1".
-var smokeTestIDPattern = regexp.MustCompile(`^TS-\d{2}-SMOKE-\d+$`)
+// smokeTestIDPattern matches valid smoke test IDs like "TS-01-SMOKE-1" or "TS-abc-SMOKE-1".
+var smokeTestIDPattern = regexp.MustCompile(`^TS-\w+-SMOKE-\d+$`)
 
-// propertyTestIDPattern matches valid property test IDs like "TS-01-P1".
-var propertyTestIDPattern = regexp.MustCompile(`^TS-\d{2}-P\d+$`)
+// propertyTestIDPattern matches valid property test IDs like "TS-01-P1" or "TS-abc-P1".
+var propertyTestIDPattern = regexp.MustCompile(`^TS-\w+-P\d+$`)
 
-// edgeCaseTestIDPattern matches valid edge case test IDs like "TS-01-E1".
-var edgeCaseTestIDPattern = regexp.MustCompile(`^TS-\d{2}-E\d+$`)
+// edgeCaseTestIDPattern matches valid edge case test IDs like "TS-01-E1" or "TS-abc-E1".
+var edgeCaseTestIDPattern = regexp.MustCompile(`^TS-\w+-E\d+$`)
 
-// criterionIDPattern matches valid criterion IDs like "01-REQ-1.1" or "01-REQ-1.E1".
-var criterionIDPattern = regexp.MustCompile(`^\d{2}-REQ-\d+\.\d+$|^\d{2}-REQ-\d+\.E\d+$`)
+// criterionIDPattern matches valid criterion IDs like "01-REQ-1.1", "abc-REQ-1.E1".
+var criterionIDPattern = regexp.MustCompile(`^\w+-REQ-\d+\.\d+$|^\w+-REQ-\d+\.E\d+$`)
 
 // wiringSmokeRefPattern matches smoke test references in wiring_verification
 // group test_spec_refs (e.g. "TS-04-SMOKE-1"). Compiled at package level.

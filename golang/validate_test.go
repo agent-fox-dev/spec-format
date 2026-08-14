@@ -5318,3 +5318,422 @@ func TestValidateCrossFile_CrossFile7_ConsistentBaseSpec(t *testing.T) {
 		t.Errorf("expected no cross_file_7 errors for consistent base spec, got %d: %v", len(cf7), cf7)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #11: ID format regexes accept alphanumeric spec_id prefixes
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_AlphaPrefixIDs verifies that all nine Go ID-format
+// patterns accept alphanumeric (letter-only) spec_id prefixes.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestValidateCrossFile_AlphaPrefixIDs(t *testing.T) {
+	spec := buildSpecWithAlphaPrefix()
+
+	result := spec.ValidateCrossFile()
+
+	// No id_format errors should be present.
+	for _, e := range result.Errors {
+		if e.Check == "id_format" {
+			t.Errorf("unexpected id_format error: %s (path=%s)", e.Message, e.Path)
+		}
+	}
+	if !result.Valid {
+		t.Errorf("ValidateCrossFile().Valid = false, want true for alpha-prefix IDs; errors: %v", result.Errors)
+	}
+}
+
+// TestValidateCrossFile_LongNumericPrefixIDs verifies that ID-format patterns
+// accept numeric prefixes longer than two digits (e.g., "123-REQ-1").
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateCrossFile_LongNumericPrefixIDs(t *testing.T) {
+	spec := buildSpecWithLongNumericPrefix()
+
+	result := spec.ValidateCrossFile()
+
+	for _, e := range result.Errors {
+		if e.Check == "id_format" {
+			t.Errorf("unexpected id_format error: %s (path=%s)", e.Message, e.Path)
+		}
+	}
+}
+
+// TestValidateCrossFile_NoDigitTwoInPatterns verifies that none of the nine
+// ID-format pattern variables contain the literal `\d{2}`.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestValidateCrossFile_NoDigitTwoInPatterns(t *testing.T) {
+	patterns := map[string]string{
+		"requirementIDPattern":   requirementIDPattern.String(),
+		"testCaseIDPattern":      testCaseIDPattern.String(),
+		"propertyIDPattern":      propertyIDPattern.String(),
+		"pathIDPattern":          pathIDPattern.String(),
+		"errorHandlingIDPattern": errorHandlingIDPattern.String(),
+		"smokeTestIDPattern":     smokeTestIDPattern.String(),
+		"propertyTestIDPattern":  propertyTestIDPattern.String(),
+		"edgeCaseTestIDPattern":  edgeCaseTestIDPattern.String(),
+		"criterionIDPattern":     criterionIDPattern.String(),
+	}
+
+	for name, pat := range patterns {
+		if strings.Contains(pat, `\d{2}`) {
+			t.Errorf("%s still contains \\d{2}: %s", name, pat)
+		}
+	}
+}
+
+// TestValidateCrossFile_AlphaPrefixFixture loads the alpha_prefix_spec
+// testdata fixture and verifies Go produces no id_format errors.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestValidateCrossFile_AlphaPrefixFixture(t *testing.T) {
+	spec, err := LoadSpec("./../testdata/alpha_prefix_spec")
+	if err != nil {
+		t.Fatalf("LoadSpec returned unexpected error: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	for _, e := range result.Errors {
+		if e.Check == "id_format" {
+			t.Errorf("unexpected id_format error: %s (path=%s)", e.Message, e.Path)
+		}
+	}
+}
+
+// buildSpecWithAlphaPrefix creates a Spec using letter-only prefix "abc" for
+// all nine ID types: requirement, criterion, edge_case, property, path, error,
+// test_case, property_test, edge_case_test, smoke_test.
+func buildSpecWithAlphaPrefix() *Spec {
+	return &Spec{
+		SpecID:        "abc",
+		SpecName:      "alpha_feature",
+		Title:         "Alpha Feature",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Alpha Feature\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "abc",
+			SpecName:      "alpha_feature",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{"spec": "A specification."},
+			Requirements: []Requirement{
+				{
+					Id:    "abc-REQ-1",
+					Title: "Alpha Prefix Support",
+					UserStory: UserStory{
+						Role:    "developer",
+						Goal:    "use alpha prefixes",
+						Benefit: "flexibility",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "abc-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "accept alpha prefix IDs",
+						},
+					},
+					EdgeCases: []Criterion{
+						{
+							Id:             "abc-REQ-1.E1",
+							EarsPattern:    CriterionEarsPatternUnwanted,
+							ErrorCondition: strPtr("the spec has a malformed ID"),
+							System:         "the system",
+							Action:         "raise validation error",
+							ReturnContract: CriterionReturnContract(strPtr("raises ValidationError")),
+						},
+					},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{
+				{
+					Id:        "abc-PROP-1",
+					Title:     "ID format consistency",
+					ForAny:    "valid Spec with alpha prefix",
+					Invariant: "all IDs match pattern",
+					Validates: []string{"abc-REQ-1.1"},
+				},
+			},
+			ExecutionPaths: []ExecutionPath{
+				{
+					Id:    "abc-PATH-1",
+					Title: "Validate spec with alpha prefix",
+					Steps: []PathStep{
+						{Actor: "consumer", Action: "call validate"},
+						{Actor: "system", Action: "check IDs"},
+					},
+				},
+			},
+			ErrorHandling: []ErrorHandlingEntry{
+				{
+					Id:            "abc-ERR-1",
+					Condition:     "Malformed ID",
+					Behavior:      "Report id_format error",
+					RequirementId: "abc-REQ-1.E1",
+				},
+			},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "abc",
+			SpecName:      "alpha_feature",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-abc-1",
+					RequirementId:       "abc-REQ-1.1",
+					Kind:                "unit",
+					Description:         "Alpha prefix IDs pass validation",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: "assert valid",
+				},
+			},
+			PropertyTests: []PropertyTest{
+				{
+					Id:             "TS-abc-P1",
+					PropertyId:     "abc-PROP-1",
+					Validates:      []string{"abc-REQ-1.1"},
+					Description:    "ID format consistency",
+					ForAnyStrategy: "valid spec with alpha prefix",
+					InvariantCheck: "all IDs match pattern",
+				},
+			},
+			EdgeCaseTests: []EdgeCaseTest{
+				{
+					Id:            "TS-abc-E1",
+					RequirementId: "abc-REQ-1.E1",
+					Kind:          "unit",
+					Description:   "Malformed ID raises error",
+				},
+			},
+			SmokeTests: []SmokeTest{
+				{
+					Id:              "TS-abc-SMOKE-1",
+					ExecutionPathId: "abc-PATH-1",
+					Description:     "Validate end-to-end",
+					Trigger:         "validate_cross_file(spec)",
+					RealComponents:  []string{"validation"},
+					Mockable:        []string{},
+					ExpectedEffects: []string{"valid result"},
+				},
+			},
+			Coverage: Coverage{
+				RequirementsCovered: []string{"abc-REQ-1.1", "abc-REQ-1.E1"},
+				PropertiesCovered:   []string{"abc-PROP-1"},
+				PathsCovered:        []string{"abc-PATH-1"},
+			},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "abc",
+			SpecName:      "alpha_feature",
+			SchemaVersion: 1,
+			TestCommands: TestCommands{
+				SpecTests: "go test ./...",
+				AllTests:  "go test ./...",
+				Linter:    "go vet ./...",
+			},
+			Dependencies: []TaskDependency{},
+			TaskGroups: []TaskGroup{
+				{
+					Id:    1,
+					Kind:  TaskGroupKindTests,
+					Title: "Write failing spec tests",
+					Subtasks: []Subtask{
+						{
+							Id:              "1.1",
+							Title:           "Create test infrastructure",
+							Details:         []string{"Set up tests"},
+							TestSpecRefs:    []string{"TS-abc-1"},
+							RequirementRefs: []string{"abc-REQ-1.1"},
+							State:           SubtaskStatePending,
+							Optional:        false,
+						},
+					},
+					Verification: VerificationSubtask{
+						Id:     "1.V",
+						Checks: []string{"All spec tests pass"},
+					},
+				},
+				{
+					Id:    2,
+					Kind:  TaskGroupKindWiringVerification,
+					Title: "Wiring verification",
+					Subtasks: []Subtask{
+						{
+							Id:              "2.1",
+							Title:           "Stub and dead-code audit",
+							Details:         []string{"Verify all paths"},
+							TestSpecRefs:    []string{"TS-abc-SMOKE-1"},
+							RequirementRefs: []string{"abc-REQ-1.1"},
+							State:           SubtaskStatePending,
+							Optional:        false,
+						},
+					},
+					Verification: VerificationSubtask{
+						Id:     "2.V",
+						Checks: []string{"All smoke tests pass"},
+					},
+				},
+			},
+			Traceability: []TraceabilityEntry{
+				{
+					RequirementId: "abc-REQ-1.1",
+					TestSpecId:    "TS-abc-1",
+					TaskId:        "1.1",
+				},
+			},
+		},
+	}
+}
+
+// buildSpecWithLongNumericPrefix creates a Spec using a 3-digit numeric
+// prefix "123" to verify that prefixes longer than 2 digits are accepted.
+func buildSpecWithLongNumericPrefix() *Spec {
+	return &Spec{
+		SpecID:        "123",
+		SpecName:      "long_numeric_feature",
+		Title:         "Long Numeric Feature",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Long Numeric Feature\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "123",
+			SpecName:      "long_numeric_feature",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{"spec": "A specification."},
+			Requirements: []Requirement{
+				{
+					Id:    "123-REQ-1",
+					Title: "Long Numeric Prefix",
+					UserStory: UserStory{
+						Role:    "developer",
+						Goal:    "use long numeric prefixes",
+						Benefit: "flexibility",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "123-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "accept long numeric prefix IDs",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths: []ExecutionPath{
+				{
+					Id:    "123-PATH-1",
+					Title: "Validate spec with long numeric prefix",
+					Steps: []PathStep{
+						{Actor: "consumer", Action: "call validate"},
+						{Actor: "system", Action: "check IDs"},
+					},
+				},
+			},
+			ErrorHandling: []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "123",
+			SpecName:      "long_numeric_feature",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-123-1",
+					RequirementId:       "123-REQ-1.1",
+					Kind:                "unit",
+					Description:         "Long numeric prefix IDs pass validation",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: "assert valid",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests: []SmokeTest{
+				{
+					Id:              "TS-123-SMOKE-1",
+					ExecutionPathId: "123-PATH-1",
+					Description:     "Validate end-to-end",
+					Trigger:         "validate_cross_file(spec)",
+					RealComponents:  []string{"validation"},
+					Mockable:        []string{},
+					ExpectedEffects: []string{"valid result"},
+				},
+			},
+			Coverage: Coverage{
+				RequirementsCovered: []string{"123-REQ-1.1"},
+				PathsCovered:        []string{"123-PATH-1"},
+			},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "123",
+			SpecName:      "long_numeric_feature",
+			SchemaVersion: 1,
+			TestCommands: TestCommands{
+				SpecTests: "go test ./...",
+				AllTests:  "go test ./...",
+				Linter:    "go vet ./...",
+			},
+			Dependencies: []TaskDependency{},
+			TaskGroups: []TaskGroup{
+				{
+					Id:    1,
+					Kind:  TaskGroupKindTests,
+					Title: "Write failing spec tests",
+					Subtasks: []Subtask{
+						{
+							Id:              "1.1",
+							Title:           "Create test infrastructure",
+							Details:         []string{"Set up tests"},
+							TestSpecRefs:    []string{"TS-123-1"},
+							RequirementRefs: []string{"123-REQ-1.1"},
+							State:           SubtaskStatePending,
+							Optional:        false,
+						},
+					},
+					Verification: VerificationSubtask{
+						Id:     "1.V",
+						Checks: []string{"All spec tests pass"},
+					},
+				},
+				{
+					Id:    2,
+					Kind:  TaskGroupKindWiringVerification,
+					Title: "Wiring verification",
+					Subtasks: []Subtask{
+						{
+							Id:              "2.1",
+							Title:           "Stub and dead-code audit",
+							Details:         []string{"Verify all paths"},
+							TestSpecRefs:    []string{"TS-123-SMOKE-1"},
+							RequirementRefs: []string{"123-REQ-1.1"},
+							State:           SubtaskStatePending,
+							Optional:        false,
+						},
+					},
+					Verification: VerificationSubtask{
+						Id:     "2.V",
+						Checks: []string{"All smoke tests pass"},
+					},
+				},
+			},
+			Traceability: []TraceabilityEntry{
+				{
+					RequirementId: "123-REQ-1.1",
+					TestSpecId:    "TS-123-1",
+					TaskId:        "1.1",
+				},
+			},
+		},
+	}
+}
