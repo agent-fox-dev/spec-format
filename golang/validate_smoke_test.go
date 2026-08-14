@@ -266,16 +266,23 @@ func TestSmoke_ValidateStructuredOutputShape(t *testing.T) {
 		t.Error("output['errors'] is empty, want at least one error entry")
 	}
 
-	// Each error map must contain 'category', 'rule', 'message', 'file', 'path'.
+	// Each error map must contain 'category' and 'message'.
+	// Schema errors additionally have 'artifact'; integrity errors have 'check'.
 	for i, entry := range errSlice {
-		for _, key := range []string{"category", "rule", "message", "file", "path"} {
-			val, exists := entry[key]
-			if !exists {
-				t.Errorf("error[%d] missing key %q", i, key)
-				continue
+		if _, exists := entry["category"]; !exists {
+			t.Errorf("error[%d] missing key 'category'", i)
+		}
+		if _, exists := entry["message"]; !exists {
+			t.Errorf("error[%d] missing key 'message'", i)
+		}
+		cat, _ := entry["category"].(string)
+		if cat == "schema" {
+			if _, exists := entry["artifact"]; !exists {
+				t.Errorf("error[%d] schema error missing 'artifact' key", i)
 			}
-			if _, ok := val.(string); !ok {
-				t.Errorf("error[%d][%q] is %T, want string", i, key, val)
+		} else if cat == "integrity" {
+			if _, exists := entry["check"]; !exists {
+				t.Errorf("error[%d] integrity error missing 'check' key", i)
 			}
 		}
 	}
@@ -301,8 +308,11 @@ func TestSmoke_ValidateStructuredOutputShape(t *testing.T) {
 		t.Error("output['warnings'] is empty, want at least one warning entry")
 	}
 
-	// Each warning map must contain 'message' and 'entity_id'.
+	// Each warning map must contain 'category'="warning", 'message', and 'entity_id'.
 	for i, entry := range warnSlice {
+		if cat, _ := entry["category"].(string); cat != "warning" {
+			t.Errorf("warning[%d] category = %q, want 'warning'", i, cat)
+		}
 		for _, key := range []string{"message", "entity_id"} {
 			if _, exists := entry[key]; !exists {
 				t.Errorf("warning[%d] missing key %q", i, key)

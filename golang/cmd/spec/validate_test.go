@@ -253,9 +253,9 @@ schema_version: 1
 // TestTS08_32_ValidateSingleSpecAllPresent verifies that running
 // spec validate with a SPEC argument checks that all required files
 // (prd.md, requirements.json, test_spec.json, tasks.json) exist,
-// verifies JSON readability, runs ValidateStructured, and emits the
-// ValidationResult as JSON.
-// Covers: TS-08-32, Requirement: 08-REQ-11.1
+// verifies JSON readability, and emits the ValidationResult as JSON.
+// NS-REQ-2: 'ok' key only present when valid=true.
+// Covers: TS-08-32, TS-NS-2, Requirement: 08-REQ-11.1, NS-REQ-2
 func TestTS08_32_ValidateSingleSpecAllPresent(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := setupValidSpec(t, tmpDir, "08_my_spec")
@@ -276,13 +276,26 @@ func TestTS08_32_ValidateSingleSpecAllPresent(t *testing.T) {
 
 	// The result should contain validation result fields.
 	// Exit code depends on whether there are errors.
+	valid, _ := parsed["valid"].(bool)
 	if errorCount, ok := parsed["error_count"].(float64); ok && errorCount > 0 {
 		if err == nil {
 			t.Error("exit code should be 1 when error_count > 0")
 		}
+		// NS-REQ-2: 'ok' key should be absent when invalid.
+		if _, exists := parsed["ok"]; exists {
+			t.Error("output has 'ok' key when valid=false (NS-REQ-2)")
+		}
 	} else {
 		if err != nil {
 			t.Fatalf("Execute() returned error: %v; want exit 0 for valid spec", err)
+		}
+		// NS-REQ-2: 'ok' key should be true when valid.
+		if valid {
+			if okVal, exists := parsed["ok"]; !exists {
+				t.Error("output missing 'ok' key when valid=true (NS-REQ-2)")
+			} else if okBool, isBool := okVal.(bool); !isBool || !okBool {
+				t.Errorf("expected ok=true, got %v (NS-REQ-2)", okVal)
+			}
 		}
 	}
 }
@@ -324,9 +337,9 @@ func TestTS08_32_ValidateSingleSpecExitCodeReflectsErrors(t *testing.T) {
 
 // TestTS08_33_ValidateMultiSpecAggregated verifies that running spec
 // validate without a SPEC argument discovers all specs in the spec
-// directory, validates each with ValidateStructured, aggregates the
-// results, and exits 1 if any spec has errors.
-// Covers: TS-08-33, Requirement: 08-REQ-11.2
+// directory, validates each, wraps per-spec results under a "specs" key,
+// and exits 1 if any spec has errors.
+// Covers: TS-08-33, TS-NS-1, Requirement: 08-REQ-11.2, NS-REQ-1
 func TestTS08_33_ValidateMultiSpecAggregated(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
@@ -381,13 +394,28 @@ func TestTS08_33_ValidateMultiSpecAggregated(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	// Result should contain aggregated validation across both specs.
-	// Verify at least error_count is present and > 0.
-	if errorCount, ok := parsed["error_count"].(float64); !ok || errorCount == 0 {
-		// Check for a nested results structure as an alternative.
-		if _, exists := parsed["results"]; !exists {
-			t.Error("expected error_count > 0 or nested results for multi-spec validation")
-		}
+	// NS-REQ-1: Multi-spec output must have "specs" key with per-spec results.
+	specsMap, ok := parsed["specs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'specs' key to be a map, got %T", parsed["specs"])
+	}
+
+	// Verify per-spec results are keyed by directory name.
+	if _, exists := specsMap["08_spec_a"]; !exists {
+		t.Error("specs map missing '08_spec_a' key (NS-REQ-1)")
+	}
+	if _, exists := specsMap["09_spec_b"]; !exists {
+		t.Error("specs map missing '09_spec_b' key (NS-REQ-1)")
+	}
+
+	// NS-REQ-2: Since invalid, 'ok' key should be absent.
+	if _, exists := parsed["ok"]; exists {
+		t.Error("output has 'ok' key but should be absent when valid=false (NS-REQ-2)")
+	}
+
+	// Verify valid=false at top level.
+	if valid, _ := parsed["valid"].(bool); valid {
+		t.Error("expected valid=false because spec_b is missing tasks.json")
 	}
 }
 
@@ -397,9 +425,9 @@ func TestTS08_33_ValidateMultiSpecAggregated(t *testing.T) {
 
 // TestTS08_34_ValidateCrossSpec verifies that running spec validate
 // with --cross discovers all specs, builds a dependency graph via
-// BuildDependencyGraph, runs ValidateCrossSpec, and emits the merged
-// ValidationResult as JSON.
-// Covers: TS-08-34, TS-NS-5, Requirement: 08-REQ-11.3, NS-REQ-5
+// BuildDependencyGraph, runs ValidateCrossSpec, wraps results under
+// a "specs" key, and includes "ok":true when valid.
+// Covers: TS-08-34, TS-NS-1, TS-NS-2, Requirement: 08-REQ-11.3, NS-REQ-1, NS-REQ-2
 func TestTS08_34_ValidateCrossSpec(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
@@ -422,21 +450,39 @@ func TestTS08_34_ValidateCrossSpec(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	// TS-NS-5 / NS-REQ-5: valid specs should produce exit 0, valid=true, error_count=0.
+	// Valid specs should produce exit 0, valid=true.
 	if err != nil {
 		t.Fatalf("Execute() returned error: %v; want exit 0 when no cross-spec errors\noutput: %s", err, output)
 	}
 	if valid, ok := parsed["valid"].(bool); !ok || !valid {
 		t.Errorf("expected valid=true, got %v", parsed["valid"])
 	}
-	if errorCount, ok := parsed["error_count"].(float64); !ok || errorCount != 0 {
-		t.Errorf("expected error_count=0, got %v", parsed["error_count"])
+
+	// NS-REQ-1: Multi-spec output must have "specs" key with per-spec results.
+	specsMap, ok := parsed["specs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'specs' key to be a map, got %T", parsed["specs"])
+	}
+	if _, exists := specsMap["08_spec_a"]; !exists {
+		t.Error("specs map missing '08_spec_a' key (NS-REQ-1)")
+	}
+	if _, exists := specsMap["09_spec_b"]; !exists {
+		t.Error("specs map missing '09_spec_b' key (NS-REQ-1)")
+	}
+
+	// NS-REQ-2: When valid=true, "ok" key must be present and true.
+	okVal, okExists := parsed["ok"]
+	if !okExists {
+		t.Error("output missing 'ok' key, want 'ok':true when valid=true (NS-REQ-2)")
+	} else if okBool, isBool := okVal.(bool); !isBool || !okBool {
+		t.Errorf("expected ok=true, got %v (NS-REQ-2)", okVal)
 	}
 }
 
 // TestTS_NS1_CrossSpecLibraryChecks verifies that runValidateCross
 // calls afspec.ValidateCrossSpec and surfaces errors from the five
-// cross-spec checks (cross_spec_1 through cross_spec_5).
+// cross-spec checks (cross_spec_1 through cross_spec_5) under the
+// _cross_spec key in the specs map.
 // Covers: TS-NS-1, NS-REQ-1
 func TestTS_NS1_CrossSpecLibraryChecks(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -469,15 +515,27 @@ func TestTS_NS1_CrossSpecLibraryChecks(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	errorCount, ok := parsed["error_count"].(float64)
+	// NS-REQ-1: Multi-spec output must have "specs" key.
+	specsMap, ok := parsed["specs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'specs' key to be a map, got %T", parsed["specs"])
+	}
+
+	// Cross-spec errors should be under _cross_spec key.
+	crossSpecResult, ok := specsMap["_cross_spec"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected '_cross_spec' key in specs map, got %T", specsMap["_cross_spec"])
+	}
+
+	errorCount, ok := crossSpecResult["error_count"].(float64)
 	if !ok || errorCount < 1 {
-		t.Errorf("expected error_count >= 1, got %v", parsed["error_count"])
+		t.Errorf("expected _cross_spec error_count >= 1, got %v", crossSpecResult["error_count"])
 	}
 
 	// Verify the errors array contains the glossary conflict.
-	errorsArr, ok := parsed["errors"].([]any)
+	errorsArr, ok := crossSpecResult["errors"].([]any)
 	if !ok {
-		t.Fatalf("expected errors to be an array, got %T", parsed["errors"])
+		t.Fatalf("expected _cross_spec errors to be an array, got %T", crossSpecResult["errors"])
 	}
 	found := false
 	for _, e := range errorsArr {
@@ -492,12 +550,13 @@ func TestTS_NS1_CrossSpecLibraryChecks(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("expected an error mentioning 'glossary' conflict in errors array")
+		t.Error("expected an error mentioning 'glossary' conflict in _cross_spec errors array")
 	}
 }
 
 // TestTS_NS2_DuplicateReqIDPreserved verifies that the CLI-level
-// duplicate requirement ID check is preserved alongside library checks.
+// duplicate requirement ID check is preserved alongside library checks,
+// surfaced under _cross_spec in the specs map.
 // Covers: TS-NS-2, NS-REQ-2
 func TestTS_NS2_DuplicateReqIDPreserved(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -530,15 +589,27 @@ func TestTS_NS2_DuplicateReqIDPreserved(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	errorCount, ok := parsed["error_count"].(float64)
+	// NS-REQ-1: Multi-spec output must have "specs" key.
+	specsMap, ok := parsed["specs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'specs' key to be a map, got %T", parsed["specs"])
+	}
+
+	// Cross-spec errors should be under _cross_spec key.
+	crossSpecResult, ok := specsMap["_cross_spec"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected '_cross_spec' key in specs map, got %T", specsMap["_cross_spec"])
+	}
+
+	errorCount, ok := crossSpecResult["error_count"].(float64)
 	if !ok || errorCount < 1 {
-		t.Errorf("expected error_count >= 1, got %v", parsed["error_count"])
+		t.Errorf("expected _cross_spec error_count >= 1, got %v", crossSpecResult["error_count"])
 	}
 
 	// Verify the errors array contains a duplicate requirement ID message.
-	errorsArr, ok := parsed["errors"].([]any)
+	errorsArr, ok := crossSpecResult["errors"].([]any)
 	if !ok {
-		t.Fatalf("expected errors to be an array, got %T", parsed["errors"])
+		t.Fatalf("expected _cross_spec errors to be an array, got %T", crossSpecResult["errors"])
 	}
 	found := false
 	for _, e := range errorsArr {
@@ -553,13 +624,13 @@ func TestTS_NS2_DuplicateReqIDPreserved(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("expected an error mentioning 'duplicate requirement ID' in errors array")
+		t.Error("expected an error mentioning 'duplicate requirement ID' in _cross_spec errors array")
 	}
 }
 
 // TestTS_NS3_ValidationEntryMapping verifies that afspec.ValidationEntry
-// fields are correctly mapped to the CLI's validationError struct:
-// Artifact → File, Message → Message, severity = "error".
+// fields are correctly mapped to the CLI's validationError struct under
+// the _cross_spec key in multi-spec mode.
 // Covers: TS-NS-3, NS-REQ-3
 func TestTS_NS3_ValidationEntryMapping(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -587,9 +658,20 @@ func TestTS_NS3_ValidationEntryMapping(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	errorsArr, ok := parsed["errors"].([]any)
+	// NS-REQ-1: Multi-spec output has "specs" key.
+	specsMap, ok := parsed["specs"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected errors to be an array, got %T", parsed["errors"])
+		t.Fatalf("expected 'specs' key to be a map, got %T", parsed["specs"])
+	}
+
+	crossSpecResult, ok := specsMap["_cross_spec"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected '_cross_spec' key in specs map, got %T", specsMap["_cross_spec"])
+	}
+
+	errorsArr, ok := crossSpecResult["errors"].([]any)
+	if !ok {
+		t.Fatalf("expected _cross_spec errors to be an array, got %T", crossSpecResult["errors"])
 	}
 
 	// Each error in the array should have severity="error", non-empty message.
@@ -612,7 +694,7 @@ func TestTS_NS3_ValidationEntryMapping(t *testing.T) {
 
 // TestTS_NS4_LoadSpecFailure verifies that when afspec.LoadSpec() fails
 // (e.g. malformed prd.md frontmatter), the failure is surfaced as a
-// validation error rather than crashing the command.
+// validation error under the specs key rather than crashing the command.
 // Covers: TS-NS-4, NS-REQ-4
 func TestTS_NS4_LoadSpecFailure(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -657,16 +739,27 @@ func TestTS_NS4_LoadSpecFailure(t *testing.T) {
 		t.Error("Execute() returned nil; want exit 1 for malformed prd.md")
 	}
 
-	// (b) stdout should still be valid JSON with error_count > 0.
+	// (b) stdout should still be valid JSON with valid=false.
 	output := stdoutBuf.String()
 	var parsed map[string]any
 	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	errorCount, ok := parsed["error_count"].(float64)
-	if !ok || errorCount < 1 {
-		t.Errorf("expected error_count >= 1, got %v", parsed["error_count"])
+	// NS-REQ-1: Multi-spec output must have "specs" key.
+	specsMap, ok := parsed["specs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'specs' key to be a map, got %T", parsed["specs"])
+	}
+
+	// The malformed spec should have errors in its per-spec result.
+	badResult, ok := specsMap["09_spec_bad"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected '09_spec_bad' key in specs map, got %T", specsMap["09_spec_bad"])
+	}
+
+	if valid, _ := badResult["valid"].(bool); valid {
+		t.Error("expected valid=false for malformed spec")
 	}
 }
 
@@ -674,9 +767,9 @@ func TestTS_NS4_LoadSpecFailure(t *testing.T) {
 //     with only valid, error_count, and warning_count fields ---
 
 // TestTS08_35_ValidateShort verifies that running spec validate with
-// --short emits condensed output containing exactly ok, valid,
-// error_count, and warning_count fields.
-// Covers: TS-08-35, Requirement: 08-REQ-11.4
+// --short emits condensed output containing valid, error_count, and
+// warning_count fields (and ok only when valid).
+// Covers: TS-08-35, TS-NS-2, Requirement: 08-REQ-11.4, NS-REQ-2
 func TestTS08_35_ValidateShort(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := setupValidSpec(t, tmpDir, "08_my_spec")
@@ -697,9 +790,6 @@ func TestTS08_35_ValidateShort(t *testing.T) {
 	}
 
 	// Verify required fields are present.
-	if _, exists := parsed["ok"]; !exists {
-		t.Error("parsed missing 'ok' field")
-	}
 	if _, exists := parsed["valid"]; !exists {
 		t.Error("parsed missing 'valid' field")
 	}
@@ -708,6 +798,18 @@ func TestTS08_35_ValidateShort(t *testing.T) {
 	}
 	if _, exists := parsed["warning_count"]; !exists {
 		t.Error("parsed missing 'warning_count' field")
+	}
+
+	// NS-REQ-2: 'ok' key is only present when valid=true.
+	valid, _ := parsed["valid"].(bool)
+	if valid {
+		if _, exists := parsed["ok"]; !exists {
+			t.Error("parsed missing 'ok' field when valid=true (NS-REQ-2)")
+		}
+	} else {
+		if _, exists := parsed["ok"]; exists {
+			t.Error("parsed has 'ok' field when valid=false (NS-REQ-2)")
+		}
 	}
 
 	// Verify types.
@@ -720,9 +822,9 @@ func TestTS08_35_ValidateShort(t *testing.T) {
 }
 
 // TestTS08_35_ValidateShortFieldsOnly verifies that --short output
-// contains ONLY the condensed fields (ok, valid, error_count,
-// warning_count) and no extra verbose fields like findings or results.
-// Covers: TS-08-35, Requirement: 08-REQ-11.4
+// contains ONLY the condensed fields (valid, error_count, warning_count,
+// and ok when valid) and no extra verbose fields.
+// Covers: TS-08-35, TS-NS-2, Requirement: 08-REQ-11.4, NS-REQ-2
 func TestTS08_35_ValidateShortFieldsOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := setupValidSpec(t, tmpDir, "08_my_spec")
@@ -741,7 +843,7 @@ func TestTS08_35_ValidateShortFieldsOnly(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	// The only allowed keys are: ok, valid, error_count, warning_count.
+	// The only allowed keys are: ok (conditional), valid, error_count, warning_count.
 	allowedKeys := map[string]bool{
 		"ok":            true,
 		"valid":         true,
@@ -750,7 +852,7 @@ func TestTS08_35_ValidateShortFieldsOnly(t *testing.T) {
 	}
 	for key := range parsed {
 		if !allowedKeys[key] {
-			t.Errorf("--short output contains unexpected key %q; want only ok/valid/error_count/warning_count", key)
+			t.Errorf("--short output contains unexpected key %q; want only valid/error_count/warning_count (and ok when valid)", key)
 		}
 	}
 }

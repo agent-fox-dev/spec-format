@@ -1967,40 +1967,69 @@ func ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult {
 
 // ValidateStructured runs full validation and returns a structured
 // map[string]any for CLI consumption, with 'valid', 'errors', and
-// 'warnings' keys matching the Python validate_structured shape.
+// optionally 'warnings' keys matching the Python validate_structured shape.
 //
-// Error maps include: 'category', 'rule', 'message', 'file', 'path'.
-// Warning maps include: 'message', 'entity_id'.
+// Error maps use two distinct shapes based on category:
+//   - Schema errors: {"category": "schema", "artifact": ..., "message": ...}
+//     with optional "path" and "value" fields.
+//   - Integrity errors: {"category": "integrity", "check": ..., "message": ...}
+//
+// Warning maps include: 'category' ("warning"), 'message', 'entity_id'.
+// The 'warnings' key is omitted when no warnings exist.
 // 'valid' is true when errors is empty.
 func (s *Spec) ValidateStructured() map[string]any {
 	result := s.Validate()
 
 	errorMaps := make([]map[string]any, 0, len(result.Errors))
 	for _, e := range result.Errors {
-		entry := map[string]any{
-			"category": e.Category,
-			"rule":     e.Check,
-			"message":  e.Message,
-			"file":     e.Artifact,
-			"path":     e.Path,
+		var entry map[string]any
+		// Use two distinct shapes matching Python's validate_structured:
+		// cross-file/cross-spec rules and integrity-category entries → integrity shape
+		// everything else → schema shape
+		if e.Category == "integrity" ||
+			strings.HasPrefix(e.Check, "cross_file") ||
+			strings.HasPrefix(e.Check, "cross_spec") {
+			entry = map[string]any{
+				"category": "integrity",
+				"check":    e.Check,
+				"message":  e.Message,
+			}
+		} else {
+			entry = map[string]any{
+				"category": "schema",
+				"artifact": e.Artifact,
+				"message":  e.Message,
+			}
+			if e.Path != "" {
+				entry["path"] = e.Path
+			}
+			if e.Value != "" {
+				entry["value"] = e.Value
+			}
 		}
 		errorMaps = append(errorMaps, entry)
 	}
 
-	warningMaps := make([]map[string]any, 0, len(result.Warnings))
-	for _, w := range result.Warnings {
-		entry := map[string]any{
-			"message":   w.Message,
-			"entity_id": w.EntityID,
-		}
-		warningMaps = append(warningMaps, entry)
+	output := map[string]any{
+		"valid":  len(result.Errors) == 0,
+		"errors": errorMaps,
 	}
 
-	return map[string]any{
-		"valid":    len(result.Errors) == 0,
-		"errors":   errorMaps,
-		"warnings": warningMaps,
+	// Only include warnings key when warnings exist (matching Python behavior).
+	if len(result.Warnings) > 0 {
+		warningMaps := make([]map[string]any, 0, len(result.Warnings))
+		for _, w := range result.Warnings {
+			entry := map[string]any{
+				"category":  "warning",
+				"message":   w.Message,
+				"entity_id": w.EntityID,
+			}
+			warningMaps = append(warningMaps, entry)
+		}
+		output["warnings"] = warningMaps
 	}
+
+	return output
 }
 
 // DependencyGraph represents the inter-spec dependency graph built from

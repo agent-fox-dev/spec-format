@@ -28,16 +28,6 @@ type validationResult struct {
 	Errors       []validationError `json:"errors,omitempty"`
 }
 
-// mergeResult merges src into dst in place.
-func mergeResult(dst, src *validationResult) {
-	if !src.Valid {
-		dst.Valid = false
-	}
-	dst.ErrorCount += src.ErrorCount
-	dst.WarningCount += src.WarningCount
-	dst.Errors = append(dst.Errors, src.Errors...)
-}
-
 // newValidateCmd creates the "spec validate" subcommand which validates
 // one or all specs for structural correctness.
 func newValidateCmd() *cobra.Command {
@@ -86,7 +76,8 @@ func runValidateSingle(specDir, specName string, short bool, w interface{ Write(
 	return emitValidationResult(w, result, short)
 }
 
-// runValidateAll discovers all specs and validates each, aggregating results.
+// runValidateAll discovers all specs and validates each, producing
+// per-spec results under a "specs" key matching Python's multi-spec format.
 func runValidateAll(specDir string, short, quiet bool, w interface{ Write([]byte) (int, error) }, cmd *cobra.Command) error {
 	specs, err := discoverSpecDirs(specDir)
 	if err != nil {
@@ -97,18 +88,33 @@ func runValidateAll(specDir string, short, quiet bool, w interface{ Write([]byte
 	spinner.Start()
 	defer spinner.Stop()
 
-	agg := &validationResult{Valid: true}
+	allValid := true
+	specsResults := make(map[string]any, len(specs))
 	for _, sp := range specs {
 		r := validateSpec(sp)
-		mergeResult(agg, r)
+		dirName := filepath.Base(sp)
+		if short {
+			specsResults[dirName] = shortenResult(r)
+		} else {
+			specsResults[dirName] = addCounts(r)
+		}
+		if !r.Valid {
+			allValid = false
+		}
 	}
 
-	return emitValidationResult(w, agg, short)
+	output := map[string]any{
+		"valid": allValid,
+		"specs": specsResults,
+	}
+
+	return emitMultiSpecResult(w, output, allValid)
 }
 
 // runValidateCross discovers all specs, loads them via the library,
 // builds a dependency graph, runs cross-spec validation via
-// afspec.ValidateCrossSpec, and merges results.
+// afspec.ValidateCrossSpec, and produces per-spec results under a
+// "specs" key matching Python's multi-spec format.
 func runValidateCross(specDir string, short, quiet bool, w interface{ Write([]byte) (int, error) }, cmd *cobra.Command) error {
 	specPaths, err := discoverSpecDirs(specDir)
 	if err != nil {
@@ -120,10 +126,19 @@ func runValidateCross(specDir string, short, quiet bool, w interface{ Write([]by
 	defer spinner.Stop()
 
 	// First run per-spec structural validation.
-	agg := &validationResult{Valid: true}
+	allValid := true
+	specsResults := make(map[string]any, len(specPaths))
 	for _, sp := range specPaths {
 		r := validateSpec(sp)
-		mergeResult(agg, r)
+		dirName := filepath.Base(sp)
+		if short {
+			specsResults[dirName] = shortenResult(r)
+		} else {
+			specsResults[dirName] = addCounts(r)
+		}
+		if !r.Valid {
+			allValid = false
+		}
 	}
 
 	// Load all specs via the library and build a dependency graph.
@@ -132,14 +147,19 @@ func runValidateCross(specDir string, short, quiet bool, w interface{ Write([]by
 	for _, sp := range specPaths {
 		spec, loadErr := afspec.LoadSpec(sp)
 		if loadErr != nil {
-			// Surface load failure as a validation error, not a crash.
-			agg.Errors = append(agg.Errors, validationError{
-				File:     filepath.Base(sp),
-				Severity: "error",
-				Message:  fmt.Sprintf("cannot load spec %s: %s", filepath.Base(sp), loadErr),
-			})
-			agg.ErrorCount++
-			agg.Valid = false
+			// Surface load failure as a validation error in the per-spec result.
+			dirName := filepath.Base(sp)
+			specsResults[dirName] = map[string]any{
+				"valid":         false,
+				"error_count":   1,
+				"warning_count": 0,
+				"errors": []validationError{{
+					File:     dirName,
+					Severity: "error",
+					Message:  fmt.Sprintf("cannot load spec %s: %s", dirName, loadErr),
+				}},
+			}
+			allValid = false
 			continue
 		}
 		loadedSpecs = append(loadedSpecs, spec)
@@ -155,25 +175,46 @@ func runValidateCross(specDir string, short, quiet bool, w interface{ Write([]by
 	if len(loadedSpecs) > 0 {
 		graph, _ := afspec.BuildDependencyGraph(metas, specDir)
 		libResult := afspec.ValidateCrossSpec(loadedSpecs, graph)
-		// Map library ValidationEntry errors to CLI validationError structs.
+
+		// Run CLI-level cross-spec check: duplicate requirement IDs.
+		cliResult := validateCrossSpecs(specPaths)
+
+		// Combine cross-spec errors from library and CLI checks.
+		var crossErrors []validationError
 		for _, entry := range libResult.Errors {
-			agg.Errors = append(agg.Errors, validationError{
+			crossErrors = append(crossErrors, validationError{
 				File:     entry.Artifact,
 				Severity: "error",
 				Message:  entry.Message,
 			})
-			agg.ErrorCount++
 		}
-		if !libResult.Valid {
-			agg.Valid = false
+		crossErrors = append(crossErrors, cliResult.Errors...)
+
+		if len(crossErrors) > 0 {
+			allValid = false
+			if short {
+				specsResults["_cross_spec"] = map[string]any{
+					"valid":         false,
+					"error_count":   len(crossErrors),
+					"warning_count": 0,
+				}
+			} else {
+				specsResults["_cross_spec"] = map[string]any{
+					"valid":         false,
+					"error_count":   len(crossErrors),
+					"warning_count": 0,
+					"errors":        crossErrors,
+				}
+			}
 		}
 	}
 
-	// Run CLI-level cross-spec check: duplicate requirement IDs.
-	crossResult := validateCrossSpecs(specPaths)
-	mergeResult(agg, crossResult)
+	output := map[string]any{
+		"valid": allValid,
+		"specs": specsResults,
+	}
 
-	return emitValidationResult(w, agg, short)
+	return emitMultiSpecResult(w, output, allValid)
 }
 
 // validateSpec checks a single spec directory for required files,
@@ -298,23 +339,64 @@ func discoverSpecDirs(specDir string) ([]string, error) {
 	return specs, nil
 }
 
-// emitValidationResult writes the validation result to the writer.
+// shortenResult returns a condensed copy with only valid, error_count, warning_count.
+func shortenResult(r *validationResult) map[string]any {
+	return map[string]any{
+		"valid":         r.Valid,
+		"error_count":   r.ErrorCount,
+		"warning_count": r.WarningCount,
+	}
+}
+
+// addCounts returns a result map with error_count and warning_count added.
+func addCounts(r *validationResult) map[string]any {
+	result := map[string]any{
+		"valid":         r.Valid,
+		"error_count":   r.ErrorCount,
+		"warning_count": r.WarningCount,
+	}
+	if r.Errors != nil {
+		result["errors"] = r.Errors
+	} else {
+		result["errors"] = []validationError{}
+	}
+	return result
+}
+
+// emitMultiSpecResult writes a multi-spec result with the "specs" wrapper.
+// Includes "ok": true only when allValid is true (matching Python emit_ok behavior).
+func emitMultiSpecResult(w interface{ Write([]byte) (int, error) }, output map[string]any, allValid bool) error {
+	if allValid {
+		output["ok"] = true
+	}
+	if err := emitTo(w, output); err != nil {
+		return err
+	}
+	if !allValid {
+		return fmt.Errorf("validation failed")
+	}
+	return nil
+}
+
+// emitValidationResult writes a single-spec validation result to the writer.
 // If short is true, only the condensed fields are emitted.
+// Includes "ok": true only when validation passes (matching Python emit_ok behavior).
 // Returns a non-nil error (for cobra exit code 1) if the result contains errors.
 func emitValidationResult(w interface{ Write([]byte) (int, error) }, result *validationResult, short bool) error {
 	if short {
 		condensed := map[string]any{
-			"ok":            result.Valid,
 			"valid":         result.Valid,
 			"error_count":   result.ErrorCount,
 			"warning_count": result.WarningCount,
+		}
+		if result.Valid {
+			condensed["ok"] = true
 		}
 		if err := emitTo(w, condensed); err != nil {
 			return err
 		}
 	} else {
 		full := map[string]any{
-			"ok":            result.Valid,
 			"valid":         result.Valid,
 			"error_count":   result.ErrorCount,
 			"warning_count": result.WarningCount,
@@ -323,6 +405,9 @@ func emitValidationResult(w interface{ Write([]byte) (int, error) }, result *val
 		// Ensure errors is always an array, never null.
 		if result.Errors == nil {
 			full["errors"] = []validationError{}
+		}
+		if result.Valid {
+			full["ok"] = true
 		}
 		if err := emitTo(w, full); err != nil {
 			return err

@@ -732,8 +732,8 @@ func TestValidateCrossSpec_GlossaryConflict(t *testing.T) {
 
 // TestValidateStructured_ValidSpec verifies that ValidateStructured on a
 // valid spec returns a map with 'valid' true, 'errors' as empty slice,
-// and 'warnings' as empty slice.
-// Test Spec: TS-01-15, Requirement: 01-REQ-8.1, 04-REQ-20.1
+// and 'warnings' key absent (matching Python behavior: omit when empty).
+// Test Spec: TS-01-15, TS-NS-5, Requirement: 01-REQ-8.1, NS-REQ-5
 func TestValidateStructured_ValidSpec(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -760,20 +760,17 @@ func TestValidateStructured_ValidSpec(t *testing.T) {
 		t.Errorf("result['errors'] has %d entries, want 0", len(errs))
 	}
 
-	// 'warnings' key must always be present per 04-REQ-20.1
-	warnings, ok := result["warnings"].([]map[string]any)
-	if !ok {
-		t.Fatalf("result['warnings'] is not []map[string]any, got %T", result["warnings"])
-	}
-	if len(warnings) != 0 {
-		t.Errorf("result['warnings'] has %d entries, want 0 for fully valid spec", len(warnings))
+	// NS-REQ-5: 'warnings' key must be absent when no warnings exist
+	if _, exists := result["warnings"]; exists {
+		t.Error("result has 'warnings' key but should be absent when no warnings exist (NS-REQ-5)")
 	}
 }
 
 // TestValidateStructured_SchemaErrors verifies that ValidateStructured on
 // a spec with schema errors returns a map with 'valid' false and 'errors'
-// entries with 'category', 'rule', 'message', 'file', and 'path' fields.
-// Test Spec: TS-01-16, Requirement: 01-REQ-8.2, 04-REQ-20.2
+// entries with the schema shape: 'category'="schema", 'artifact', 'message',
+// and optional 'path'.
+// Test Spec: TS-01-16, TS-NS-4, Requirement: 01-REQ-8.2, NS-REQ-4
 func TestValidateStructured_SchemaErrors(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -797,28 +794,34 @@ func TestValidateStructured_SchemaErrors(t *testing.T) {
 		t.Fatal("result['errors'] is empty, want at least one entry")
 	}
 
-	e := errs[0]
-	if cat, _ := e["category"].(string); cat != "schema" {
-		t.Errorf("error category = %q, want %q", cat, "schema")
+	// NS-REQ-4: Schema errors use {"category": "schema", "artifact": ..., "message": ...}
+	// with optional "path" and "value".
+	var foundSchema bool
+	for _, e := range errs {
+		if cat, _ := e["category"].(string); cat == "schema" {
+			foundSchema = true
+			if msg, _ := e["message"].(string); msg == "" {
+				t.Error("schema error message is empty, want non-empty")
+			}
+			if _, hasArtifact := e["artifact"]; !hasArtifact {
+				t.Error("schema error map missing 'artifact' key (NS-REQ-4)")
+			}
+			// Schema errors must NOT have 'file' key (uses 'artifact' instead)
+			if _, hasFile := e["file"]; hasFile {
+				t.Error("schema error map has 'file' key, want 'artifact' instead (NS-REQ-4)")
+			}
+			break
+		}
 	}
-	if msg, _ := e["message"].(string); msg == "" {
-		t.Error("error message is empty, want non-empty")
-	}
-	if file, _ := e["file"].(string); file == "" {
-		t.Error("error file is empty, want non-empty")
-	}
-	if _, hasRule := e["rule"]; !hasRule {
-		t.Error("error map missing 'rule' key")
-	}
-	if _, hasPath := e["path"]; !hasPath {
-		t.Error("error map missing 'path' key")
+	if !foundSchema {
+		t.Error("expected at least one error with category='schema'")
 	}
 }
 
 // TestValidateStructured_IntegrityErrors verifies that ValidateStructured
-// on a spec with integrity errors returns entries with 'category'=='integrity',
-// 'rule', 'message', 'file', and 'path' fields.
-// Test Spec: TS-01-17, Requirement: 01-REQ-8.3, 04-REQ-20.2
+// on a spec with integrity errors returns entries with the integrity shape:
+// 'category'="integrity", 'check', 'message' — without 'file'/'path'.
+// Test Spec: TS-01-17, TS-NS-4, Requirement: 01-REQ-8.3, NS-REQ-4
 func TestValidateStructured_IntegrityErrors(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -839,21 +842,24 @@ func TestValidateStructured_IntegrityErrors(t *testing.T) {
 		t.Fatalf("result['errors'] is not []map[string]any, got %T", result["errors"])
 	}
 
+	// NS-REQ-4: Integrity errors use {"category": "integrity", "check": ..., "message": ...}
+	// without 'file'/'path' keys.
 	var found bool
 	for _, e := range errs {
 		if cat, _ := e["category"].(string); cat == "integrity" {
 			found = true
-			if rule, _ := e["rule"].(string); rule == "" {
-				t.Error("integrity error rule is empty, want non-empty")
+			if check, _ := e["check"].(string); check == "" {
+				t.Error("integrity error 'check' is empty, want non-empty")
 			}
 			if msg, _ := e["message"].(string); msg == "" {
 				t.Error("integrity error message is empty, want non-empty")
 			}
-			if _, hasFile := e["file"]; !hasFile {
-				t.Error("integrity error map missing 'file' key")
+			// Integrity errors must NOT have 'file' or 'path' keys
+			if _, hasFile := e["file"]; hasFile {
+				t.Error("integrity error map has 'file' key, should be absent (NS-REQ-4)")
 			}
-			if _, hasPath := e["path"]; !hasPath {
-				t.Error("integrity error map missing 'path' key")
+			if _, hasPath := e["path"]; hasPath {
+				t.Error("integrity error map has 'path' key, should be absent (NS-REQ-4)")
 			}
 			break
 		}
@@ -865,8 +871,8 @@ func TestValidateStructured_IntegrityErrors(t *testing.T) {
 
 // TestValidateStructured_WithWarnings verifies that ValidateStructured on
 // a spec with warnings includes a 'warnings' key with entries containing
-// 'message' and 'entity_id' fields.
-// Test Spec: TS-01-18, Requirement: 01-REQ-8.4, 04-REQ-20.3
+// 'category'="warning", 'message', and 'entity_id' fields.
+// Test Spec: TS-01-18, TS-NS-3, Requirement: 01-REQ-8.4, NS-REQ-3
 func TestValidateStructured_WithWarnings(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -890,7 +896,11 @@ func TestValidateStructured_WithWarnings(t *testing.T) {
 		t.Fatal("result['warnings'] is empty, want at least one entry")
 	}
 
+	// NS-REQ-3: Each warning must have category="warning", message, and entity_id.
 	w := warnings[0]
+	if cat, _ := w["category"].(string); cat != "warning" {
+		t.Errorf("warning category = %q, want %q (NS-REQ-3)", cat, "warning")
+	}
 	if msg, _ := w["message"].(string); msg == "" {
 		t.Error("warning message is empty, want non-empty")
 	}
@@ -899,11 +909,11 @@ func TestValidateStructured_WithWarnings(t *testing.T) {
 	}
 }
 
-// TestValidateStructured_WarningsKeyAlwaysPresent verifies that the
-// 'warnings' key is always present, even when there are no warnings.
-// Per 04-REQ-20.E1, warnings is an empty slice when no warnings exist.
-// Requirement: 01-REQ-8.E1, 04-REQ-20.E1
-func TestValidateStructured_WarningsKeyAlwaysPresent(t *testing.T) {
+// TestValidateStructured_WarningsKeyOmittedWhenEmpty verifies that the
+// 'warnings' key is omitted from ValidateStructured() output when there
+// are no warnings, matching Python's `if warning_dicts: output["warnings"] = warning_dicts`.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestValidateStructured_WarningsKeyOmittedWhenEmpty(t *testing.T) {
 	defer requireImplemented(t)
 
 	spec, err := LoadSpec("./../testdata/valid_spec")
@@ -913,12 +923,9 @@ func TestValidateStructured_WarningsKeyAlwaysPresent(t *testing.T) {
 
 	result := spec.ValidateStructured()
 
-	warnings, ok := result["warnings"].([]map[string]any)
-	if !ok {
-		t.Fatalf("result['warnings'] is not []map[string]any, got %T", result["warnings"])
-	}
-	if len(warnings) != 0 {
-		t.Errorf("result['warnings'] has %d entries, want 0 for spec with no warnings", len(warnings))
+	// NS-REQ-5: 'warnings' key must be absent when there are no warnings.
+	if _, exists := result["warnings"]; exists {
+		t.Error("result has 'warnings' key but should be absent when no warnings exist (NS-REQ-5)")
 	}
 }
 
@@ -4589,9 +4596,10 @@ func TestValidate_Warning_ScopeLimit_ExactlyAtThreshold(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestValidateStructured_OutputShape_ValidKeys verifies that
-// ValidateStructured returns a map with keys 'errors', 'warnings', and
-// 'valid', where 'valid' is true when errors is empty.
-// Test Spec: TS-04-26. Requirements: 04-REQ-20.1, 04-REQ-20.E1, 04-REQ-20.E2.
+// ValidateStructured returns a map with keys 'errors' and 'valid'.
+// 'warnings' key is only present when warnings exist (NS-REQ-5).
+// 'valid' is true when errors is empty.
+// Test Spec: TS-04-26, TS-NS-5. Requirements: 04-REQ-20.1, NS-REQ-5.
 func TestValidateStructured_OutputShape_ValidKeys(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -4601,15 +4609,17 @@ func TestValidateStructured_OutputShape_ValidKeys(t *testing.T) {
 		spec := makeMinimalSpec()
 		output := spec.ValidateStructured()
 
-		// Assert all three keys exist
+		// Assert required keys exist
 		if _, ok := output["valid"]; !ok {
 			t.Fatal("output missing 'valid' key")
 		}
 		if _, ok := output["errors"]; !ok {
 			t.Fatal("output missing 'errors' key")
 		}
-		if _, ok := output["warnings"]; !ok {
-			t.Fatal("output missing 'warnings' key")
+
+		// NS-REQ-5: 'warnings' key must be absent for valid spec with no warnings
+		if _, exists := output["warnings"]; exists {
+			t.Error("output has 'warnings' key but should be absent for valid spec with no warnings (NS-REQ-5)")
 		}
 
 		// Assert types
@@ -4627,14 +4637,6 @@ func TestValidateStructured_OutputShape_ValidKeys(t *testing.T) {
 		}
 		if len(errs) != 0 {
 			t.Errorf("output['errors'] has %d entries, want 0", len(errs))
-		}
-
-		warnings, ok := output["warnings"].([]map[string]any)
-		if !ok {
-			t.Fatalf("output['warnings'] is not []map[string]any, got %T", output["warnings"])
-		}
-		if len(warnings) != 0 {
-			t.Errorf("output['warnings'] has %d entries, want 0", len(warnings))
 		}
 	})
 
@@ -4660,11 +4662,13 @@ func TestValidateStructured_OutputShape_ValidKeys(t *testing.T) {
 	})
 }
 
-// TestValidateStructured_OutputShape_ErrorFields verifies that each error
-// map in ValidateStructured output includes 'category', 'rule', 'message',
-// 'file', and 'path' fields, with 'category' set to 'schema' or 'integrity'
-// as appropriate.
-// Test Spec: TS-04-27. Requirements: 04-REQ-20.2.
+// TestValidateStructured_OutputShape_ErrorFields verifies that error maps
+// in ValidateStructured output use two distinct shapes:
+//   - Schema errors: {"category": "schema", "artifact": ..., "message": ...}
+//     with optional "path" and "value".
+//   - Integrity errors: {"category": "integrity", "check": ..., "message": ...}
+//
+// Test Spec: TS-04-27, TS-NS-4. Requirements: 04-REQ-20.2, NS-REQ-4.
 func TestValidateStructured_OutputShape_ErrorFields(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -4744,20 +4748,29 @@ func TestValidateStructured_OutputShape_ErrorFields(t *testing.T) {
 		t.Fatal("output['errors'] is empty, want at least one entry")
 	}
 
-	// Every error map must contain all 5 keys
+	// Every error map must have 'category' and 'message'.
 	for i, e := range errs {
-		for _, key := range []string{"category", "rule", "message", "file", "path"} {
-			if _, exists := e[key]; !exists {
-				t.Errorf("errors[%d] missing key %q", i, key)
-			}
+		if _, exists := e["category"]; !exists {
+			t.Errorf("errors[%d] missing key 'category'", i)
+		}
+		if _, exists := e["message"]; !exists {
+			t.Errorf("errors[%d] missing key 'message'", i)
 		}
 	}
 
-	// Verify at least one schema error
+	// NS-REQ-4: Verify at least one schema error with distinct shape
 	var hasSchema bool
 	for _, e := range errs {
 		if cat, _ := e["category"].(string); cat == "schema" {
 			hasSchema = true
+			// Schema errors must have 'artifact', not 'file'
+			if _, hasArtifact := e["artifact"]; !hasArtifact {
+				t.Error("schema error missing 'artifact' key (NS-REQ-4)")
+			}
+			// Schema errors must NOT have 'check' key
+			if _, hasCheck := e["check"]; hasCheck {
+				t.Error("schema error has 'check' key, which belongs to integrity shape (NS-REQ-4)")
+			}
 			break
 		}
 	}
@@ -4765,11 +4778,19 @@ func TestValidateStructured_OutputShape_ErrorFields(t *testing.T) {
 		t.Error("expected at least one error with category='schema'")
 	}
 
-	// Verify at least one integrity error
+	// NS-REQ-4: Verify at least one integrity error with distinct shape
 	var hasIntegrity bool
 	for _, e := range errs {
 		if cat, _ := e["category"].(string); cat == "integrity" {
 			hasIntegrity = true
+			// Integrity errors must have 'check', not 'artifact'
+			if _, hasCheck := e["check"]; !hasCheck {
+				t.Error("integrity error missing 'check' key (NS-REQ-4)")
+			}
+			// Integrity errors must NOT have 'artifact' or 'file' keys
+			if _, hasArtifact := e["artifact"]; hasArtifact {
+				t.Error("integrity error has 'artifact' key, which belongs to schema shape (NS-REQ-4)")
+			}
 			break
 		}
 	}
@@ -4779,9 +4800,9 @@ func TestValidateStructured_OutputShape_ErrorFields(t *testing.T) {
 }
 
 // TestValidateStructured_OutputShape_WarningFields verifies that each
-// warning map in ValidateStructured output includes 'message' and
-// 'entity_id' fields with non-empty values.
-// Test Spec: TS-04-28. Requirements: 04-REQ-20.3.
+// warning map in ValidateStructured output includes 'category'="warning",
+// 'message', and 'entity_id' fields with non-empty values.
+// Test Spec: TS-04-28, TS-NS-3. Requirements: 04-REQ-20.3, NS-REQ-3.
 func TestValidateStructured_OutputShape_WarningFields(t *testing.T) {
 	defer requireImplemented(t)
 
@@ -4815,13 +4836,17 @@ func TestValidateStructured_OutputShape_WarningFields(t *testing.T) {
 		t.Fatal("output['warnings'] is empty, want at least one entry")
 	}
 
+	// NS-REQ-3: Each warning must have category="warning", message, entity_id.
 	for i, w := range warnings {
+		if cat, _ := w["category"].(string); cat != "warning" {
+			t.Errorf("warnings[%d] category = %q, want 'warning' (NS-REQ-3)", i, cat)
+		}
 		msg, _ := w["message"].(string)
 		if msg == "" {
 			t.Errorf("warnings[%d] 'message' is empty, want non-empty", i)
 		}
 		if _, hasEntityID := w["entity_id"]; !hasEntityID {
-			t.Errorf("warnings[%d] missing 'entity_id' key", i)
+			t.Errorf("warnings[%d] missing 'entity_id' key (NS-REQ-3)", i)
 		}
 	}
 }
