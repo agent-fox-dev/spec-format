@@ -3,8 +3,10 @@ package spec
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +39,211 @@ func setupValidSpec(t *testing.T, tmpDir, specName string) string {
 	}
 
 	return specDir
+}
+
+// setupLoadableSpec creates a spec directory with valid prd.md frontmatter
+// and JSON artifacts that can be loaded by afspec.LoadSpec(). The specID
+// is extracted from the specName (e.g. "08_spec_a" -> "08"). Additional
+// options can override glossary, requirements, or dependencies.
+type loadableSpecOpts struct {
+	glossary     map[string]string // glossary entries for requirements.json
+	requirements []string          // requirement IDs (default: one per specID)
+	dependencies []string          // depends_on_spec entries for tasks.json
+}
+
+func setupLoadableSpec(t *testing.T, specDir, specName string, opts *loadableSpecOpts) {
+	t.Helper()
+	specPath := filepath.Join(specDir, specName)
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Extract specID from specName (e.g. "08_spec_a" -> "08")
+	specID := strings.SplitN(specName, "_", 2)[0]
+
+	// prd.md with valid frontmatter
+	prd := fmt.Sprintf(`---
+spec_id: "%s"
+spec_name: "%s"
+title: "Test Spec %s"
+status: "draft"
+created_at: "2026-01-01T00:00:00Z"
+updated_at: "2026-01-01T00:00:00Z"
+owner: "test"
+source: ""
+supersedes: []
+tags: []
+intent_hash: null
+schema_version: 1
+---
+# Test Spec %s
+`, specID, specName, specID, specID)
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte(prd), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build glossary JSON
+	glossaryJSON := "{}"
+	if opts != nil && len(opts.glossary) > 0 {
+		parts := make([]string, 0, len(opts.glossary))
+		for k, v := range opts.glossary {
+			parts = append(parts, fmt.Sprintf("%q: %q", k, v))
+		}
+		glossaryJSON = "{" + strings.Join(parts, ", ") + "}"
+	}
+
+	// Build requirements
+	reqID := specID + "-REQ-1"
+	reqIDs := []string{reqID}
+	if opts != nil && len(opts.requirements) > 0 {
+		reqIDs = opts.requirements
+	}
+	reqItems := make([]string, 0, len(reqIDs))
+	for _, id := range reqIDs {
+		reqItems = append(reqItems, fmt.Sprintf(`{
+      "id": %q,
+      "title": "Requirement %s",
+      "user_story": {"role": "dev", "goal": "test", "benefit": "test"},
+      "acceptance_criteria": [{
+        "id": "%s.1",
+        "ears_pattern": "ubiquitous",
+        "system": "the system",
+        "action": "do something",
+        "return_contract": null
+      }],
+      "edge_cases": []
+    }`, id, id, id))
+	}
+
+	// Build traceability
+	traceItems := make([]string, 0, len(reqIDs))
+	testCaseItems := make([]string, 0, len(reqIDs))
+	for i, id := range reqIDs {
+		tcID := fmt.Sprintf("TS-%s-%d", specID, i+1)
+		traceItems = append(traceItems, fmt.Sprintf(`{"requirement_id": "%s.1", "test_spec_id": %q, "task_id": "1.1", "test_path": null}`, id, tcID))
+		testCaseItems = append(testCaseItems, fmt.Sprintf(`{
+      "id": %q,
+      "requirement_id": "%s.1",
+      "kind": "unit",
+      "description": "Test %s",
+      "preconditions": [],
+      "input": {},
+      "expected": {},
+      "assertion_pseudocode": "assert true"
+    }`, tcID, id, id))
+	}
+
+	requirements := fmt.Sprintf(`{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v1.json",
+  "spec_id": %q,
+  "spec_name": %q,
+  "schema_version": 1,
+  "introduction": "Test spec.",
+  "glossary": %s,
+  "requirements": [%s],
+  "correctness_properties": [],
+  "execution_paths": [{
+    "id": "%s-PATH-1",
+    "title": "Main path",
+    "steps": [{"actor": "user", "action": "do"}, {"actor": "system", "action": "respond"}]
+  }],
+  "error_handling": []
+}`, specID, specName, glossaryJSON, strings.Join(reqItems, ",\n"), specID)
+
+	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"), []byte(requirements), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build dependencies JSON
+	depsJSON := "[]"
+	if opts != nil && len(opts.dependencies) > 0 {
+		depItems := make([]string, 0, len(opts.dependencies))
+		for _, dep := range opts.dependencies {
+			depItems = append(depItems, fmt.Sprintf(`{"depends_on_spec": %q, "from_group": 1, "to_group": 1, "relationship": "depends_on"}`, dep))
+		}
+		depsJSON = "[" + strings.Join(depItems, ", ") + "]"
+	}
+
+	testSpec := fmt.Sprintf(`{
+  "$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+  "spec_id": %q,
+  "spec_name": %q,
+  "schema_version": 1,
+  "test_cases": [%s],
+  "property_tests": [],
+  "edge_case_tests": [],
+  "smoke_tests": [{
+    "id": "TS-%s-SMOKE-1",
+    "execution_path_id": "%s-PATH-1",
+    "description": "Smoke test",
+    "trigger": "run",
+    "real_components": ["all"],
+    "mockable": [],
+    "expected_effects": ["works"]
+  }],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}`, specID, specName, strings.Join(testCaseItems, ",\n"), specID, specID)
+
+	if err := os.WriteFile(filepath.Join(specPath, "test_spec.json"), []byte(testSpec), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks := fmt.Sprintf(`{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
+  "spec_id": %q,
+  "spec_name": %q,
+  "schema_version": 1,
+  "test_commands": {"spec_tests": "go test", "all_tests": "go test", "linter": "golint"},
+  "dependencies": %s,
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Tests",
+      "subtasks": [{
+        "id": "1.1",
+        "title": "Write tests",
+        "details": ["test details"],
+        "test_spec_refs": ["TS-%s-1"],
+        "requirement_refs": ["%s.1"],
+        "state": "pending",
+        "optional": false
+      }],
+      "verification": {
+        "id": "1.V",
+        "checks": ["tests pass"]
+      }
+    },
+    {
+      "id": 2,
+      "kind": "wiring_verification",
+      "title": "Wiring",
+      "subtasks": [{
+        "id": "2.1",
+        "title": "Stub and dead-code audit",
+        "details": ["verify stubs removed"],
+        "test_spec_refs": ["TS-%s-SMOKE-1"],
+        "requirement_refs": ["%s.1"],
+        "state": "pending",
+        "optional": false
+      }],
+      "verification": {
+        "id": "2.V",
+        "checks": ["smoke tests pass", "no stubs remain"]
+      }
+    }
+  ],
+  "traceability": [%s]
+}`, specID, specName, depsJSON, specID, reqIDs[0], specID, reqIDs[0], strings.Join(traceItems, ",\n"))
+
+	if err := os.WriteFile(filepath.Join(specPath, "tasks.json"), []byte(tasks), 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // --- TS-08-32: Verify that spec validate with a SPEC argument checks
@@ -192,27 +399,14 @@ func TestTS08_33_ValidateMultiSpecAggregated(t *testing.T) {
 // with --cross discovers all specs, builds a dependency graph via
 // BuildDependencyGraph, runs ValidateCrossSpec, and emits the merged
 // ValidationResult as JSON.
-// Covers: TS-08-34, Requirement: 08-REQ-11.3
+// Covers: TS-08-34, TS-NS-5, Requirement: 08-REQ-11.3, NS-REQ-5
 func TestTS08_34_ValidateCrossSpec(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, ".specs")
 
-	// Create two valid specs with all required files.
-	for _, specName := range []string{"08_spec_a", "09_spec_b"} {
-		specPath := filepath.Join(specDir, specName)
-		if err := os.MkdirAll(specPath, 0755); err != nil {
-			t.Fatal(err)
-		}
-		for _, f := range []string{"prd.md", "requirements.json", "test_spec.json", "tasks.json"} {
-			content := "# PRD for " + specName
-			if f != "prd.md" {
-				content = `{"valid": true}`
-			}
-			if err := os.WriteFile(filepath.Join(specPath, f), []byte(content), 0644); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
+	// Create two valid loadable specs with all required files.
+	setupLoadableSpec(t, specDir, "08_spec_a", nil)
+	setupLoadableSpec(t, specDir, "09_spec_b", nil)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -228,14 +422,251 @@ func TestTS08_34_ValidateCrossSpec(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
 
-	// Verify the result contains cross-spec validation data.
-	// Exit code depends on whether cross-spec errors exist.
-	if errorCount, ok := parsed["error_count"].(float64); ok && errorCount > 0 {
-		if err == nil {
-			t.Error("exit code should be 1 when cross-spec error_count > 0")
+	// TS-NS-5 / NS-REQ-5: valid specs should produce exit 0, valid=true, error_count=0.
+	if err != nil {
+		t.Fatalf("Execute() returned error: %v; want exit 0 when no cross-spec errors\noutput: %s", err, output)
+	}
+	if valid, ok := parsed["valid"].(bool); !ok || !valid {
+		t.Errorf("expected valid=true, got %v", parsed["valid"])
+	}
+	if errorCount, ok := parsed["error_count"].(float64); !ok || errorCount != 0 {
+		t.Errorf("expected error_count=0, got %v", parsed["error_count"])
+	}
+}
+
+// TestTS_NS1_CrossSpecLibraryChecks verifies that runValidateCross
+// calls afspec.ValidateCrossSpec and surfaces errors from the five
+// cross-spec checks (cross_spec_1 through cross_spec_5).
+// Covers: TS-NS-1, NS-REQ-1
+func TestTS_NS1_CrossSpecLibraryChecks(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create two specs with a glossary conflict (same term, different definitions).
+	setupLoadableSpec(t, specDir, "08_spec_a", &loadableSpecOpts{
+		glossary: map[string]string{"widget": "A small UI component"},
+	})
+	setupLoadableSpec(t, specDir, "09_spec_b", &loadableSpecOpts{
+		glossary: map[string]string{"widget": "A mechanical device"},
+	})
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "--cross"})
+
+	err := cmd.Execute()
+
+	// Should exit 1 because of the glossary conflict.
+	if err == nil {
+		t.Fatal("Execute() returned nil; want exit 1 for glossary conflict")
+	}
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	errorCount, ok := parsed["error_count"].(float64)
+	if !ok || errorCount < 1 {
+		t.Errorf("expected error_count >= 1, got %v", parsed["error_count"])
+	}
+
+	// Verify the errors array contains the glossary conflict.
+	errorsArr, ok := parsed["errors"].([]any)
+	if !ok {
+		t.Fatalf("expected errors to be an array, got %T", parsed["errors"])
+	}
+	found := false
+	for _, e := range errorsArr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
 		}
-	} else if err != nil {
-		t.Fatalf("Execute() returned error: %v; want exit 0 when no cross-spec errors", err)
+		msg, _ := em["message"].(string)
+		if strings.Contains(msg, "glossary") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected an error mentioning 'glossary' conflict in errors array")
+	}
+}
+
+// TestTS_NS2_DuplicateReqIDPreserved verifies that the CLI-level
+// duplicate requirement ID check is preserved alongside library checks.
+// Covers: TS-NS-2, NS-REQ-2
+func TestTS_NS2_DuplicateReqIDPreserved(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create two specs sharing a requirement ID "01-REQ-1".
+	setupLoadableSpec(t, specDir, "08_spec_a", &loadableSpecOpts{
+		requirements: []string{"01-REQ-1"},
+	})
+	setupLoadableSpec(t, specDir, "09_spec_b", &loadableSpecOpts{
+		requirements: []string{"01-REQ-1"},
+	})
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "--cross"})
+
+	err := cmd.Execute()
+
+	// Should exit 1 because of the duplicate requirement ID.
+	if err == nil {
+		t.Fatal("Execute() returned nil; want exit 1 for duplicate requirement ID")
+	}
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	errorCount, ok := parsed["error_count"].(float64)
+	if !ok || errorCount < 1 {
+		t.Errorf("expected error_count >= 1, got %v", parsed["error_count"])
+	}
+
+	// Verify the errors array contains a duplicate requirement ID message.
+	errorsArr, ok := parsed["errors"].([]any)
+	if !ok {
+		t.Fatalf("expected errors to be an array, got %T", parsed["errors"])
+	}
+	found := false
+	for _, e := range errorsArr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		msg, _ := em["message"].(string)
+		if strings.Contains(msg, "duplicate requirement ID") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected an error mentioning 'duplicate requirement ID' in errors array")
+	}
+}
+
+// TestTS_NS3_ValidationEntryMapping verifies that afspec.ValidationEntry
+// fields are correctly mapped to the CLI's validationError struct:
+// Artifact → File, Message → Message, severity = "error".
+// Covers: TS-NS-3, NS-REQ-3
+func TestTS_NS3_ValidationEntryMapping(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create specs with a glossary conflict to produce a library validation error.
+	setupLoadableSpec(t, specDir, "08_spec_a", &loadableSpecOpts{
+		glossary: map[string]string{"widget": "A UI component"},
+	})
+	setupLoadableSpec(t, specDir, "09_spec_b", &loadableSpecOpts{
+		glossary: map[string]string{"widget": "A hardware part"},
+	})
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "--cross"})
+
+	_ = cmd.Execute()
+
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	errorsArr, ok := parsed["errors"].([]any)
+	if !ok {
+		t.Fatalf("expected errors to be an array, got %T", parsed["errors"])
+	}
+
+	// Each error in the array should have severity="error", non-empty message.
+	for i, e := range errorsArr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			t.Errorf("errors[%d] is not a map", i)
+			continue
+		}
+		sev, _ := em["severity"].(string)
+		if sev != "error" {
+			t.Errorf("errors[%d]: severity=%q, want 'error'", i, sev)
+		}
+		msg, _ := em["message"].(string)
+		if msg == "" {
+			t.Errorf("errors[%d]: message is empty", i)
+		}
+	}
+}
+
+// TestTS_NS4_LoadSpecFailure verifies that when afspec.LoadSpec() fails
+// (e.g. malformed prd.md frontmatter), the failure is surfaced as a
+// validation error rather than crashing the command.
+// Covers: TS-NS-4, NS-REQ-4
+func TestTS_NS4_LoadSpecFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Create one valid spec.
+	setupLoadableSpec(t, specDir, "08_spec_a", nil)
+
+	// Create a spec with malformed prd.md (no frontmatter delimiters).
+	badPath := filepath.Join(specDir, "09_spec_bad")
+	if err := os.MkdirAll(badPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// prd.md without --- delimiters
+	if err := os.WriteFile(filepath.Join(badPath, "prd.md"),
+		[]byte("No frontmatter here, just text."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badPath, "requirements.json"),
+		[]byte(`{"requirements": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badPath, "test_spec.json"),
+		[]byte(`{"tests": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badPath, "tasks.json"),
+		[]byte(`{"tasks": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "validate", "--cross"})
+
+	err := cmd.Execute()
+
+	// (a) The command should return a non-nil error (exit code 1).
+	if err == nil {
+		t.Error("Execute() returned nil; want exit 1 for malformed prd.md")
+	}
+
+	// (b) stdout should still be valid JSON with error_count > 0.
+	output := stdoutBuf.String()
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(output), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	errorCount, ok := parsed["error_count"].(float64)
+	if !ok || errorCount < 1 {
+		t.Errorf("expected error_count >= 1, got %v", parsed["error_count"])
 	}
 }
 

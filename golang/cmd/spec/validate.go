@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	afspec "github.com/agent-fox-dev/spec-format"
 	"github.com/spf13/cobra"
 )
 
@@ -22,8 +23,8 @@ type validationError struct {
 // validationResult holds the aggregated validation output for one or more specs.
 type validationResult struct {
 	Valid        bool              `json:"valid"`
-	ErrorCount   int              `json:"error_count"`
-	WarningCount int              `json:"warning_count"`
+	ErrorCount   int               `json:"error_count"`
+	WarningCount int               `json:"warning_count"`
 	Errors       []validationError `json:"errors,omitempty"`
 }
 
@@ -105,10 +106,11 @@ func runValidateAll(specDir string, short, quiet bool, w interface{ Write([]byte
 	return emitValidationResult(w, agg, short)
 }
 
-// runValidateCross discovers all specs, builds a dependency graph (simulated),
-// runs cross-spec validation, and merges results.
+// runValidateCross discovers all specs, loads them via the library,
+// builds a dependency graph, runs cross-spec validation via
+// afspec.ValidateCrossSpec, and merges results.
 func runValidateCross(specDir string, short, quiet bool, w interface{ Write([]byte) (int, error) }, cmd *cobra.Command) error {
-	specs, err := discoverSpecDirs(specDir)
+	specPaths, err := discoverSpecDirs(specDir)
 	if err != nil {
 		return fmt.Errorf("cannot discover specs: %w", err)
 	}
@@ -119,13 +121,56 @@ func runValidateCross(specDir string, short, quiet bool, w interface{ Write([]by
 
 	// First run per-spec structural validation.
 	agg := &validationResult{Valid: true}
-	for _, sp := range specs {
+	for _, sp := range specPaths {
 		r := validateSpec(sp)
 		mergeResult(agg, r)
 	}
 
-	// Then run cross-spec checks (dependency graph consistency).
-	crossResult := validateCrossSpecs(specs)
+	// Load all specs via the library and build a dependency graph.
+	var loadedSpecs []*afspec.Spec
+	var metas []afspec.SpecMeta
+	for _, sp := range specPaths {
+		spec, loadErr := afspec.LoadSpec(sp)
+		if loadErr != nil {
+			// Surface load failure as a validation error, not a crash.
+			agg.Errors = append(agg.Errors, validationError{
+				File:     filepath.Base(sp),
+				Severity: "error",
+				Message:  fmt.Sprintf("cannot load spec %s: %s", filepath.Base(sp), loadErr),
+			})
+			agg.ErrorCount++
+			agg.Valid = false
+			continue
+		}
+		loadedSpecs = append(loadedSpecs, spec)
+		metas = append(metas, afspec.SpecMeta{
+			SpecID:   spec.SpecID,
+			SpecName: spec.SpecName,
+			Status:   spec.Status,
+			Dir:      sp,
+		})
+	}
+
+	// Build dependency graph and run library cross-spec validation.
+	if len(loadedSpecs) > 0 {
+		graph, _ := afspec.BuildDependencyGraph(metas, specDir)
+		libResult := afspec.ValidateCrossSpec(loadedSpecs, graph)
+		// Map library ValidationEntry errors to CLI validationError structs.
+		for _, entry := range libResult.Errors {
+			agg.Errors = append(agg.Errors, validationError{
+				File:     entry.Artifact,
+				Severity: "error",
+				Message:  entry.Message,
+			})
+			agg.ErrorCount++
+		}
+		if !libResult.Valid {
+			agg.Valid = false
+		}
+	}
+
+	// Run CLI-level cross-spec check: duplicate requirement IDs.
+	crossResult := validateCrossSpecs(specPaths)
 	mergeResult(agg, crossResult)
 
 	return emitValidationResult(w, agg, short)
@@ -188,10 +233,9 @@ func validateSpec(specPath string) *validationResult {
 	return result
 }
 
-// validateCrossSpecs runs cross-spec consistency checks. In a full
-// implementation this would call ValidateCrossSpec with a dependency
-// graph. Here we check for basic cross-spec consistency: requirement
-// ID uniqueness across specs.
+// validateCrossSpecs runs CLI-level cross-spec consistency checks.
+// This is a supplementary check that detects duplicate requirement IDs
+// across specs, complementing the library's ValidateCrossSpec checks.
 func validateCrossSpecs(specPaths []string) *validationResult {
 	result := &validationResult{Valid: true}
 
