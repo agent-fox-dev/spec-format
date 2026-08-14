@@ -5164,3 +5164,157 @@ func TestCrossFile1_ErrorHandlingDanglingRef(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #12: Cross-file rule 7 — spec ID/name consistency (prd.md source)
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_CrossFile7_SpecIdMismatch verifies that
+// ValidateCrossFile returns errors with Check == "cross_file_7" (not
+// "spec_id_mismatch") when an artifact's spec_id differs from the PRD
+// frontmatter value.
+// Test Spec: TS-NS-1. Requirement: NS-REQ-1.
+func TestValidateCrossFile_CrossFile7_SpecIdMismatch(t *testing.T) {
+	spec := buildCrossFileBaseSpec()
+	spec.Requirements.SpecId = "99" // differs from prd frontmatter "04"
+
+	result := spec.ValidateCrossFile()
+
+	cf7 := filterByCheck(result.Errors, "cross_file_7")
+	if len(cf7) == 0 {
+		t.Fatal("expected at least one cross_file_7 error for spec_id mismatch, got none")
+	}
+
+	// Must NOT use old check name
+	old := filterByCheck(result.Errors, "spec_id_mismatch")
+	if len(old) != 0 {
+		t.Errorf("expected no spec_id_mismatch errors, got %d: %v", len(old), old)
+	}
+}
+
+// TestValidateCrossFile_CrossFile7_SpecNameMismatch verifies that
+// ValidateCrossFile returns errors with Check == "cross_file_7" (not
+// "spec_name_mismatch") when an artifact's spec_name differs from the
+// PRD frontmatter value.
+// Test Spec: TS-NS-2. Requirement: NS-REQ-2.
+func TestValidateCrossFile_CrossFile7_SpecNameMismatch(t *testing.T) {
+	spec := buildCrossFileBaseSpec()
+	spec.TestSpec.SpecName = "wrong_name" // differs from prd frontmatter "test_crossfile"
+
+	result := spec.ValidateCrossFile()
+
+	cf7 := filterByCheck(result.Errors, "cross_file_7")
+	if len(cf7) == 0 {
+		t.Fatal("expected at least one cross_file_7 error for spec_name mismatch, got none")
+	}
+
+	// Must NOT use old check name
+	old := filterByCheck(result.Errors, "spec_name_mismatch")
+	if len(old) != 0 {
+		t.Errorf("expected no spec_name_mismatch errors, got %d: %v", len(old), old)
+	}
+}
+
+// TestValidateCrossFile_CrossFile7_MessageReferencesPrdMd verifies that
+// cross_file_7 error messages reference "prd.md" as the authoritative
+// source and name both the prd value and the artifact value.
+// Test Spec: TS-NS-3. Requirement: NS-REQ-3.
+func TestValidateCrossFile_CrossFile7_MessageReferencesPrdMd(t *testing.T) {
+	spec := buildCrossFileBaseSpec()
+	spec.Requirements.SpecId = "99" // prd has "04"
+
+	result := spec.ValidateCrossFile()
+
+	cf7 := filterByCheck(result.Errors, "cross_file_7")
+	if len(cf7) == 0 {
+		t.Fatal("expected at least one cross_file_7 error, got none")
+	}
+
+	// Find the requirements.json spec_id error
+	var found bool
+	for _, e := range cf7 {
+		if e.Artifact == "requirements.json" && strings.Contains(e.Message, "spec_id") {
+			found = true
+			if !strings.Contains(e.Message, "prd.md") {
+				t.Errorf("cross_file_7 Message %q does not contain 'prd.md'", e.Message)
+			}
+			if !strings.Contains(e.Message, "04") {
+				t.Errorf("cross_file_7 Message %q does not contain prd value '04'", e.Message)
+			}
+			if !strings.Contains(e.Message, "99") {
+				t.Errorf("cross_file_7 Message %q does not contain artifact value '99'", e.Message)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected a cross_file_7 error for requirements.json spec_id, not found")
+	}
+}
+
+// TestValidateCrossFile_CrossFile7_AllThreeArtifacts verifies that
+// all three artifacts (requirements.json, test_spec.json, tasks.json)
+// produce cross_file_7 errors for both spec_id and spec_name mismatches,
+// yielding exactly six errors total.
+// Test Spec: TS-NS-4. Requirement: NS-REQ-4.
+func TestValidateCrossFile_CrossFile7_AllThreeArtifacts(t *testing.T) {
+	spec := buildCrossFileBaseSpec()
+	// Set all artifact spec_id/spec_name to differ from PRD frontmatter
+	spec.Requirements.SpecId = "99"
+	spec.Requirements.SpecName = "wrong_req"
+	spec.TestSpec.SpecId = "98"
+	spec.TestSpec.SpecName = "wrong_ts"
+	spec.Tasks.SpecId = "97"
+	spec.Tasks.SpecName = "wrong_tasks"
+
+	result := spec.ValidateCrossFile()
+
+	cf7 := filterByCheck(result.Errors, "cross_file_7")
+	if len(cf7) != 6 {
+		t.Fatalf("expected exactly 6 cross_file_7 errors, got %d: %v", len(cf7), cf7)
+	}
+
+	// Check all three artifacts are represented
+	artifacts := map[string]int{}
+	for _, e := range cf7 {
+		artifacts[e.Artifact]++
+	}
+	for _, name := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
+		if artifacts[name] != 2 {
+			t.Errorf("expected 2 cross_file_7 errors for %s, got %d", name, artifacts[name])
+		}
+	}
+}
+
+// TestValidateCrossFile_CrossFile7_ConsistentNoCrossFile7 verifies that
+// ValidateCrossFile returns no cross_file_7 errors when all artifacts
+// share the same spec_id and spec_name as the PRD frontmatter.
+// Test Spec: TS-NS-5. Requirement: NS-REQ-5.
+func TestValidateCrossFile_CrossFile7_ConsistentNoCrossFile7(t *testing.T) {
+	// Use the valid_spec fixture
+	spec, err := LoadSpec("./../testdata/valid_spec")
+	if err != nil {
+		t.Fatalf("LoadSpec returned unexpected error: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	cf7 := filterByCheck(result.Errors, "cross_file_7")
+	if len(cf7) != 0 {
+		t.Errorf("expected no cross_file_7 errors for consistent spec, got %d: %v", len(cf7), cf7)
+	}
+}
+
+// TestValidateCrossFile_CrossFile7_ConsistentBaseSpec verifies no
+// cross_file_7 errors on the buildCrossFileBaseSpec helper which has
+// all IDs and names consistent.
+func TestValidateCrossFile_CrossFile7_ConsistentBaseSpec(t *testing.T) {
+	spec := buildCrossFileBaseSpec()
+
+	result := spec.ValidateCrossFile()
+
+	cf7 := filterByCheck(result.Errors, "cross_file_7")
+	if len(cf7) != 0 {
+		t.Errorf("expected no cross_file_7 errors for consistent base spec, got %d: %v", len(cf7), cf7)
+	}
+}

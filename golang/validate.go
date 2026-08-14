@@ -1117,59 +1117,67 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 		}
 	}
 
-	// --- Spec ID/name consistency across artifacts ---
-	if s.Requirements != nil {
-		if s.Requirements.SpecId != s.SpecID {
-			errors = append(errors, ValidationEntry{
-				Category: "integrity",
-				Check:    "spec_id_mismatch",
-				Message:  fmt.Sprintf("requirements.spec_id %q does not match spec ID %q", s.Requirements.SpecId, s.SpecID),
-				Artifact: "requirements.json",
-			})
+	// --- Cross-file rule 7: Spec ID/name consistency across artifacts ---
+	// Compare each artifact's spec_id and spec_name against the PRD
+	// frontmatter values (s.SpecID and s.SpecName). These fields are
+	// populated from prd.md frontmatter by LoadSpec.
+	{
+		prdSpecID := s.SpecID
+		prdSpecName := s.SpecName
+
+		if s.Requirements != nil {
+			if s.Requirements.SpecId != prdSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_7",
+					Message:  fmt.Sprintf("spec_id mismatch: prd.md has '%s' but requirements.json has '%s'", prdSpecID, s.Requirements.SpecId),
+					Artifact: "requirements.json",
+				})
+			}
+			if s.Requirements.SpecName != prdSpecName {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_7",
+					Message:  fmt.Sprintf("spec_name mismatch: prd.md has '%s' but requirements.json has '%s'", prdSpecName, s.Requirements.SpecName),
+					Artifact: "requirements.json",
+				})
+			}
 		}
-		if s.Requirements.SpecName != s.SpecName {
-			errors = append(errors, ValidationEntry{
-				Category: "integrity",
-				Check:    "spec_name_mismatch",
-				Message:  fmt.Sprintf("requirements.spec_name %q does not match spec name %q", s.Requirements.SpecName, s.SpecName),
-				Artifact: "requirements.json",
-			})
+		if s.TestSpec != nil {
+			if s.TestSpec.SpecId != prdSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_7",
+					Message:  fmt.Sprintf("spec_id mismatch: prd.md has '%s' but test_spec.json has '%s'", prdSpecID, s.TestSpec.SpecId),
+					Artifact: "test_spec.json",
+				})
+			}
+			if s.TestSpec.SpecName != prdSpecName {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_7",
+					Message:  fmt.Sprintf("spec_name mismatch: prd.md has '%s' but test_spec.json has '%s'", prdSpecName, s.TestSpec.SpecName),
+					Artifact: "test_spec.json",
+				})
+			}
 		}
-	}
-	if s.TestSpec != nil {
-		if s.TestSpec.SpecId != s.SpecID {
-			errors = append(errors, ValidationEntry{
-				Category: "integrity",
-				Check:    "spec_id_mismatch",
-				Message:  fmt.Sprintf("test_spec.spec_id %q does not match spec ID %q", s.TestSpec.SpecId, s.SpecID),
-				Artifact: "test_spec.json",
-			})
-		}
-		if s.TestSpec.SpecName != s.SpecName {
-			errors = append(errors, ValidationEntry{
-				Category: "integrity",
-				Check:    "spec_name_mismatch",
-				Message:  fmt.Sprintf("test_spec.spec_name %q does not match spec name %q", s.TestSpec.SpecName, s.SpecName),
-				Artifact: "test_spec.json",
-			})
-		}
-	}
-	if s.Tasks != nil {
-		if s.Tasks.SpecId != s.SpecID {
-			errors = append(errors, ValidationEntry{
-				Category: "integrity",
-				Check:    "spec_id_mismatch",
-				Message:  fmt.Sprintf("tasks.spec_id %q does not match spec ID %q", s.Tasks.SpecId, s.SpecID),
-				Artifact: "tasks.json",
-			})
-		}
-		if s.Tasks.SpecName != s.SpecName {
-			errors = append(errors, ValidationEntry{
-				Category: "integrity",
-				Check:    "spec_name_mismatch",
-				Message:  fmt.Sprintf("tasks.spec_name %q does not match spec name %q", s.Tasks.SpecName, s.SpecName),
-				Artifact: "tasks.json",
-			})
+		if s.Tasks != nil {
+			if s.Tasks.SpecId != prdSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_7",
+					Message:  fmt.Sprintf("spec_id mismatch: prd.md has '%s' but tasks.json has '%s'", prdSpecID, s.Tasks.SpecId),
+					Artifact: "tasks.json",
+				})
+			}
+			if s.Tasks.SpecName != prdSpecName {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_file_7",
+					Message:  fmt.Sprintf("spec_name mismatch: prd.md has '%s' but tasks.json has '%s'", prdSpecName, s.Tasks.SpecName),
+					Artifact: "tasks.json",
+				})
+			}
 		}
 	}
 
