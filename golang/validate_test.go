@@ -3560,16 +3560,14 @@ func TestValidateCrossSpec_InterfaceContractMismatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Subtask 2.6: Cross-spec missing boundary coverage rule (04-REQ-13)
-// Test Spec: TS-04-18
+// Subtask 2.6: Cross-spec-5 actor reference existence (Python semantics)
 // ---------------------------------------------------------------------------
 
-// TestValidateCrossSpec_MissingBoundaryCoverage verifies that
-// ValidateCrossSpec produces one integrity error per execution_path whose
-// actor matches a spec_id in the DependencyGraph but lacks a corresponding
-// smoke_test.
-// Test Spec: TS-04-18. Requirements: 04-REQ-13.1, 04-REQ-13.E1, 04-REQ-13.E2.
-func TestValidateCrossSpec_MissingBoundaryCoverage(t *testing.T) {
+// TestValidateCrossSpec_MissingActorReference verifies that ValidateCrossSpec
+// produces a cross_spec_5 error when the downstream spec has no execution
+// path step referencing any actor from the upstream spec's execution paths,
+// and no error when such a reference exists (case-insensitive).
+func TestValidateCrossSpec_MissingActorReference(t *testing.T) {
 	tests := []struct {
 		name           string
 		specs          []*Spec
@@ -3578,50 +3576,59 @@ func TestValidateCrossSpec_MissingBoundaryCoverage(t *testing.T) {
 		wantInMessage  []string // strings expected in error Messages
 	}{
 		{
-			name: "actor_matches_spec_no_smoke_test",
+			name: "downstream_has_no_upstream_actor_reference",
 			specs: func() []*Spec {
 				a := buildSpecA()
 				a.Requirements.ExecutionPaths = []ExecutionPath{
 					{
 						Id: "01-PATH-1", Title: "Path X",
 						Steps: []PathStep{
-							{Actor: "CLI", Action: "do something"},
-							{Actor: "02", Action: "call spec B"},
+							{Actor: "svc-a", Action: "do something"},
+							{Actor: "svc-a", Action: "do more"},
 						},
 					},
 				}
-				a.TestSpec.SmokeTests = []SmokeTest{} // no smoke tests
 				b := buildSpecB()
+				b.Requirements.ExecutionPaths = []ExecutionPath{
+					{
+						Id: "02-PATH-1", Title: "Path Y",
+						Steps: []PathStep{
+							{Actor: "svc-b", Action: "independent work"},
+							{Actor: "svc-b", Action: "more work"},
+						},
+					},
+				}
 				return []*Spec{a, b}
 			}(),
 			graph: &DependencyGraph{Edges: []DependencyEdge{
 				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
 			}},
 			wantErrorCount: 1,
-			wantInMessage:  []string{"01-PATH-1"},
+			wantInMessage:  []string{"02", "01"},
 		},
 		{
-			name: "boundary_covered_by_smoke_test_no_error",
+			name: "downstream_references_upstream_actor_no_error",
 			specs: func() []*Spec {
 				a := buildSpecA()
 				a.Requirements.ExecutionPaths = []ExecutionPath{
 					{
 						Id: "01-PATH-1", Title: "Path X",
 						Steps: []PathStep{
-							{Actor: "CLI", Action: "do something"},
-							{Actor: "02", Action: "call spec B"},
+							{Actor: "svc-a", Action: "do something"},
+							{Actor: "svc-a", Action: "do more"},
 						},
 					},
 				}
-				a.TestSpec.SmokeTests = []SmokeTest{
+				b := buildSpecB()
+				b.Requirements.ExecutionPaths = []ExecutionPath{
 					{
-						Id: "TS-01-SMOKE-1", ExecutionPathId: "01-PATH-1",
-						Description: "smoke boundary", Trigger: "run",
-						ExpectedEffects: []string{"pass"},
-						Mockable: []string{}, RealComponents: []string{"all"},
+						Id: "02-PATH-1", Title: "Path Y",
+						Steps: []PathStep{
+							{Actor: "svc-b", Action: "independent work"},
+							{Actor: "svc-a", Action: "calls upstream"},
+						},
 					},
 				}
-				b := buildSpecB()
 				return []*Spec{a, b}
 			}(),
 			graph: &DependencyGraph{Edges: []DependencyEdge{
@@ -3630,20 +3637,28 @@ func TestValidateCrossSpec_MissingBoundaryCoverage(t *testing.T) {
 			wantErrorCount: 0,
 		},
 		{
-			name: "actor_not_in_graph_no_error",
+			name: "case_insensitive_actor_match_no_error",
 			specs: func() []*Spec {
 				a := buildSpecA()
 				a.Requirements.ExecutionPaths = []ExecutionPath{
 					{
 						Id: "01-PATH-1", Title: "Path X",
 						Steps: []PathStep{
-							{Actor: "CLI", Action: "do something"},
-							{Actor: "unknown_spec", Action: "call unknown"},
+							{Actor: "SVC-A", Action: "do something"},
+							{Actor: "SVC-A", Action: "do more"},
 						},
 					},
 				}
-				a.TestSpec.SmokeTests = []SmokeTest{}
 				b := buildSpecB()
+				b.Requirements.ExecutionPaths = []ExecutionPath{
+					{
+						Id: "02-PATH-1", Title: "Path Y",
+						Steps: []PathStep{
+							{Actor: "svc-b", Action: "work"},
+							{Actor: "svc-a", Action: "calls upstream (case differs)"},
+						},
+					},
+				}
 				return []*Spec{a, b}
 			}(),
 			graph: &DependencyGraph{Edges: []DependencyEdge{
@@ -3652,10 +3667,31 @@ func TestValidateCrossSpec_MissingBoundaryCoverage(t *testing.T) {
 			wantErrorCount: 0,
 		},
 		{
-			name: "no_execution_paths_no_error",
+			name: "upstream_has_no_execution_paths_no_error",
 			specs: func() []*Spec {
 				a := buildSpecA()
-				// No execution paths
+				// No execution paths for upstream
+				b := buildSpecB()
+				b.Requirements.ExecutionPaths = []ExecutionPath{
+					{
+						Id: "02-PATH-1", Title: "Path Y",
+						Steps: []PathStep{
+							{Actor: "svc-b", Action: "work"},
+							{Actor: "svc-b", Action: "more work"},
+						},
+					},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0,
+		},
+		{
+			name: "no_execution_paths_at_all_no_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
 				b := buildSpecB()
 				return []*Spec{a, b}
 			}(),
@@ -3693,6 +3729,209 @@ func TestValidateCrossSpec_MissingBoundaryCoverage(t *testing.T) {
 				if !found {
 					t.Errorf("expected %q in error Message, not found", want)
 				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #14: Glossary conflict scope — all spec pairs, not just edges
+// Test Spec: TS-NS-1. Requirements: NS-REQ-1.
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossSpec_GlossaryConflictNoEdge verifies that glossary
+// conflict detection fires for spec pairs with no dependency edge.
+func TestValidateCrossSpec_GlossaryConflictNoEdge(t *testing.T) {
+	// Three specs: A (01), B (02), C (03).
+	// A and C define 'widget' differently but share NO dependency edge.
+	// B is connected to A by an edge.
+	specA := buildSpecA() // has glossary "widget": "A UI component."
+	specB := buildSpecB()
+	specC := &Spec{
+		SpecID:        "03",
+		SpecName:      "spec_c",
+		Title:         "Spec C",
+		Status:        "active",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Spec C\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "03",
+			SpecName:              "spec_c",
+			SchemaVersion:         1,
+			Introduction:          "Spec C.",
+			Glossary:              RequirementsV1JsonGlossary{"widget": "A physical knob."},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "03",
+			SpecName:      "spec_c",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "03",
+			SpecName:      "spec_c",
+			SchemaVersion: 1,
+			TestCommands: TestCommands{
+				SpecTests: "go test ./...",
+				AllTests:  "go test ./...",
+				Linter:    "go vet ./...",
+			},
+			Dependencies: []TaskDependency{},
+			TaskGroups:   []TaskGroup{},
+			Traceability: []TraceabilityEntry{},
+		},
+	}
+
+	// Only edge: A→B. No edge between A and C.
+	graph := &DependencyGraph{
+		Edges: []DependencyEdge{
+			{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+		},
+	}
+
+	result := ValidateCrossSpec([]*Spec{specA, specB, specC}, graph)
+	glossaryErrors := filterByCheck(result.Errors, "glossary_conflict")
+
+	if len(glossaryErrors) < 1 {
+		t.Fatalf("expected at least 1 glossary_conflict error, got %d", len(glossaryErrors))
+	}
+
+	// Verify that the A/C conflict is detected (both spec IDs mentioned).
+	found := false
+	for _, e := range glossaryErrors {
+		if strings.Contains(e.Message, "01") && strings.Contains(e.Message, "03") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a glossary_conflict error mentioning spec 01 and spec 03; got: %v", glossaryErrors)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #14: cross-spec-4 set-based contract comparison
+// Test Spec: TS-NS-4. Requirements: NS-REQ-4.
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossSpec_ContractSetOverlap verifies that cross-spec-4 treats
+// return_contract values as sets and errors only when sets are disjoint.
+func TestValidateCrossSpec_ContractSetOverlap(t *testing.T) {
+	tests := []struct {
+		name           string
+		specs          []*Spec
+		graph          *DependencyGraph
+		wantErrorCount int
+	}{
+		{
+			name: "overlapping_contract_sets_no_error",
+			specs: func() []*Spec {
+				// Upstream has two criteria for Foo with contracts "int" and "error"
+				a := buildSpecA()
+				a.Requirements.Requirements = []Requirement{
+					{
+						Id: "01-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "01-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("int"),
+							},
+							{
+								Id: "01-REQ-1.2", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo` on error",
+								ReturnContract: strPtr("error"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				// Downstream has one criterion for Foo with contract "int"
+				b := buildSpecB()
+				b.Requirements.Requirements = []Requirement{
+					{
+						Id: "02-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "02-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("int"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 0, // sets {"int","error"} and {"int"} overlap on "int"
+		},
+		{
+			name: "disjoint_contract_sets_produces_error",
+			specs: func() []*Spec {
+				a := buildSpecA()
+				a.Requirements.Requirements = []Requirement{
+					{
+						Id: "01-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "01-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("int"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				b := buildSpecB()
+				b.Requirements.Requirements = []Requirement{
+					{
+						Id: "02-REQ-1", Title: "Req 1",
+						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
+						AcceptanceCriteria: []Criterion{
+							{
+								Id: "02-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+								System: "the system", Action: "call `Foo`",
+								ReturnContract: strPtr("string"),
+							},
+						},
+						EdgeCases: []Criterion{},
+					},
+				}
+				return []*Spec{a, b}
+			}(),
+			graph: &DependencyGraph{Edges: []DependencyEdge{
+				{FromSpec: "01", ToSpec: "02", FromGroup: 1, ToGroup: 1, Relationship: "depends_on"},
+			}},
+			wantErrorCount: 1, // sets {"int"} and {"string"} are disjoint
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ValidateCrossSpec(tt.specs, tt.graph)
+			errors := filterByCheck(result.Errors, "cross_spec_4")
+
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("cross_spec_4 error count = %d, want %d; errors: %v",
+					len(errors), tt.wantErrorCount, errors)
 			}
 		})
 	}

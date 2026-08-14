@@ -1721,27 +1721,14 @@ func ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult {
 		specByID[s.SpecID] = s
 	}
 
-	// Build a set of spec IDs that interact via dependency edges
 	type specPair struct{ a, b string }
-	interacting := map[specPair]bool{}
-	if graph != nil {
-		for _, edge := range graph.Edges {
-			interacting[specPair{edge.FromSpec, edge.ToSpec}] = true
-			interacting[specPair{edge.ToSpec, edge.FromSpec}] = true
-		}
-	}
 
-	// Check glossary conflicts between interacting specs
+	// Check glossary conflicts between ALL spec pairs (not just
+	// dependency-connected), matching the Python cross-spec-2 semantics.
 	for i := 0; i < len(specs); i++ {
 		for j := i + 1; j < len(specs); j++ {
 			specA := specs[i]
 			specB := specs[j]
-
-			// Only check interacting specs (connected by dependency edges)
-			pair := specPair{specA.SpecID, specB.SpecID}
-			if !interacting[pair] {
-				continue
-			}
 
 			if specA.Requirements == nil || specB.Requirements == nil {
 				continue
@@ -1825,17 +1812,19 @@ func ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult {
 
 	// --- Cross-spec rule 4: Interface contract mismatch ---
 	// Extract backtick-wrapped terms from criterion action fields paired with
-	// their return_contract values. Along each DependencyEdge, compare shared
-	// symbol contracts between upstream and downstream specs.
+	// their return_contract values as sets. Along each DependencyEdge, compare
+	// shared symbol contract sets between upstream and downstream specs.
+	// Error only when the sets are disjoint (no common contract value),
+	// matching Python's cross-spec-4 semantics.
 	if graph != nil {
-		// Build per-spec maps of backtick term -> return_contract.
+		// Build per-spec maps of backtick term -> set of return_contracts.
 		// Only include terms where the criterion has a non-nil return_contract.
-		specContracts := make(map[string]map[string]string) // specID -> (term -> contract)
+		specContracts := make(map[string]map[string]map[string]bool) // specID -> (term -> set of contracts)
 		for _, spec := range specs {
 			if spec.Requirements == nil {
 				continue
 			}
-			contracts := map[string]string{}
+			contracts := map[string]map[string]bool{}
 			for _, req := range spec.Requirements.Requirements {
 				for _, ac := range req.AcceptanceCriteria {
 					if ac.ReturnContract == nil {
@@ -1843,7 +1832,10 @@ func ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult {
 					}
 					matches := backtickTermRe.FindAllStringSubmatch(ac.Action, -1)
 					for _, m := range matches {
-						contracts[m[1]] = string(*ac.ReturnContract)
+						if contracts[m[1]] == nil {
+							contracts[m[1]] = map[string]bool{}
+						}
+						contracts[m[1]][string(*ac.ReturnContract)] = true
 					}
 				}
 				for _, ec := range req.EdgeCases {
@@ -1852,14 +1844,17 @@ func ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult {
 					}
 					matches := backtickTermRe.FindAllStringSubmatch(ec.Action, -1)
 					for _, m := range matches {
-						contracts[m[1]] = string(*ec.ReturnContract)
+						if contracts[m[1]] == nil {
+							contracts[m[1]] = map[string]bool{}
+						}
+						contracts[m[1]][string(*ec.ReturnContract)] = true
 					}
 				}
 			}
 			specContracts[spec.SpecID] = contracts
 		}
 
-		// Check along dependency edges for mismatched contracts.
+		// Check along dependency edges for disjoint contract sets.
 		processedRule4 := map[specPair]bool{}
 		for _, edge := range graph.Edges {
 			pair := specPair{edge.FromSpec, edge.ToSpec}
@@ -1875,66 +1870,87 @@ func ValidateCrossSpec(specs []*Spec, graph *DependencyGraph) ValidationResult {
 				continue
 			}
 
-			for term, upContract := range upstreamContracts {
-				if downContract, ok := downstreamContracts[term]; ok && upContract != downContract {
+			for term, upSet := range upstreamContracts {
+				downSet, ok := downstreamContracts[term]
+				if !ok {
+					continue
+				}
+				// Check if sets overlap (any common value)
+				hasOverlap := false
+				for contract := range upSet {
+					if downSet[contract] {
+						hasOverlap = true
+						break
+					}
+				}
+				if !hasOverlap {
 					errors = append(errors, ValidationEntry{
 						Category: "integrity",
 						Check:    "cross_spec_4",
-						Message:  fmt.Sprintf("symbol %q has mismatched return_contract between spec %s (%s) and spec %s (%s)", term, edge.FromSpec, upContract, edge.ToSpec, downContract),
+						Message:  fmt.Sprintf("symbol %q has mismatched return_contract between spec %s and spec %s", term, edge.FromSpec, edge.ToSpec),
 					})
 				}
 			}
 		}
 	}
 
-	// --- Cross-spec rule 5: Missing boundary coverage ---
-	// For each execution_path in each spec, extract actor names from path
-	// steps. If an actor matches a spec_id present in the DependencyGraph,
-	// check that a smoke_test covers the boundary (by execution_path_id).
+	// --- Cross-spec rule 5: Missing actor reference in downstream spec ---
+	// For each dependency edge, collect actor names from the upstream spec's
+	// execution path steps. Then check that the downstream spec has at least
+	// one execution path with a step referencing one of those upstream actors
+	// (case-insensitive). This matches the Python cross-spec-5 semantics.
 	if graph != nil {
-		// Build set of all spec IDs present in the dependency graph.
-		graphSpecIDs := map[string]bool{}
+		processedRule5 := map[specPair]bool{}
 		for _, edge := range graph.Edges {
-			graphSpecIDs[edge.FromSpec] = true
-			graphSpecIDs[edge.ToSpec] = true
-		}
-
-		for _, spec := range specs {
-			if spec.Requirements == nil {
+			pair := specPair{edge.FromSpec, edge.ToSpec}
+			if processedRule5[pair] {
 				continue
 			}
-			for _, ep := range spec.Requirements.ExecutionPaths {
-				// Collect unique boundary actors for this path.
-				boundaryActors := map[string]bool{}
+			processedRule5[pair] = true
+
+			upstream := specByID[edge.FromSpec]
+			downstream := specByID[edge.ToSpec]
+			if upstream == nil || downstream == nil {
+				continue
+			}
+			if upstream.Requirements == nil || downstream.Requirements == nil {
+				continue
+			}
+
+			// Collect all actors from upstream execution path steps (lowercased).
+			upstreamActors := map[string]bool{}
+			for _, ep := range upstream.Requirements.ExecutionPaths {
 				for _, step := range ep.Steps {
-					if step.Actor != spec.SpecID && graphSpecIDs[step.Actor] {
-						boundaryActors[step.Actor] = true
+					if step.Actor != "" {
+						upstreamActors[strings.ToLower(step.Actor)] = true
 					}
 				}
-				if len(boundaryActors) == 0 {
-					continue
-				}
+			}
+			if len(upstreamActors) == 0 {
+				continue
+			}
 
-				// Check if a smoke test covers this execution path.
-				covered := false
-				if spec.TestSpec != nil {
-					for _, sm := range spec.TestSpec.SmokeTests {
-						if sm.ExecutionPathId == ep.Id {
-							covered = true
-							break
-						}
+			// Check if downstream has at least one execution path step
+			// referencing any upstream actor (case-insensitive).
+			found := false
+			for _, ep := range downstream.Requirements.ExecutionPaths {
+				for _, step := range ep.Steps {
+					if step.Actor != "" && upstreamActors[strings.ToLower(step.Actor)] {
+						found = true
+						break
 					}
 				}
+				if found {
+					break
+				}
+			}
 
-				if !covered {
-					for actor := range boundaryActors {
-						errors = append(errors, ValidationEntry{
-							Category: "integrity",
-							Check:    "cross_spec_5",
-							Message:  fmt.Sprintf("execution path %s crosses spec boundary to %s but has no covering smoke test", ep.Id, actor),
-						})
-					}
-				}
+			if !found {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "cross_spec_5",
+					Message:  fmt.Sprintf("spec %s depends on spec %s but has no execution path with a step referencing an actor from spec %s", edge.ToSpec, edge.FromSpec, edge.FromSpec),
+				})
 			}
 		}
 	}
