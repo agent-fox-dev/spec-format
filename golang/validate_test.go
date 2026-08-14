@@ -5737,3 +5737,477 @@ func buildSpecWithLongNumericPrefix() *Spec {
 		},
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #7: ID prefix validation and duplicate detection
+// ---------------------------------------------------------------------------
+
+// TestValidateCrossFile_PrefixMismatchRequirements verifies that
+// ValidateCrossFile returns an id_format error when a requirement ID
+// has a prefix that does not match the artifact's spec_id.
+// Test Spec: TS-NS-1. Requirement: NS-REQ-1.
+func TestValidateCrossFile_PrefixMismatchRequirements(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "02-REQ-1", // prefix '02' does not match spec_id '01'
+					Title: "Mismatched prefix",
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-01-1",
+					RequirementId:       "01-REQ-1.1",
+					Kind:                "unit",
+					Description:         "test",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	idFormatErrors := filterByCheck(result.Errors, "id_format")
+	var found bool
+	for _, e := range idFormatErrors {
+		if strings.Contains(e.Message, "02") && strings.Contains(e.Message, "01") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected id_format error mentioning prefix '02' and spec_id '01', got errors: %v", idFormatErrors)
+	}
+}
+
+// TestValidateCrossFile_PrefixMismatchTestSpec verifies that
+// ValidateCrossFile returns an id_format error when a test case ID
+// has a prefix that does not match the test_spec's spec_id.
+// Test Spec: TS-NS-2. Requirement: NS-REQ-2.
+func TestValidateCrossFile_PrefixMismatchTestSpec(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Req 1",
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-02-1", // prefix '02' does not match spec_id '01'
+					RequirementId:       "01-REQ-1.1",
+					Kind:                "unit",
+					Description:         "test",
+					Preconditions:       []string{},
+					Expected:            "pass",
+					AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	idFormatErrors := filterByCheck(result.Errors, "id_format")
+	var found bool
+	for _, e := range idFormatErrors {
+		if strings.Contains(e.Message, "TS-02-1") && strings.Contains(e.Message, "01") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected id_format error mentioning 'TS-02-1' and spec_id '01', got errors: %v", idFormatErrors)
+	}
+}
+
+// TestValidateCrossFile_DuplicateRequirementIDs verifies that
+// ValidateCrossFile returns an id_format error when two requirements
+// share the same ID.
+// Test Spec: TS-NS-3. Requirement: NS-REQ-3.
+func TestValidateCrossFile_DuplicateRequirementIDs(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Req 1",
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+				{
+					Id:    "01-REQ-1", // duplicate
+					Title: "Req 1 duplicate",
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.2",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do another thing",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id: "TS-01-1", RequirementId: "01-REQ-1.1",
+					Kind: "unit", Description: "test", Preconditions: []string{},
+					Expected: "pass", AssertionPseudocode: "assert true",
+				},
+				{
+					Id: "TS-01-2", RequirementId: "01-REQ-1.2",
+					Kind: "unit", Description: "test2", Preconditions: []string{},
+					Expected: "pass", AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	idFormatErrors := filterByCheck(result.Errors, "id_format")
+	var found bool
+	for _, e := range idFormatErrors {
+		if strings.Contains(strings.ToLower(e.Message), "duplicate") && strings.Contains(e.Message, "01-REQ-1") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected id_format error with 'duplicate' and '01-REQ-1', got errors: %v", idFormatErrors)
+	}
+}
+
+// TestValidateCrossFile_DuplicateCriterionIDsPerRequirement verifies that
+// duplicate criterion IDs are detected per-requirement (not across
+// requirements). The same criterion ID in different requirements should NOT
+// produce an error.
+// Test Spec: TS-NS-4. Requirement: NS-REQ-4.
+func TestValidateCrossFile_DuplicateCriterionIDsPerRequirement(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Req 1",
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something",
+						},
+						{
+							Id:          "01-REQ-1.1", // duplicate within same requirement
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do something else",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+				{
+					Id:    "01-REQ-2",
+					Title: "Req 2",
+					UserStory: UserStory{
+						Role: "dev", Goal: "test", Benefit: "validation",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "01-REQ-1.1", // same ID but different requirement — NOT a duplicate
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "do third thing",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases: []TestCase{
+				{
+					Id: "TS-01-1", RequirementId: "01-REQ-1.1",
+					Kind: "unit", Description: "test", Preconditions: []string{},
+					Expected: "pass", AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	// Count duplicate id_format errors for '01-REQ-1.1'
+	idFormatErrors := filterByCheck(result.Errors, "id_format")
+	dupCount := 0
+	for _, e := range idFormatErrors {
+		if strings.Contains(strings.ToLower(e.Message), "duplicate") && strings.Contains(e.Message, "01-REQ-1.1") {
+			dupCount++
+		}
+	}
+
+	// Exactly one duplicate error: within the first requirement.
+	// The same ID in the second requirement does NOT produce an error
+	// because Python uses per-requirement seen sets.
+	if dupCount != 1 {
+		t.Errorf("expected exactly 1 duplicate id_format error for '01-REQ-1.1', got %d; errors: %v", dupCount, idFormatErrors)
+	}
+}
+
+// TestValidateCrossFile_ValidIDsNoPrefixOrDuplicateErrors verifies that
+// a fully valid spec with correct prefixes and unique IDs produces no
+// id_format errors.
+// Test Spec: TS-NS-5. Requirement: NS-REQ-5.
+func TestValidateCrossFile_ValidIDsNoPrefixOrDuplicateErrors(t *testing.T) {
+	spec, err := LoadSpec("./../testdata/valid_spec")
+	if err != nil {
+		t.Fatalf("LoadSpec returned unexpected error: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	idFormatErrors := filterByCheck(result.Errors, "id_format")
+	if len(idFormatErrors) != 0 {
+		t.Errorf("expected no id_format errors on valid spec, got %d: %v", len(idFormatErrors), idFormatErrors)
+	}
+}
+
+// TestExtractReqPrefix verifies the helper function for extracting
+// spec_id prefixes from requirement-like IDs.
+func TestExtractReqPrefix(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"01-REQ-1", "01"},
+		{"abc-REQ-1.1", "abc"},
+		{"01-PROP-1", "01"},
+		{"01-PATH-1", "01"},
+		{"01-ERR-1", "01"},
+		{"myspec-REQ-1.E1", "myspec"},
+		{"bad-format-no-marker", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			got := extractReqPrefix(tt.id)
+			if got != tt.want {
+				t.Errorf("extractReqPrefix(%q) = %q, want %q", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestExtractTestPrefix verifies the helper function for extracting
+// spec_id prefixes from test-like IDs.
+func TestExtractTestPrefix(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"TS-01-1", "01"},
+		{"TS-abc-1", "abc"},
+		{"TS-01-SMOKE-1", "01"},
+		{"TS-01-P1", "01"},
+		{"TS-01-E1", "01"},
+		{"not-a-ts-id", ""},
+		{"TS-", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			got := extractTestPrefix(tt.id)
+			if got != tt.want {
+				t.Errorf("extractTestPrefix(%q) = %q, want %q", tt.id, got, tt.want)
+			}
+		})
+	}
+}

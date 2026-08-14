@@ -424,6 +424,42 @@ var vagueLanguageRe = regexp.MustCompile(`(?i)\b(appropriate|appropriately|prope
 // Used for 04-REQ-17 to detect error paths that should have a return_contract.
 var errorKeywordRe = regexp.MustCompile(`(?i)\b(error|fail|invalid|reject)\b`)
 
+// extractReqPrefix extracts the spec_id prefix from a requirement-like ID
+// (e.g. "01-REQ-1" → "01", "abc-PROP-1" → "abc"). It searches for markers
+// -REQ-, -PROP-, -PATH-, -ERR- and returns the text before the first match.
+// Returns "" if no marker is found.
+func extractReqPrefix(entityID string) string {
+	for _, marker := range []string{"-REQ-", "-PROP-", "-PATH-", "-ERR-"} {
+		idx := strings.Index(entityID, marker)
+		if idx > 0 {
+			return entityID[:idx]
+		}
+	}
+	return ""
+}
+
+// extractTestPrefix extracts the spec_id prefix from a test-like ID
+// (e.g. "TS-01-1" → "01", "TS-abc-SMOKE-1" → "abc"). It strips the
+// leading "TS-" then finds the first marker (-SMOKE-, -P, -E) or falls
+// back to the last dash to isolate the prefix.
+// Returns "" if no prefix can be extracted.
+func extractTestPrefix(entityID string) string {
+	if !strings.HasPrefix(entityID, "TS-") {
+		return ""
+	}
+	remainder := entityID[3:]
+	for _, marker := range []string{"-SMOKE-", "-P", "-E"} {
+		idx := strings.Index(remainder, marker)
+		if idx > 0 {
+			return remainder[:idx]
+		}
+	}
+	if lastDash := strings.LastIndex(remainder, "-"); lastDash > 0 {
+		return remainder[:lastDash]
+	}
+	return ""
+}
+
 // ValidateCrossFile checks dangling references, coverage gaps, glossary
 // completeness, and ID format validity across all artifacts and returns
 // a ValidationResult.
@@ -529,7 +565,11 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	}
 
 	// --- ID format validation ---
+	// Validates regex format, spec_id prefix match, and duplicate detection
+	// within scoped seen sets (matching Python _validate_id_formats).
 	if s.Requirements != nil {
+		reqSpecID := s.Requirements.SpecId
+		seenReqs := map[string]bool{}
 		for _, req := range s.Requirements.Requirements {
 			if !requirementIDPattern.MatchString(req.Id) {
 				errors = append(errors, ValidationEntry{
@@ -540,6 +580,27 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: req.Id,
 				})
 			}
+			if prefix := extractReqPrefix(req.Id); prefix != "" && prefix != reqSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("requirement ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", req.Id, prefix, reqSpecID),
+					Artifact: "requirements.json",
+					EntityID: req.Id,
+				})
+			}
+			if seenReqs[req.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate requirement ID '%s'", req.Id),
+					Artifact: "requirements.json",
+					EntityID: req.Id,
+				})
+			}
+			seenReqs[req.Id] = true
+
+			seenCriteria := map[string]bool{}
 			for _, ac := range req.AcceptanceCriteria {
 				if !criterionIDPattern.MatchString(ac.Id) {
 					errors = append(errors, ValidationEntry{
@@ -550,7 +611,28 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 						EntityID: ac.Id,
 					})
 				}
+				if prefix := extractReqPrefix(ac.Id); prefix != "" && prefix != reqSpecID {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "id_format",
+						Message:  fmt.Sprintf("criterion ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", ac.Id, prefix, reqSpecID),
+						Artifact: "requirements.json",
+						EntityID: ac.Id,
+					})
+				}
+				if seenCriteria[ac.Id] {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "id_format",
+						Message:  fmt.Sprintf("Duplicate criterion ID '%s'", ac.Id),
+						Artifact: "requirements.json",
+						EntityID: ac.Id,
+					})
+				}
+				seenCriteria[ac.Id] = true
 			}
+
+			seenEdgeCases := map[string]bool{}
 			for _, ec := range req.EdgeCases {
 				if !criterionIDPattern.MatchString(ec.Id) {
 					errors = append(errors, ValidationEntry{
@@ -561,8 +643,28 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 						EntityID: ec.Id,
 					})
 				}
+				if prefix := extractReqPrefix(ec.Id); prefix != "" && prefix != reqSpecID {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "id_format",
+						Message:  fmt.Sprintf("edge_case ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", ec.Id, prefix, reqSpecID),
+						Artifact: "requirements.json",
+						EntityID: ec.Id,
+					})
+				}
+				if seenEdgeCases[ec.Id] {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "id_format",
+						Message:  fmt.Sprintf("Duplicate edge_case ID '%s'", ec.Id),
+						Artifact: "requirements.json",
+						EntityID: ec.Id,
+					})
+				}
+				seenEdgeCases[ec.Id] = true
 			}
 		}
+		seenProps := map[string]bool{}
 		for _, cp := range s.Requirements.CorrectnessProperties {
 			if !propertyIDPattern.MatchString(cp.Id) {
 				errors = append(errors, ValidationEntry{
@@ -573,7 +675,27 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: cp.Id,
 				})
 			}
+			if prefix := extractReqPrefix(cp.Id); prefix != "" && prefix != reqSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("property ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", cp.Id, prefix, reqSpecID),
+					Artifact: "requirements.json",
+					EntityID: cp.Id,
+				})
+			}
+			if seenProps[cp.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate property ID '%s'", cp.Id),
+					Artifact: "requirements.json",
+					EntityID: cp.Id,
+				})
+			}
+			seenProps[cp.Id] = true
 		}
+		seenPaths := map[string]bool{}
 		for _, ep := range s.Requirements.ExecutionPaths {
 			if !pathIDPattern.MatchString(ep.Id) {
 				errors = append(errors, ValidationEntry{
@@ -584,7 +706,27 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: ep.Id,
 				})
 			}
+			if prefix := extractReqPrefix(ep.Id); prefix != "" && prefix != reqSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("path ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", ep.Id, prefix, reqSpecID),
+					Artifact: "requirements.json",
+					EntityID: ep.Id,
+				})
+			}
+			if seenPaths[ep.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate path ID '%s'", ep.Id),
+					Artifact: "requirements.json",
+					EntityID: ep.Id,
+				})
+			}
+			seenPaths[ep.Id] = true
 		}
+		seenErrors := map[string]bool{}
 		for _, eh := range s.Requirements.ErrorHandling {
 			if !errorHandlingIDPattern.MatchString(eh.Id) {
 				errors = append(errors, ValidationEntry{
@@ -595,6 +737,25 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: eh.Id,
 				})
 			}
+			if prefix := extractReqPrefix(eh.Id); prefix != "" && prefix != reqSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("error ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", eh.Id, prefix, reqSpecID),
+					Artifact: "requirements.json",
+					EntityID: eh.Id,
+				})
+			}
+			if seenErrors[eh.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate error ID '%s'", eh.Id),
+					Artifact: "requirements.json",
+					EntityID: eh.Id,
+				})
+			}
+			seenErrors[eh.Id] = true
 		}
 	}
 
@@ -602,6 +763,8 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	coveredReqIDs := map[string]bool{}
 
 	if s.TestSpec != nil {
+		tsSpecID := s.TestSpec.SpecId
+		seenTestCases := map[string]bool{}
 		for _, tc := range s.TestSpec.TestCases {
 			if !testCaseIDPattern.MatchString(tc.Id) {
 				errors = append(errors, ValidationEntry{
@@ -612,6 +775,25 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: tc.Id,
 				})
 			}
+			if prefix := extractTestPrefix(tc.Id); prefix != "" && prefix != tsSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("test_case ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", tc.Id, prefix, tsSpecID),
+					Artifact: "test_spec.json",
+					EntityID: tc.Id,
+				})
+			}
+			if seenTestCases[tc.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate test_case ID '%s'", tc.Id),
+					Artifact: "test_spec.json",
+					EntityID: tc.Id,
+				})
+			}
+			seenTestCases[tc.Id] = true
 			// Check dangling requirement reference
 			if tc.RequirementId != "" && !reqIDs[tc.RequirementId] {
 				errors = append(errors, ValidationEntry{
@@ -628,6 +810,7 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 			}
 		}
 
+		seenPropertyTests := map[string]bool{}
 		for _, pt := range s.TestSpec.PropertyTests {
 			if !propertyTestIDPattern.MatchString(pt.Id) {
 				errors = append(errors, ValidationEntry{
@@ -638,6 +821,25 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: pt.Id,
 				})
 			}
+			if prefix := extractTestPrefix(pt.Id); prefix != "" && prefix != tsSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("property_test ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", pt.Id, prefix, tsSpecID),
+					Artifact: "test_spec.json",
+					EntityID: pt.Id,
+				})
+			}
+			if seenPropertyTests[pt.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate property_test ID '%s'", pt.Id),
+					Artifact: "test_spec.json",
+					EntityID: pt.Id,
+				})
+			}
+			seenPropertyTests[pt.Id] = true
 			// Check dangling property reference
 			if pt.PropertyId != "" && !propIDs[pt.PropertyId] {
 				errors = append(errors, ValidationEntry{
@@ -650,6 +852,7 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 			}
 		}
 
+		seenEdgeCaseTests := map[string]bool{}
 		for _, ec := range s.TestSpec.EdgeCaseTests {
 			if !edgeCaseTestIDPattern.MatchString(ec.Id) {
 				errors = append(errors, ValidationEntry{
@@ -660,6 +863,25 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: ec.Id,
 				})
 			}
+			if prefix := extractTestPrefix(ec.Id); prefix != "" && prefix != tsSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("edge_case_test ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", ec.Id, prefix, tsSpecID),
+					Artifact: "test_spec.json",
+					EntityID: ec.Id,
+				})
+			}
+			if seenEdgeCaseTests[ec.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate edge_case_test ID '%s'", ec.Id),
+					Artifact: "test_spec.json",
+					EntityID: ec.Id,
+				})
+			}
+			seenEdgeCaseTests[ec.Id] = true
 			// Check dangling requirement reference
 			if ec.RequirementId != "" && !reqIDs[ec.RequirementId] {
 				errors = append(errors, ValidationEntry{
@@ -676,6 +898,7 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 			}
 		}
 
+		seenSmokeTests := map[string]bool{}
 		for _, sm := range s.TestSpec.SmokeTests {
 			if !smokeTestIDPattern.MatchString(sm.Id) {
 				errors = append(errors, ValidationEntry{
@@ -686,6 +909,25 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					EntityID: sm.Id,
 				})
 			}
+			if prefix := extractTestPrefix(sm.Id); prefix != "" && prefix != tsSpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("smoke_test ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", sm.Id, prefix, tsSpecID),
+					Artifact: "test_spec.json",
+					EntityID: sm.Id,
+				})
+			}
+			if seenSmokeTests[sm.Id] {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("Duplicate smoke_test ID '%s'", sm.Id),
+					Artifact: "test_spec.json",
+					EntityID: sm.Id,
+				})
+			}
+			seenSmokeTests[sm.Id] = true
 			// Check dangling execution path reference
 			if sm.ExecutionPathId != "" && !pathIDs[sm.ExecutionPathId] {
 				errors = append(errors, ValidationEntry{
