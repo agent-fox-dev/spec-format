@@ -4052,3 +4052,268 @@ func TestValidateStructured_ValidFlagConsistency(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// EARS constraint validation tests (issue #5)
+// ---------------------------------------------------------------------------
+
+// buildEarsSpec is a helper that creates a minimal Spec with a single
+// requirement containing the given acceptance criteria.
+func buildEarsSpec(criteria []Criterion) *Spec {
+	return &Spec{
+		SpecID:        "01",
+		SpecName:      "test_ears",
+		Title:         "Test EARS",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:        "01",
+			SpecName:      "test_ears",
+			SchemaVersion: 1,
+			Introduction:  "Test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "01-REQ-1",
+					Title: "Test requirement",
+					UserStory: UserStory{
+						Role:    "dev",
+						Goal:    "test",
+						Benefit: "testing",
+					},
+					AcceptanceCriteria: criteria,
+					EdgeCases:          []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test_ears",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test_ears",
+			SchemaVersion: 1,
+			TestCommands: TestCommands{
+				SpecTests: "go test ./...",
+				AllTests:  "go test ./...",
+				Linter:    "go vet ./...",
+			},
+			Dependencies: []TaskDependency{},
+			TaskGroups:   []TaskGroup{},
+			Traceability: []TraceabilityEntry{},
+		},
+	}
+}
+
+// TS-NS-1: Valid EARS field combinations produce no EARS constraint errors.
+// Requirement: NS-REQ-1
+func TestValidateSchema_EarsConstraints_ValidCombinations(t *testing.T) {
+	criteria := []Criterion{
+		{
+			Id:          "01-REQ-1.1",
+			EarsPattern: CriterionEarsPatternUbiquitous,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			// ubiquitous: no pattern fields required
+		},
+		{
+			Id:          "01-REQ-1.2",
+			EarsPattern: CriterionEarsPatternEventDriven,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			Trigger:     strPtr("When user clicks"),
+		},
+		{
+			Id:          "01-REQ-1.3",
+			EarsPattern: CriterionEarsPatternComplexEvent,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			Trigger:     strPtr("When user clicks"),
+			Condition:   strPtr("while logged in"),
+		},
+		{
+			Id:          "01-REQ-1.4",
+			EarsPattern: CriterionEarsPatternStateDriven,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			State:       strPtr("while in state A"),
+		},
+		{
+			Id:          "01-REQ-1.5",
+			EarsPattern: CriterionEarsPatternUnwanted,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			ErrorCondition: strPtr("if error occurs"),
+			ReturnContract: CriterionReturnContract(strPtr("returns error")),
+		},
+		{
+			Id:          "01-REQ-1.6",
+			EarsPattern: CriterionEarsPatternOptional,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			Feature:     strPtr("where feature F is enabled"),
+		},
+	}
+
+	spec := buildEarsSpec(criteria)
+	result := spec.ValidateSchema()
+
+	// Filter for ears_constraint errors only
+	var earsErrors []ValidationEntry
+	for _, e := range result.Errors {
+		if e.Check == "ears_constraint" {
+			earsErrors = append(earsErrors, e)
+		}
+	}
+
+	if len(earsErrors) != 0 {
+		for _, e := range earsErrors {
+			t.Errorf("unexpected EARS constraint error: %s", e.Message)
+		}
+	}
+}
+
+// TS-NS-2: Missing required field produces a schema-category error.
+// Requirement: NS-REQ-2
+func TestValidateSchema_EarsConstraints_MissingRequired(t *testing.T) {
+	criteria := []Criterion{
+		{
+			Id:          "01-REQ-1.1",
+			EarsPattern: CriterionEarsPatternEventDriven,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			// Trigger is nil — required for event_driven
+		},
+	}
+
+	spec := buildEarsSpec(criteria)
+	result := spec.ValidateSchema()
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Category == "schema" &&
+			strings.Contains(e.Message, "trigger") &&
+			strings.Contains(e.Message, "01-REQ-1.1") {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("expected schema error mentioning 'trigger' and '01-REQ-1.1', got errors: %v", result.Errors)
+	}
+}
+
+// TS-NS-3: Forbidden field set produces a schema-category error.
+// Requirement: NS-REQ-3
+func TestValidateSchema_EarsConstraints_ForbiddenField(t *testing.T) {
+	criteria := []Criterion{
+		{
+			Id:          "01-REQ-1.1",
+			EarsPattern: CriterionEarsPatternUbiquitous,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			Trigger:     strPtr("some trigger"), // forbidden for ubiquitous
+		},
+	}
+
+	spec := buildEarsSpec(criteria)
+	result := spec.ValidateSchema()
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Category == "schema" &&
+			strings.Contains(e.Message, "trigger") &&
+			strings.Contains(e.Message, "must not have") &&
+			strings.Contains(e.Message, "01-REQ-1.1") {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("expected schema error mentioning 'trigger', 'must not have', and '01-REQ-1.1', got errors: %v", result.Errors)
+	}
+}
+
+// TS-NS-4: Invalid ears_pattern value produces a schema-category error.
+// Requirement: NS-REQ-4
+func TestValidateSchema_EarsConstraints_InvalidPattern(t *testing.T) {
+	criteria := []Criterion{
+		{
+			Id:          "01-REQ-1.1",
+			EarsPattern: CriterionEarsPattern("bogus"),
+			Action:      "the system SHALL do X",
+			System:      "system",
+		},
+	}
+
+	spec := buildEarsSpec(criteria)
+	result := spec.ValidateSchema()
+
+	if result.Valid {
+		t.Fatal("expected Valid=false for invalid ears_pattern")
+	}
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Category == "schema" &&
+			strings.Contains(e.Message, "bogus") {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("expected schema error mentioning 'bogus', got errors: %v", result.Errors)
+	}
+}
+
+// TS-NS-5: EARS constraint validation is wired into Validate().
+// Requirement: NS-REQ-5
+func TestValidate_EarsConstraints_WiredIntoValidate(t *testing.T) {
+	criteria := []Criterion{
+		{
+			Id:          "01-REQ-1.1",
+			EarsPattern: CriterionEarsPatternEventDriven,
+			Action:      "the system SHALL do X",
+			System:      "system",
+			// Trigger is nil — required for event_driven
+		},
+	}
+
+	spec := buildEarsSpec(criteria)
+	result := spec.Validate()
+
+	if result.Valid {
+		t.Fatal("expected Validate().Valid=false for event_driven criterion missing trigger")
+	}
+
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e.Message, "trigger") &&
+			strings.Contains(e.Message, "01-REQ-1.1") {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("expected Validate() error mentioning 'trigger' and '01-REQ-1.1', got errors: %v", result.Errors)
+	}
+}

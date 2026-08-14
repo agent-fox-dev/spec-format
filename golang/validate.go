@@ -246,10 +246,129 @@ func (s *Spec) ValidateSchema() ValidationResult {
 		allErrors = append(allErrors, errs...)
 	}
 
+	// Validate EARS pattern field constraints on criteria
+	if s.Requirements != nil {
+		allErrors = append(allErrors, validateEarsConstraints(s.Requirements)...)
+	}
+
 	return ValidationResult{
 		Valid:  len(allErrors) == 0,
 		Errors: allErrors,
 	}
+}
+
+// ---------------------------------------------------------------------------
+// EARS pattern field constraint validation
+// ---------------------------------------------------------------------------
+
+// earsRequiredFields maps each valid EARS pattern to its required
+// pattern-specific fields, matching the Python _EARS_REQUIRED_FIELDS.
+var earsRequiredFields = map[CriterionEarsPattern][]string{
+	CriterionEarsPatternUbiquitous:  {},
+	CriterionEarsPatternEventDriven: {"trigger"},
+	CriterionEarsPatternComplexEvent: {"trigger", "condition"},
+	CriterionEarsPatternStateDriven: {"state"},
+	CriterionEarsPatternUnwanted:    {"error_condition"},
+	CriterionEarsPatternOptional:    {"feature"},
+}
+
+// allPatternFields is the set of all pattern-specific fields on a Criterion.
+var allPatternFields = []string{"trigger", "condition", "error_condition", "state", "feature"}
+
+// criterionFieldValue returns the *string value of the named
+// pattern-specific field on the given Criterion.
+func criterionFieldValue(c *Criterion, field string) *string {
+	switch field {
+	case "trigger":
+		return c.Trigger
+	case "condition":
+		return c.Condition
+	case "error_condition":
+		return c.ErrorCondition
+	case "state":
+		return c.State
+	case "feature":
+		return c.Feature
+	default:
+		return nil
+	}
+}
+
+// validateEarsConstraints checks that each criterion's pattern-specific
+// fields match the required set for its ears_pattern. For each criterion:
+//   - Required fields must be non-nil
+//   - Forbidden fields (not required) must be nil
+//   - The ears_pattern value must be one of the six valid enum values
+//
+// This mirrors the Python _validate_ears_constraints function.
+func validateEarsConstraints(req *RequirementsV1Json) []ValidationEntry {
+	var errors []ValidationEntry
+
+	for _, r := range req.Requirements {
+		type criteriaGroup struct {
+			criteria []Criterion
+			listName string
+		}
+		groups := []criteriaGroup{
+			{r.AcceptanceCriteria, "acceptance_criteria"},
+			{r.EdgeCases, "edge_cases"},
+		}
+
+		for _, g := range groups {
+			for idx, c := range g.criteria {
+				pattern := c.EarsPattern
+
+				required, ok := earsRequiredFields[pattern]
+				if !ok {
+					errors = append(errors, ValidationEntry{
+						Category: "schema",
+						Check:    "ears_constraint",
+						Message:  fmt.Sprintf("Criterion %s: invalid ears_pattern value %q", c.Id, string(pattern)),
+						Artifact: "requirements.json",
+						Path:     fmt.Sprintf("requirements.%s.%s[%d].ears_pattern", r.Id, g.listName, idx),
+					})
+					continue
+				}
+
+				// Build set of required field names for quick lookup.
+				requiredSet := make(map[string]bool, len(required))
+				for _, f := range required {
+					requiredSet[f] = true
+				}
+
+				// Check required fields are present (non-nil).
+				for _, field := range required {
+					if criterionFieldValue(&c, field) == nil {
+						errors = append(errors, ValidationEntry{
+							Category: "schema",
+							Check:    "ears_constraint",
+							Message:  fmt.Sprintf("Criterion %s: pattern %q requires field '%s' but it is missing", c.Id, string(pattern), field),
+							Artifact: "requirements.json",
+							Path:     fmt.Sprintf("requirements.%s.%s[%d].%s", r.Id, g.listName, idx, field),
+						})
+					}
+				}
+
+				// Check forbidden fields are nil.
+				for _, field := range allPatternFields {
+					if requiredSet[field] {
+						continue
+					}
+					if criterionFieldValue(&c, field) != nil {
+						errors = append(errors, ValidationEntry{
+							Category: "schema",
+							Check:    "ears_constraint",
+							Message:  fmt.Sprintf("Criterion %s: pattern %q must not have field '%s' but it is set", c.Id, string(pattern), field),
+							Artifact: "requirements.json",
+							Path:     fmt.Sprintf("requirements.%s.%s[%d].%s", r.Id, g.listName, idx, field),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return errors
 }
 
 // ---------------------------------------------------------------------------
