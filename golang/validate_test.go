@@ -3904,7 +3904,7 @@ func TestValidate_Warning_VagueLanguageDetection(t *testing.T) {
 			UserStory: UserStory{Role: "developer", Goal: "detect vagueness", Benefit: "clarity"},
 			AcceptanceCriteria: []Criterion{{
 				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous, System: "the system",
-				Action: "handle appropriately", Trigger: strPtr("properly configured"), ReturnContract: nil,
+				Action: "handle appropriate cases", Trigger: strPtr("properly configured"), ReturnContract: nil,
 			}},
 			EdgeCases: []Criterion{},
 		},
@@ -3913,12 +3913,12 @@ func TestValidate_Warning_VagueLanguageDetection(t *testing.T) {
 	var vagueWarnings []ValidationEntry
 	for _, w := range result.Warnings {
 		lower := strings.ToLower(w.Message)
-		if strings.Contains(lower, "appropriately") || strings.Contains(lower, "properly") {
+		if strings.Contains(lower, "appropriate") || strings.Contains(lower, "properly") {
 			vagueWarnings = append(vagueWarnings, w)
 		}
 	}
 	if len(vagueWarnings) != 2 {
-		t.Errorf("expected 2 vague warnings (appropriately + properly), got %d: %v", len(vagueWarnings), vagueWarnings)
+		t.Errorf("expected 2 vague warnings (appropriate + properly), got %d: %v", len(vagueWarnings), vagueWarnings)
 	}
 }
 
@@ -3941,7 +3941,7 @@ func TestValidate_Warning_VagueLanguageDetection_MultipleOccurrences(t *testing.
 			UserStory: UserStory{Role: "dev", Goal: "detect", Benefit: "clarity"},
 			AcceptanceCriteria: []Criterion{{
 				Id: "04-REQ-2.1", EarsPattern: CriterionEarsPatternUbiquitous, System: "sys",
-				Action: "provide adequate response with sufficient detail", ReturnContract: nil,
+				Action: "provide adequate response with reasonable detail", ReturnContract: nil,
 			}},
 			EdgeCases: []Criterion{},
 		},
@@ -3950,7 +3950,7 @@ func TestValidate_Warning_VagueLanguageDetection_MultipleOccurrences(t *testing.
 	var vagueWarnings []ValidationEntry
 	for _, w := range result.Warnings {
 		lower := strings.ToLower(w.Message)
-		if strings.Contains(lower, "correctly") || strings.Contains(lower, "adequate") || strings.Contains(lower, "sufficient") {
+		if strings.Contains(lower, "correctly") || strings.Contains(lower, "adequate") || strings.Contains(lower, "reasonable") {
 			vagueWarnings = append(vagueWarnings, w)
 		}
 	}
@@ -3988,15 +3988,144 @@ func TestValidate_Warning_VagueLanguageRegexPackageLevel(t *testing.T) {
 	if vagueLanguageRe == nil {
 		t.Fatal("vagueLanguageRe is nil; expected package-level compiled regex")
 	}
-	for _, term := range []string{"appropriate", "properly", "correctly", "adequate", "sufficient"} {
+	// All Python-aligned vague terms must match.
+	for _, term := range []string{"appropriate", "properly", "correctly", "reasonable", "relevant", "adequate", "suitable", "as needed", "if necessary", "etc"} {
 		if !vagueLanguageRe.MatchString(term) {
 			t.Errorf("vagueLanguageRe should match %q", term)
 		}
 	}
-	for _, term := range []string{"return", "validate", "check"} {
+	// Go-only adverb forms that were removed, plus non-vague terms, must not match.
+	for _, term := range []string{"appropriately", "adequately", "sufficiently", "return", "validate", "check"} {
 		if vagueLanguageRe.MatchString(term) {
 			t.Errorf("vagueLanguageRe should not match %q", term)
 		}
+	}
+}
+
+// TS-13-1: errorKeywordRe matches all Python-equivalent error-path terms.
+func TestErrorKeywordRe_PythonAligned(t *testing.T) {
+	mustMatch := []string{
+		"error", "fail", "reject", "denied", "deny",
+		"invalid", "unauthorized", "unauthorised",
+		"forbidden", "timeout", "not found",
+		// Case-insensitive checks.
+		"access denied", "Unauthorized", "Forbidden", "Not Found",
+	}
+	for _, term := range mustMatch {
+		if !errorKeywordRe.MatchString(term) {
+			t.Errorf("errorKeywordRe should match %q", term)
+		}
+	}
+	mustNotMatch := []string{"success", "ok", "valid"}
+	for _, term := range mustNotMatch {
+		if errorKeywordRe.MatchString(term) {
+			t.Errorf("errorKeywordRe should not match %q", term)
+		}
+	}
+}
+
+// TS-13-2: Vague language check scans error_handling behavior field.
+func TestValidate_Warning_VagueLanguageInErrorHandlingBehavior(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Test Req",
+			UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "test"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+				System: "sys", Action: "do something", ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	spec.Requirements.ErrorHandling = []ErrorHandlingEntry{
+		{
+			Id:            "04-ERR-1",
+			Condition:     "when request fails",
+			Behavior:      "returns appropriate error",
+			RequirementId: "04-REQ-1",
+		},
+	}
+	result := spec.Validate()
+	var found bool
+	for _, w := range result.Warnings {
+		if w.Category == "warning" &&
+			strings.Contains(w.Message, "appropriate") &&
+			strings.Contains(w.Message, "04-ERR-1") &&
+			strings.Contains(w.Message, "behavior") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a vague language warning for error_handling behavior containing 'appropriate', got warnings: %v", result.Warnings)
+	}
+}
+
+// TS-13-3: No vague language warning for clean error_handling behavior.
+func TestValidate_Warning_VagueLanguageInErrorHandlingBehavior_Clean(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Test Req",
+			UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "test"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+				System: "sys", Action: "do something", ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	spec.Requirements.ErrorHandling = []ErrorHandlingEntry{
+		{
+			Id:            "04-ERR-1",
+			Condition:     "when request fails",
+			Behavior:      "return HTTP 500 with JSON error body",
+			RequirementId: "04-REQ-1",
+		},
+	}
+	result := spec.Validate()
+	for _, w := range result.Warnings {
+		if strings.Contains(w.Message, "vague") && strings.Contains(w.Message, "04-ERR-1") {
+			t.Errorf("expected no vague warning for clean behavior, got: %s", w.Message)
+		}
+	}
+}
+
+// TS-13-4: appropriate and properly still trigger vague warnings after regex update.
+func TestValidate_Warning_VagueLanguage_AppropriateAndProperly(t *testing.T) {
+	defer requireImplemented(t)
+	spec := makeMinimalSpec()
+	spec.Requirements.Requirements = []Requirement{
+		{
+			Id: "04-REQ-1", Title: "Vague",
+			UserStory: UserStory{Role: "dev", Goal: "detect", Benefit: "clarity"},
+			AcceptanceCriteria: []Criterion{{
+				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUbiquitous,
+				System: "sys", Action: "handle appropriate cases properly", ReturnContract: nil,
+			}},
+			EdgeCases: []Criterion{},
+		},
+	}
+	result := spec.Validate()
+	foundAppropriate := false
+	foundProperly := false
+	for _, w := range result.Warnings {
+		lower := strings.ToLower(w.Message)
+		if strings.Contains(lower, `"appropriate"`) {
+			foundAppropriate = true
+		}
+		if strings.Contains(lower, `"properly"`) {
+			foundProperly = true
+		}
+	}
+	if !foundAppropriate {
+		t.Error("expected vague warning for 'appropriate' — must still match after regex update")
+	}
+	if !foundProperly {
+		t.Error("expected vague warning for 'properly' — must still match after regex update")
 	}
 }
 

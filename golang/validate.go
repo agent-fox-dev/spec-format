@@ -460,11 +460,13 @@ var backtickQuotedRe = regexp.MustCompile(`^["'].*["']$`)
 
 // vagueLanguageRe matches vague words that reduce testability in criterion fields.
 // Compiled at package initialization time per 04-REQ-18.2.
-var vagueLanguageRe = regexp.MustCompile(`(?i)\b(appropriate|appropriately|properly|correctly|adequate|adequately|sufficient|sufficiently)\b`)
+// Aligned with Python's _VAGUE_WORDS_RE.
+var vagueLanguageRe = regexp.MustCompile(`(?i)\b(appropriate|properly|correctly|reasonable|relevant|adequate|suitable|as needed|if necessary|etc)\b`)
 
 // errorKeywordRe matches error-indicating keywords in criterion action fields.
 // Used for 04-REQ-17 to detect error paths that should have a return_contract.
-var errorKeywordRe = regexp.MustCompile(`(?i)\b(error|fail|invalid|reject)\b`)
+// Aligned with Python's _ERROR_PATH_RE.
+var errorKeywordRe = regexp.MustCompile(`(?i)\b(error|fail|reject|denied|deny|invalid|unauthorized|unauthorised|forbidden|timeout|not found)\b`)
 
 // extractReqPrefix extracts the spec_id prefix from a requirement-like ID
 // (e.g. "01-REQ-1" → "01", "abc-PROP-1" → "abc"). It searches for markers
@@ -1650,6 +1652,17 @@ func (s *Spec) Validate() ValidationResult {
 						})
 					}
 				}
+			}
+		}
+		// Scan error_handling entries' Behavior field for vague language.
+		for _, eh := range s.Requirements.ErrorHandling {
+			matches := vagueLanguageRe.FindAllString(eh.Behavior, -1)
+			for _, match := range matches {
+				allWarnings = append(allWarnings, ValidationEntry{
+					Category: "warning",
+					Message:  fmt.Sprintf("vague term %q in field behavior of error handling %s", strings.ToLower(match), eh.Id),
+					EntityID: eh.Id,
+				})
 			}
 		}
 	}
