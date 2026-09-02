@@ -335,8 +335,8 @@ of truth, not a rendered string.
 | `unwanted` | `error_condition`, `system`, `action` | IF {error_condition}, THEN THE {system} SHALL {action} |
 | `optional` | `feature`, `system`, `action` | WHERE {feature}, THE {system} SHALL {action} |
 
-Schema validation enforces the correct field set per pattern via a
-discriminated `oneOf`.
+Schema validation enforces the correct field set per pattern via an `allOf`
+array of six `if/then` conditional subschemas, one per `ears_pattern` value.
 
 ##### Common fields (all patterns)
 
