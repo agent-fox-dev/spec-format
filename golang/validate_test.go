@@ -307,6 +307,137 @@ func TestValidateSchema_MissingPRDSpecID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Null $schema rejection tests (Issue #40)
+// ---------------------------------------------------------------------------
+
+// buildNullSchemaArtifacts builds raw map instances with "$schema": null for
+// direct schema validation, bypassing Go marshaling omitempty behaviour.
+// They are passed to validateArtifactSchema as map[string]any.
+func nullSchemaRequirements() map[string]any {
+	return map[string]any{
+		"$schema":                nil,
+		"spec_id":                "01",
+		"spec_name":              "test",
+		"schema_version":         1,
+		"introduction":           "Test.",
+		"glossary":               map[string]any{},
+		"requirements":           []any{},
+		"correctness_properties": []any{},
+		"execution_paths":        []any{},
+		"error_handling":         []any{},
+	}
+}
+
+func nullSchemaTestSpec() map[string]any {
+	return map[string]any{
+		"$schema":         nil,
+		"spec_id":         "01",
+		"spec_name":       "test",
+		"schema_version":  1,
+		"test_cases":      []any{},
+		"property_tests":  []any{},
+		"edge_case_tests": []any{},
+		"smoke_tests":     []any{},
+		"coverage":        map[string]any{"requirements_covered": []any{}, "properties_covered": []any{}, "paths_covered": []any{}},
+	}
+}
+
+func nullSchemaTasks() map[string]any {
+	return map[string]any{
+		"$schema":        nil,
+		"spec_id":        "01",
+		"spec_name":      "test",
+		"schema_version": 1,
+		"test_commands":  map[string]any{"spec_tests": "go test ./...", "all_tests": "go test ./...", "linter": "go vet ./..."},
+		"dependencies":   []any{},
+		"task_groups":    []any{},
+		"traceability":   []any{},
+	}
+}
+
+// TestValidateSchema_NullSchemaRequirements verifies AC-1/NS-REQ-1: a
+// requirements artifact with "$schema": null fails JSON schema validation
+// with at least one error referencing /$schema.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestValidateSchema_NullSchemaRequirements(t *testing.T) {
+	artifact := nullSchemaRequirements()
+	errs := validateArtifactSchema(artifact, "requirements.v1.json", "requirements.json")
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for null $schema in requirements, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "$schema") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one error with Category=schema and Path containing /$schema; got: %v", errs)
+	}
+}
+
+// TestValidateSchema_NullSchemaTestSpec verifies AC-1/NS-REQ-2: a test_spec
+// artifact with "$schema": null fails JSON schema validation.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateSchema_NullSchemaTestSpec(t *testing.T) {
+	artifact := nullSchemaTestSpec()
+	errs := validateArtifactSchema(artifact, "test_spec.v1.json", "test_spec.json")
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for null $schema in test_spec, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "$schema") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one error with Category=schema and Path containing /$schema; got: %v", errs)
+	}
+}
+
+// TestValidateSchema_NullSchemaTasks verifies AC-1/NS-REQ-2: a tasks artifact
+// with "$schema": null fails JSON schema validation.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateSchema_NullSchemaTasks(t *testing.T) {
+	artifact := nullSchemaTasks()
+	errs := validateArtifactSchema(artifact, "tasks.v1.json", "tasks.json")
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for null $schema in tasks, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "$schema") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one error with Category=schema and Path containing /$schema; got: %v", errs)
+	}
+}
+
+// TestValidateSchema_ValidStringSchemaRequirements verifies AC-2/NS-REQ-3:
+// a requirements artifact with a valid string URI for $schema passes validation.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestValidateSchema_ValidStringSchemaRequirements(t *testing.T) {
+	artifact := nullSchemaRequirements()
+	artifact["$schema"] = "https://agent-fox.dev/schemas/requirements.v1.json"
+	errs := validateArtifactSchema(artifact, "requirements.v1.json", "requirements.json")
+	schemaErrs := []ValidationEntry{}
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "$schema") {
+			schemaErrs = append(schemaErrs, e)
+		}
+	}
+	if len(schemaErrs) > 0 {
+		t.Errorf("expected no $schema errors for valid string URI; got: %v", schemaErrs)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Completeness guard tests (Issue #8)
 // ---------------------------------------------------------------------------
 
@@ -1116,9 +1247,6 @@ func buildSpecWithDanglingRef(danglingID string) *Spec {
 // at least one warning (vague language in a criterion action field).
 // All criteria have test coverage so no coverage_gap errors are produced.
 func buildSpecWithWarnings() *Spec {
-	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
 	return &Spec{
 		SpecID:        "01",
 		SpecName:      "test_feature",
@@ -1132,7 +1260,7 @@ func buildSpecWithWarnings() *Spec {
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
-			Schema:        RequirementsV1JsonSchema(&reqSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/requirements.v1.json",
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -1164,7 +1292,7 @@ func buildSpecWithWarnings() *Spec {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
-			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/test_spec.v1.json",
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -1187,7 +1315,7 @@ func buildSpecWithWarnings() *Spec {
 			},
 		},
 		Tasks: &TasksV1Json{
-			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/tasks.v1.json",
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -1474,9 +1602,6 @@ func filterByCheck(entries []ValidationEntry, check string) []ValidationEntry {
 // all required fields populated. Callers mutate the returned spec to add
 // specific test data for cross-file rules.
 func buildCrossFileBaseSpec() *Spec {
-	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
 	return &Spec{
 		SpecID:        "04",
 		SpecName:      "test_crossfile",
@@ -1490,7 +1615,7 @@ func buildCrossFileBaseSpec() *Spec {
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
-			Schema:                RequirementsV1JsonSchema(&reqSchemaStr),
+			Schema:                "https://agent-fox.dev/schemas/requirements.v1.json",
 			SpecId:                "04",
 			SpecName:              "test_crossfile",
 			SchemaVersion:         1,
@@ -1502,7 +1627,7 @@ func buildCrossFileBaseSpec() *Spec {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
-			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/test_spec.v1.json",
 			SpecId:        "04",
 			SpecName:      "test_crossfile",
 			SchemaVersion: 1,
@@ -1513,7 +1638,7 @@ func buildCrossFileBaseSpec() *Spec {
 			Coverage:      Coverage{},
 		},
 		Tasks: &TasksV1Json{
-			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/tasks.v1.json",
 			SpecId:        "04",
 			SpecName:      "test_crossfile",
 			SchemaVersion: 1,
@@ -4194,9 +4319,6 @@ func TestValidateCrossSpec_ContractSetOverlap(t *testing.T) {
 
 // makeMinimalSpec creates a minimal Spec with matching IDs across all artifacts.
 func makeMinimalSpec() *Spec {
-	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
 	return &Spec{
 		SpecID:        "04",
 		SpecName:      "test_warnings",
@@ -4210,7 +4332,7 @@ func makeMinimalSpec() *Spec {
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
-			Schema:                RequirementsV1JsonSchema(&reqSchemaStr),
+			Schema:                "https://agent-fox.dev/schemas/requirements.v1.json",
 			SpecId:                "04",
 			SpecName:              "test_warnings",
 			SchemaVersion:         1,
@@ -4222,7 +4344,7 @@ func makeMinimalSpec() *Spec {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
-			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/test_spec.v1.json",
 			SpecId:        "04",
 			SpecName:      "test_warnings",
 			SchemaVersion: 1,
@@ -4233,7 +4355,7 @@ func makeMinimalSpec() *Spec {
 			Coverage:      Coverage{},
 		},
 		Tasks: &TasksV1Json{
-			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/tasks.v1.json",
 			SpecId:        "04",
 			SpecName:      "test_warnings",
 			SchemaVersion: 1,

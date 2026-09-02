@@ -387,10 +387,6 @@ func TestRequiredFields_TasksSchema(t *testing.T) {
 // TestRequiredFields_ValidateSchemaPasses verifies that a Spec built
 // programmatically with all newly-required fields passes ValidateSchema.
 func TestRequiredFields_ValidateSchemaPasses(t *testing.T) {
-	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
-
 	spec := &Spec{
 		SpecID:        "01",
 		SpecName:      "test_feature",
@@ -404,7 +400,7 @@ func TestRequiredFields_ValidateSchemaPasses(t *testing.T) {
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
-			Schema:                RequirementsV1JsonSchema(&reqSchemaStr),
+			Schema:                "https://agent-fox.dev/schemas/requirements.v1.json",
 			SpecId:                "01",
 			SpecName:              "test_feature",
 			SchemaVersion:         1,
@@ -416,7 +412,7 @@ func TestRequiredFields_ValidateSchemaPasses(t *testing.T) {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
-			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/test_spec.v1.json",
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -427,7 +423,7 @@ func TestRequiredFields_ValidateSchemaPasses(t *testing.T) {
 			Coverage:      Coverage{},
 		},
 		Tasks: &TasksV1Json{
-			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/tasks.v1.json",
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -452,10 +448,6 @@ func TestRequiredFields_ValidateSchemaPasses(t *testing.T) {
 // Spec with Supersedes=nil fails schema validation because nil becomes null
 // (not an array) in the prd-frontmatter JSON.
 func TestRequiredFields_ValidateSchemaFailsMissingSupersedes(t *testing.T) {
-	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
-
 	spec := &Spec{
 		SpecID:        "01",
 		SpecName:      "test_feature",
@@ -469,7 +461,7 @@ func TestRequiredFields_ValidateSchemaFailsMissingSupersedes(t *testing.T) {
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
-			Schema:                RequirementsV1JsonSchema(&reqSchemaStr),
+			Schema:                "https://agent-fox.dev/schemas/requirements.v1.json",
 			SpecId:                "01",
 			SpecName:              "test_feature",
 			SchemaVersion:         1,
@@ -481,7 +473,7 @@ func TestRequiredFields_ValidateSchemaFailsMissingSupersedes(t *testing.T) {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
-			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/test_spec.v1.json",
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -492,7 +484,7 @@ func TestRequiredFields_ValidateSchemaFailsMissingSupersedes(t *testing.T) {
 			Coverage:      Coverage{},
 		},
 		Tasks: &TasksV1Json{
-			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
+			Schema:        "https://agent-fox.dev/schemas/tasks.v1.json",
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,

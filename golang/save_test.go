@@ -326,12 +326,11 @@ func TestSave_TwoPhase_NoOrphanedTempsOnSuccess(t *testing.T) {
 // one acceptance criterion and one test case that references that criterion.
 // It is used across multiple Save coverage tests.
 func buildMinimalSpec(reqID, criterionID string) *Spec {
-	schema := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchema := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchema := "https://agent-fox.dev/schemas/tasks.v1.json"
-	schemaRef := TestSpecV1JsonSchema(&tsSchema)
-	reqSchemaRef := RequirementsV1JsonSchema(&schema)
-	tasksSchemaRef := TasksV1JsonSchema(&tasksSchema)
+	const (
+		reqSchemaRef   = "https://agent-fox.dev/schemas/requirements.v1.json"
+		schemaRef      = "https://agent-fox.dev/schemas/test_spec.v1.json"
+		tasksSchemaRef = "https://agent-fox.dev/schemas/tasks.v1.json"
+	)
 
 	return &Spec{
 		SpecID:        "99",
@@ -466,12 +465,11 @@ func TestSave_CoveragePopulated(t *testing.T) {
 func TestSave_CoverageAllFields(t *testing.T) {
 	defer requireImplemented(t)
 
-	schema := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchema := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchema := "https://agent-fox.dev/schemas/tasks.v1.json"
-	schemaRef := TestSpecV1JsonSchema(&tsSchema)
-	reqSchemaRef := RequirementsV1JsonSchema(&schema)
-	tasksSchemaRef := TasksV1JsonSchema(&tasksSchema)
+	const (
+		reqSchemaRef   = "https://agent-fox.dev/schemas/requirements.v1.json"
+		schemaRef      = "https://agent-fox.dev/schemas/test_spec.v1.json"
+		tasksSchemaRef = "https://agent-fox.dev/schemas/tasks.v1.json"
+	)
 
 	spec := &Spec{
 		SpecID:        "99",
@@ -621,12 +619,11 @@ func TestSave_CoverageAllFields(t *testing.T) {
 func TestSave_CoverageNoTestCases(t *testing.T) {
 	defer requireImplemented(t)
 
-	schema := "https://agent-fox.dev/schemas/requirements.v1.json"
-	tsSchema := "https://agent-fox.dev/schemas/test_spec.v1.json"
-	tasksSchema := "https://agent-fox.dev/schemas/tasks.v1.json"
-	schemaRef := TestSpecV1JsonSchema(&tsSchema)
-	reqSchemaRef := RequirementsV1JsonSchema(&schema)
-	tasksSchemaRef := TasksV1JsonSchema(&tasksSchema)
+	const (
+		reqSchemaRef   = "https://agent-fox.dev/schemas/requirements.v1.json"
+		schemaRef      = "https://agent-fox.dev/schemas/test_spec.v1.json"
+		tasksSchemaRef = "https://agent-fox.dev/schemas/tasks.v1.json"
+	)
 
 	spec := &Spec{
 		SpecID:        "99",

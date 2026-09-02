@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": ["string", "null"]
+      "type": "string"
     },
     "spec_id": {
       "type": "string",

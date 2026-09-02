@@ -431,23 +431,23 @@ func TestCreateSpec_SubArtifactFields(t *testing.T) {
 	}
 
 	// NS-REQ-1: $schema on each sub-artifact.
-	if spec.Requirements.Schema == nil {
-		t.Fatal("Requirements.Schema is nil, want non-nil")
+	if spec.Requirements.Schema == "" {
+		t.Fatal("Requirements.Schema is empty, want non-empty")
 	}
-	if *spec.Requirements.Schema != "https://agent-fox.dev/schemas/requirements.v1.json" {
-		t.Errorf("Requirements.Schema = %q, want %q", *spec.Requirements.Schema, "https://agent-fox.dev/schemas/requirements.v1.json")
+	if spec.Requirements.Schema != "https://agent-fox.dev/schemas/requirements.v1.json" {
+		t.Errorf("Requirements.Schema = %q, want %q", spec.Requirements.Schema, "https://agent-fox.dev/schemas/requirements.v1.json")
 	}
-	if spec.TestSpec.Schema == nil {
-		t.Fatal("TestSpec.Schema is nil, want non-nil")
+	if spec.TestSpec.Schema == "" {
+		t.Fatal("TestSpec.Schema is empty, want non-empty")
 	}
-	if *spec.TestSpec.Schema != "https://agent-fox.dev/schemas/test_spec.v1.json" {
-		t.Errorf("TestSpec.Schema = %q, want %q", *spec.TestSpec.Schema, "https://agent-fox.dev/schemas/test_spec.v1.json")
+	if spec.TestSpec.Schema != "https://agent-fox.dev/schemas/test_spec.v1.json" {
+		t.Errorf("TestSpec.Schema = %q, want %q", spec.TestSpec.Schema, "https://agent-fox.dev/schemas/test_spec.v1.json")
 	}
-	if spec.Tasks.Schema == nil {
-		t.Fatal("Tasks.Schema is nil, want non-nil")
+	if spec.Tasks.Schema == "" {
+		t.Fatal("Tasks.Schema is empty, want non-empty")
 	}
-	if *spec.Tasks.Schema != "https://agent-fox.dev/schemas/tasks.v1.json" {
-		t.Errorf("Tasks.Schema = %q, want %q", *spec.Tasks.Schema, "https://agent-fox.dev/schemas/tasks.v1.json")
+	if spec.Tasks.Schema != "https://agent-fox.dev/schemas/tasks.v1.json" {
+		t.Errorf("Tasks.Schema = %q, want %q", spec.Tasks.Schema, "https://agent-fox.dev/schemas/tasks.v1.json")
 	}
 
 	// NS-REQ-2: spec_id, spec_name, schema_version on each sub-artifact.

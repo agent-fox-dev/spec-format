@@ -197,6 +197,12 @@ def _serialize_model(model: Any) -> dict[str, Any]:
         if isinstance(model, Criterion) and field_name in _PATTERN_FIELDS and value is None:
             continue
 
+        # Omit $schema when not set (None) — the field is optional in the JSON
+        # schema, so omitting it is valid.  Outputting null would violate the
+        # "type": "string" constraint introduced by issue #40.
+        if output_key == "$schema" and value is None:
+            continue
+
         result[output_key] = _serialize_value(value)
 
     return result

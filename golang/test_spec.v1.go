@@ -374,7 +374,7 @@ type TestSpecV1Json struct {
 	TestCases []TestCase `json:"test_cases" yaml:"test_cases" mapstructure:"test_cases"`
 }
 
-type TestSpecV1JsonSchema *string
+type TestSpecV1JsonSchema = string
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *TestSpecV1Json) UnmarshalJSON(value []byte) error {

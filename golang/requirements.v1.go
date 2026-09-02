@@ -477,7 +477,7 @@ type RequirementsV1Json struct {
 
 type RequirementsV1JsonGlossary map[string]string
 
-type RequirementsV1JsonSchema *string
+type RequirementsV1JsonSchema = string
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *RequirementsV1Json) UnmarshalJSON(value []byte) error {

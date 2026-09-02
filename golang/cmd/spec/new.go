@@ -92,9 +92,11 @@ func newNewCmd() *cobra.Command {
 			specID := fmt.Sprintf("%02d", prefix)
 			now := time.Now().UTC().Format(time.RFC3339Nano)
 
-			reqSchemaURL := "https://agent-fox.dev/schemas/requirements.v1.json"
-			tsSchemaURL := "https://agent-fox.dev/schemas/test_spec.v1.json"
-			taskSchemaURL := "https://agent-fox.dev/schemas/tasks.v1.json"
+			const (
+				reqSchemaURL  = "https://agent-fox.dev/schemas/requirements.v1.json"
+				tsSchemaURL   = "https://agent-fox.dev/schemas/test_spec.v1.json"
+				taskSchemaURL = "https://agent-fox.dev/schemas/tasks.v1.json"
+			)
 
 			spec := &afspec.Spec{
 				SpecID:        specID,
@@ -111,7 +113,7 @@ func newNewCmd() *cobra.Command {
 				SchemaVersion: 1,
 				PRDBody:       string(prdContent),
 				Requirements: &afspec.RequirementsV1Json{
-					Schema:                afspec.RequirementsV1JsonSchema(&reqSchemaURL),
+					Schema:                reqSchemaURL,
 					SpecId:                specID,
 					SpecName:              name,
 					SchemaVersion:         1,
@@ -123,7 +125,7 @@ func newNewCmd() *cobra.Command {
 					ErrorHandling:         []afspec.ErrorHandlingEntry{},
 				},
 				TestSpec: &afspec.TestSpecV1Json{
-					Schema:        afspec.TestSpecV1JsonSchema(&tsSchemaURL),
+					Schema:        tsSchemaURL,
 					SpecId:        specID,
 					SpecName:      name,
 					SchemaVersion: 1,
@@ -133,7 +135,7 @@ func newNewCmd() *cobra.Command {
 					SmokeTests:    []afspec.SmokeTest{},
 				},
 				Tasks: &afspec.TasksV1Json{
-					Schema:        afspec.TasksV1JsonSchema(&taskSchemaURL),
+					Schema:        taskSchemaURL,
 					SpecId:        specID,
 					SpecName:      name,
 					SchemaVersion: 1,

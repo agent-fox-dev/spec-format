@@ -271,7 +271,7 @@ type TasksV1Json struct {
 	Traceability []TraceabilityEntry `json:"traceability" yaml:"traceability" mapstructure:"traceability"`
 }
 
-type TasksV1JsonSchema *string
+type TasksV1JsonSchema = string
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *TasksV1Json) UnmarshalJSON(value []byte) error {

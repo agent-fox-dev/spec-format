@@ -12,20 +12,13 @@ const (
 // fields so that Save + LoadSpec round-trips succeed without error.
 // Validation of specID and specName is deferred to spec.Validate.
 func CreateSpec(specID, specName string) *Spec {
-	reqURI := requirementsSchemaURI
-	tsURI := testSpecSchemaURI
-	taskURI := tasksSchemaURI
-	reqSchema := RequirementsV1JsonSchema(&reqURI)
-	tsSchema := TestSpecV1JsonSchema(&tsURI)
-	taskSchema := TasksV1JsonSchema(&taskURI)
-
 	return &Spec{
 		SpecID:        specID,
 		SpecName:      specName,
 		Status:        "draft",
 		SchemaVersion: 1,
 		Requirements: &RequirementsV1Json{
-			Schema:                reqSchema,
+			Schema:                requirementsSchemaURI,
 			SpecId:                specID,
 			SpecName:              specName,
 			SchemaVersion:         1,
@@ -36,7 +29,7 @@ func CreateSpec(specID, specName string) *Spec {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
-			Schema:        tsSchema,
+			Schema:        testSpecSchemaURI,
 			SpecId:        specID,
 			SpecName:      specName,
 			SchemaVersion: 1,
@@ -46,7 +39,7 @@ func CreateSpec(specID, specName string) *Spec {
 			SmokeTests:    []SmokeTest{},
 		},
 		Tasks: &TasksV1Json{
-			Schema:        taskSchema,
+			Schema:        tasksSchemaURI,
 			SpecId:        specID,
 			SpecName:      specName,
 			SchemaVersion: 1,
