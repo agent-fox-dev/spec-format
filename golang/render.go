@@ -2,6 +2,7 @@ package afspec
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -339,8 +340,13 @@ func (s *Spec) renderScopedRequirements(refs map[string]bool) string {
 		sb.WriteString("## Glossary\n\n")
 		sb.WriteString("| Term | Definition |\n")
 		sb.WriteString("|------|------------|\n")
-		for term, def := range s.Requirements.Glossary {
-			sb.WriteString(fmt.Sprintf("| %s | %s |\n", term, def))
+		glossaryTerms := make([]string, 0, len(s.Requirements.Glossary))
+		for term := range s.Requirements.Glossary {
+			glossaryTerms = append(glossaryTerms, term)
+		}
+		sort.Strings(glossaryTerms)
+		for _, term := range glossaryTerms {
+			sb.WriteString(fmt.Sprintf("| %s | %s |\n", term, s.Requirements.Glossary[term]))
 		}
 		sb.WriteString("\n")
 	}
@@ -530,8 +536,13 @@ func (r *RequirementsV1Json) Render() string {
 		sb.WriteString("## Glossary\n\n")
 		sb.WriteString("| Term | Definition |\n")
 		sb.WriteString("|------|------------|\n")
-		for term, def := range r.Glossary {
-			sb.WriteString(fmt.Sprintf("| %s | %s |\n", term, def))
+		glossaryTerms := make([]string, 0, len(r.Glossary))
+		for term := range r.Glossary {
+			glossaryTerms = append(glossaryTerms, term)
+		}
+		sort.Strings(glossaryTerms)
+		for _, term := range glossaryTerms {
+			sb.WriteString(fmt.Sprintf("| %s | %s |\n", term, r.Glossary[term]))
 		}
 		sb.WriteString("\n")
 	}

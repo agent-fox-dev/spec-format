@@ -603,6 +603,161 @@ func TestRenderCombined_ArchitectureAfterPRD(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Issue #38: Deterministic glossary output (Section 11)
+// ---------------------------------------------------------------------------
+
+// buildGlossarySpec builds a RequirementsV1Json with a multi-term glossary
+// for determinism testing.
+func buildGlossarySpec() *RequirementsV1Json {
+	return &RequirementsV1Json{
+		SchemaVersion: 1,
+		SpecId:        "01",
+		SpecName:      "test_feature",
+		Introduction:  "Test intro.",
+		Glossary: RequirementsV1JsonGlossary{
+			"delta": "The fourth letter",
+			"alpha": "The first letter",
+			"gamma": "The third letter",
+			"beta":  "The second letter",
+		},
+		Requirements:          []Requirement{},
+		CorrectnessProperties: []CorrectnessProperty{},
+		ExecutionPaths:        []ExecutionPath{},
+		ErrorHandling:         []ErrorHandlingEntry{},
+	}
+}
+
+// TestRequirementsRender_GlossaryDeterminism verifies that Render() produces
+// byte-identical output across 100 calls when the glossary has 4+ terms, and
+// that glossary rows appear in ascending alphabetical order.
+// Requirements: NS-REQ-1 | Test Spec: TS-NS-1
+func TestRequirementsRender_GlossaryDeterminism(t *testing.T) {
+	defer requireImplemented(t)
+
+	req := buildGlossarySpec()
+
+	first := req.Render()
+	if first == "" {
+		t.Fatal("Render returned empty string")
+	}
+
+	for i := 1; i < 100; i++ {
+		got := req.Render()
+		if got != first {
+			t.Fatalf("Render is non-deterministic: call %d differed from call 0", i)
+		}
+	}
+
+	// Verify glossary rows appear in sorted order: alpha < beta < delta < gamma
+	idxAlpha := strings.Index(first, "| alpha |")
+	idxBeta := strings.Index(first, "| beta |")
+	idxDelta := strings.Index(first, "| delta |")
+	idxGamma := strings.Index(first, "| gamma |")
+
+	if idxAlpha < 0 || idxBeta < 0 || idxDelta < 0 || idxGamma < 0 {
+		t.Fatalf("expected all glossary terms in output; got:\n%s", first)
+	}
+	if !(idxAlpha < idxBeta) {
+		t.Errorf("expected '| alpha |' (idx %d) before '| beta |' (idx %d)", idxAlpha, idxBeta)
+	}
+	if !(idxBeta < idxDelta) {
+		t.Errorf("expected '| beta |' (idx %d) before '| delta |' (idx %d)", idxBeta, idxDelta)
+	}
+	if !(idxDelta < idxGamma) {
+		t.Errorf("expected '| delta |' (idx %d) before '| gamma |' (idx %d)", idxDelta, idxGamma)
+	}
+}
+
+// TestRequirementsRender_SingleTermGlossary verifies that Render() handles a
+// single-term glossary correctly (no regression for the trivial case).
+// Requirements: NS-REQ-5 | Test Spec: TS-NS-5
+func TestRequirementsRender_SingleTermGlossary(t *testing.T) {
+	defer requireImplemented(t)
+
+	req := &RequirementsV1Json{
+		SchemaVersion:         1,
+		SpecId:                "01",
+		SpecName:              "test",
+		Introduction:          "Test intro.",
+		Glossary:              RequirementsV1JsonGlossary{"term": "definition"},
+		Requirements:          []Requirement{},
+		CorrectnessProperties: []CorrectnessProperty{},
+		ExecutionPaths:        []ExecutionPath{},
+		ErrorHandling:         []ErrorHandlingEntry{},
+	}
+
+	first := req.Render()
+	if first == "" {
+		t.Fatal("Render returned empty string for single-term glossary")
+	}
+	if !strings.Contains(first, "| term | definition |") {
+		t.Errorf("expected '| term | definition |' in output; got:\n%s", first)
+	}
+
+	for i := 1; i < 10; i++ {
+		got := req.Render()
+		if got != first {
+			t.Fatalf("Render is non-deterministic on call %d for single-term glossary", i)
+		}
+	}
+}
+
+// buildScopedGlossarySpec builds a Spec with a multi-term glossary for
+// RenderIndividualScoped determinism testing.
+func buildScopedGlossarySpec() *Spec {
+	spec := buildScopedTestSpec()
+	spec.Requirements.Glossary = RequirementsV1JsonGlossary{
+		"delta": "The fourth letter",
+		"alpha": "The first letter",
+		"gamma": "The third letter",
+		"beta":  "The second letter",
+	}
+	return spec
+}
+
+// TestRenderIndividualScoped_GlossaryDeterminism verifies that
+// RenderIndividualScoped produces byte-identical output across 100 calls and
+// that glossary rows appear in ascending alphabetical order.
+// Requirements: NS-REQ-2 | Test Spec: TS-NS-2
+func TestRenderIndividualScoped_GlossaryDeterminism(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec := buildScopedGlossarySpec()
+
+	first := spec.RenderIndividualScoped(1)
+	reqSection := first["requirements"]
+	if reqSection == "" {
+		t.Fatal("RenderIndividualScoped 'requirements' section is empty")
+	}
+
+	for i := 1; i < 100; i++ {
+		got := spec.RenderIndividualScoped(1)
+		if got["requirements"] != reqSection {
+			t.Fatalf("RenderIndividualScoped 'requirements' is non-deterministic on call %d", i)
+		}
+	}
+
+	// Verify sorted order: alpha < beta < delta < gamma
+	idxAlpha := strings.Index(reqSection, "| alpha |")
+	idxBeta := strings.Index(reqSection, "| beta |")
+	idxDelta := strings.Index(reqSection, "| delta |")
+	idxGamma := strings.Index(reqSection, "| gamma |")
+
+	if idxAlpha < 0 || idxBeta < 0 || idxDelta < 0 || idxGamma < 0 {
+		t.Fatalf("expected all glossary terms in requirements section; got:\n%s", reqSection)
+	}
+	if !(idxAlpha < idxBeta) {
+		t.Errorf("expected '| alpha |' (idx %d) before '| beta |' (idx %d)", idxAlpha, idxBeta)
+	}
+	if !(idxBeta < idxDelta) {
+		t.Errorf("expected '| beta |' (idx %d) before '| delta |' (idx %d)", idxBeta, idxDelta)
+	}
+	if !(idxDelta < idxGamma) {
+		t.Errorf("expected '| delta |' (idx %d) before '| gamma |' (idx %d)", idxDelta, idxGamma)
+	}
+}
+
 // TestRenderCombined_NoArchitectureWhenEmpty verifies that when Architecture is
 // empty, RenderCombined omits the Architecture section and all other sections
 // are still present.
