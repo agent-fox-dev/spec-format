@@ -9,6 +9,23 @@ import (
 // 4.3: EARS Criterion Builders and RenderEARSSentence
 // ---------------------------------------------------------------------------
 
+// TestRenderEARSSentence_ComplexEventUsesAND verifies that the complex_event
+// EARS pattern renders with "AND" between trigger and condition, not "IF".
+// Requirement: NS-REQ-1, Test Spec: TS-NS-1
+func TestRenderEARSSentence_ComplexEventUsesAND(t *testing.T) {
+	defer requireImplemented(t)
+
+	c := ComplexEventCriterion("id", "event fires", "condition met", "the system", "handles")
+	sentence := c.RenderEARSSentence()
+
+	if !strings.Contains(sentence, "WHEN event fires AND condition met") {
+		t.Errorf("expected sentence to contain 'WHEN event fires AND condition met', got %q", sentence)
+	}
+	if strings.Contains(sentence, "IF condition met") {
+		t.Errorf("expected sentence NOT to contain 'IF condition met', got %q", sentence)
+	}
+}
+
 // TestEARSBuilders_EventDriven verifies that EventDrivenCriterion returns a
 // Criterion with the correct pattern and all provided arguments mapped.
 // Test Spec: TS-01-40, Requirement: 01-REQ-20.1
@@ -301,7 +318,7 @@ func TestRenderEARSSentence(t *testing.T) {
 				System:      "the system",
 				Action:      "handles",
 			},
-			contains: "IF condition met",
+			contains: "WHEN event fires AND condition met",
 		},
 		{
 			name: "StateDriven",
