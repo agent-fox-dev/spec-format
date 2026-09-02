@@ -83,7 +83,7 @@ func OptionalCriterion(id, feature, system, action string) Criterion {
 //   - event_driven:  "WHEN <Trigger>, THE <System> SHALL <Action>"
 //   - complex_event: "WHEN <Trigger> AND <Condition>, THE <System> SHALL <Action>"
 //   - state_driven:  "WHILE <State>, THE <System> SHALL <Action>"
-//   - unwanted:      "IF <ErrorCondition>, THE <System> SHALL <Action>"
+//   - unwanted:      "IF <ErrorCondition>, THEN THE <System> SHALL <Action>"
 //   - optional:      "WHERE <Feature>, THE <System> SHALL <Action>"
 func (c Criterion) RenderEARSSentence() string {
 	core := fmt.Sprintf("THE %s SHALL %s", c.System, c.Action)
@@ -118,7 +118,7 @@ func (c Criterion) RenderEARSSentence() string {
 		if c.ErrorCondition != nil {
 			errCond = *c.ErrorCondition
 		}
-		return fmt.Sprintf("IF %s, %s", errCond, core)
+		return fmt.Sprintf("IF %s, THEN %s", errCond, core)
 	case CriterionEarsPatternOptional:
 		feature := ""
 		if c.Feature != nil {

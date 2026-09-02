@@ -9,6 +9,41 @@ import (
 // 4.3: EARS Criterion Builders and RenderEARSSentence
 // ---------------------------------------------------------------------------
 
+// TestRenderEARSSentence_UnwantedIncludesTHEN verifies that the unwanted EARS
+// pattern renders with "THEN" between the comma and "THE", matching the spec.
+// Requirement: NS-REQ-1, NS-REQ-2, Test Spec: TS-NS-1, TS-NS-2
+func TestRenderEARSSentence_UnwantedIncludesTHEN(t *testing.T) {
+	defer requireImplemented(t)
+
+	c := UnwantedCriterion("id", "disk full", "StorageService", "returns error")
+	sentence := c.RenderEARSSentence()
+
+	const want = "IF disk full, THEN THE StorageService SHALL returns error"
+	if sentence != want {
+		t.Errorf("RenderEARSSentence() = %q, want %q", sentence, want)
+	}
+}
+
+// TestRenderEARSSentence_UnwantedNilErrorConditionIncludesTHEN verifies that
+// a nil ErrorCondition still produces THEN in the rendered sentence.
+// Requirement: NS-REQ-3, Test Spec: TS-NS-3
+func TestRenderEARSSentence_UnwantedNilErrorConditionIncludesTHEN(t *testing.T) {
+	defer requireImplemented(t)
+
+	c := Criterion{
+		Id:             "id",
+		EarsPattern:    CriterionEarsPatternUnwanted,
+		ErrorCondition: nil,
+		System:         "StorageService",
+		Action:         "returns error",
+	}
+	sentence := c.RenderEARSSentence()
+
+	if !strings.Contains(sentence, ", THEN THE") {
+		t.Errorf("expected sentence to contain \", THEN THE\", got %q", sentence)
+	}
+}
+
 // TestRenderEARSSentence_ComplexEventUsesAND verifies that the complex_event
 // EARS pattern renders with "AND" between trigger and condition, not "IF".
 // Requirement: NS-REQ-1, Test Spec: TS-NS-1
@@ -340,7 +375,7 @@ func TestRenderEARSSentence(t *testing.T) {
 				System:         "the system",
 				Action:         "returns error",
 			},
-			contains: "IF disk full",
+			contains: "IF disk full, THEN THE",
 		},
 		{
 			name: "Optional",

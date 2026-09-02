@@ -121,7 +121,7 @@ func main() {
 | `EventDrivenCriterion(id, trigger, system, action)` | "WHEN trigger, THE system SHALL action" |
 | `ComplexEventCriterion(id, trigger, condition, system, action)` | "WHEN trigger IF condition, THE system SHALL action" |
 | `StateDrivenCriterion(id, state, system, action)` | "WHILE state, THE system SHALL action" |
-| `UnwantedCriterion(id, errorCondition, system, action)` | "IF errorCondition, THE system SHALL action" |
+| `UnwantedCriterion(id, errorCondition, system, action)` | "IF errorCondition, THEN THE system SHALL action" |
 | `OptionalCriterion(id, feature, system, action)` | "WHERE feature, THE system SHALL action" |
 
 ### Subtask Mutation
