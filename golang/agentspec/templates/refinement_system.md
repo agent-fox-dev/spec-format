@@ -28,4 +28,4 @@ You will receive the original PRD, a previous assessment with identified gaps, a
 
 4. **Raise new gaps if discovered** — If the user's answers reveal new ambiguities or missing information not present in the original assessment, include them as new gaps and questions. Quality must not regress unless these new gaps are discovered and documented.
 
-Use the `submit_prd_update` tool to provide the updated PRD body, and the `submit_assessment` tool to provide your new evaluation. Both tool calls are required in your response.
+You MUST call both `submit_prd_update` AND `submit_assessment` tools in a single response. Do not call one without the other — returning only one tool call is not acceptable. Both tool calls are required.

@@ -2441,6 +2441,151 @@ func TestNS57_CallbackOrder(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// TS-NS-3: Fallback assessment call sends only updated PRD (NS-REQ-3)
+// TS-NS-4: Fallback call uses AssessmentTools and correct Context (NS-REQ-4)
+// ---------------------------------------------------------------------------
+
+// TestNS58_FallbackAssessment_SingleMessage verifies that when the first
+// RefinePRD response contains only submit_prd_update (no submit_assessment),
+// the fallback AICall sends exactly one user message containing only the
+// updated PRD text — not the original userPrompt, answers, or prior assessment.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS58_FallbackAssessment_SingleMessage(t *testing.T) {
+	capture := &aiCallCapture{}
+	callCount := 0
+	var mu sync.Mutex
+
+	const updatedPRDText = "Updated PRD from first call for NS58"
+	const originalPRDText = "Original PRD for NS58"
+
+	firstResp := makeToolCallResponse("end_turn",
+		makePRDUpdateToolCall(updatedPRDText),
+	)
+	secondResp := makeToolCallResponse("end_turn",
+		makeAssessmentToolCall("high", "Good after update", nil, nil),
+	)
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		mu.Lock()
+		c := callCount
+		callCount++
+		mu.Unlock()
+		if c == 0 {
+			return "", firstResp, nil
+		}
+		return "", secondResp, nil
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	updatedPRD, _, err := agent.RefinePRD(ctx, originalPRDText,
+		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
+
+	if err != nil {
+		t.Fatalf("RefinePRD() returned error: %v", err)
+	}
+	if updatedPRD != updatedPRDText {
+		t.Errorf("updatedPRD = %q; want %q", updatedPRD, updatedPRDText)
+	}
+
+	if capture.count() != 2 {
+		t.Fatalf("AICall invocation count = %d; want 2", capture.count())
+	}
+
+	// NS-REQ-3: fallback call (index 1) must have exactly one Message.
+	fallbackOpts := capture.get(1)
+	if len(fallbackOpts.Messages) != 1 {
+		t.Fatalf("fallback Messages count = %d; want 1", len(fallbackOpts.Messages))
+	}
+
+	// NS-REQ-3: the single message must be a user message.
+	msg := fallbackOpts.Messages[0]
+	if msg.Role != "user" {
+		t.Errorf("fallback Messages[0].Role = %q; want \"user\"", msg.Role)
+	}
+
+	// NS-REQ-3: message content must contain the updated PRD text.
+	content, ok := msg.Content.(string)
+	if !ok {
+		t.Fatalf("fallback Messages[0].Content type = %T; want string", msg.Content)
+	}
+	if !strings.Contains(content, updatedPRDText) {
+		t.Errorf("fallback message content does not contain updated PRD text\ngot:  %q\nwant: contains %q",
+			content, updatedPRDText)
+	}
+
+	// NS-REQ-3: message content must NOT contain the original PRD text.
+	if strings.Contains(content, originalPRDText) {
+		t.Errorf("fallback message content contains original PRD text (full context was re-sent)\ngot: %q", content)
+	}
+}
+
+// TestNS58_FallbackAssessment_ToolsAndContext verifies that the fallback
+// AICall uses exactly one tool (submit_assessment) and has Context equal to
+// "RefinePRD:fallback_assessment".
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestNS58_FallbackAssessment_ToolsAndContext(t *testing.T) {
+	capture := &aiCallCapture{}
+	callCount := 0
+	var mu sync.Mutex
+
+	firstResp := makeToolCallResponse("end_turn",
+		makePRDUpdateToolCall("Updated PRD for NS58 tools check"),
+	)
+	secondResp := makeToolCallResponse("end_turn",
+		makeAssessmentToolCall("high", "Assessed", nil, nil),
+	)
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		mu.Lock()
+		c := callCount
+		callCount++
+		mu.Unlock()
+		if c == 0 {
+			return "", firstResp, nil
+		}
+		return "", secondResp, nil
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, _, err := agent.RefinePRD(ctx, "Original PRD",
+		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
+
+	if err != nil {
+		t.Fatalf("RefinePRD() returned error: %v", err)
+	}
+	if capture.count() != 2 {
+		t.Fatalf("AICall invocation count = %d; want 2", capture.count())
+	}
+
+	fallbackOpts := capture.get(1)
+
+	// NS-REQ-4: exactly one tool in fallback call.
+	if len(fallbackOpts.Tools) != 1 {
+		t.Fatalf("fallback Tools count = %d; want 1", len(fallbackOpts.Tools))
+	}
+
+	// NS-REQ-4: the tool must be submit_assessment.
+	if fallbackOpts.Tools[0].Name != "submit_assessment" {
+		t.Errorf("fallback Tools[0].Name = %q; want %q",
+			fallbackOpts.Tools[0].Name, "submit_assessment")
+	}
+
+	// NS-REQ-4: Context must be "RefinePRD:fallback_assessment".
+	if fallbackOpts.Context != "RefinePRD:fallback_assessment" {
+		t.Errorf("fallback Context = %q; want %q",
+			fallbackOpts.Context, "RefinePRD:fallback_assessment")
+	}
+}
+
 // TestNS57_ContextCancellationDuringParallelPhase verifies that cancelling the
 // context while test_spec and tasks are in-flight causes GenerateArtifacts to
 // return context.Canceled and a nil result (NS-REQ-5).

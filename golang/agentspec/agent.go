@@ -246,14 +246,14 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 	}
 
 	// Assessment not found in first response — make a fallback call
-	// with only the assessment tool to get a re-assessment.
+	// with only the assessment tool to get a re-assessment. Send only
+	// the updated PRD text (not the full original conversation) to
+	// minimise input cost.
 	assessToolDefs := mapToTools(AssessmentTools())
 	fallbackOpts := AICallOptions{
 		ModelTier: sa.modelTier,
 		System:    systemPrompt,
 		Messages: []Message{
-			{Role: "user", Content: userPrompt},
-			{Role: "assistant", Content: "I've updated the PRD. Now let me assess the updated version."},
 			{Role: "user", Content: fmt.Sprintf("Please assess the following updated PRD:\n\n%s", updatedPRD)},
 		},
 		Tools:      assessToolDefs,
