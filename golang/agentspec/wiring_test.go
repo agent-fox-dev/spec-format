@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -272,27 +273,21 @@ func TestSpec07_WiringRefineChain(t *testing.T) {
 // TestSpec07_WiringGenerateChain verifies:
 // SpecSession.Generate → GenerateArtifacts → AICall → Doer (3 times)
 func TestSpec07_WiringGenerateChain(t *testing.T) {
-	// The Doer needs to return different responses for each artifact.
-	// We use a sequence-based mock.
-	callIndex := 0
-	var mu sync.Mutex
-	artifactOrder := []string{"requirements", "test_spec", "tasks"}
-
 	doer := &chainMockDoer{}
 	doer.response = mkArtifactResponse("requirements") // default
 
-	// Create a sequence-aware aiCallFunc.
+	// Route by artifact name in Context (parallel-safe for test_spec/tasks).
 	agent := NewSpecAgent("STANDARD")
 	agent.aiCallFunc = func(ctx context.Context, opts AICallOptions) (string, any, error) {
-		mu.Lock()
-		idx := callIndex
-		callIndex++
-		mu.Unlock()
-
 		var resp *MessageResponse
-		if idx < len(artifactOrder) {
-			resp = mkArtifactResponse(artifactOrder[idx])
-		} else {
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			resp = mkArtifactResponse("requirements")
+		case strings.Contains(opts.Context, "test_spec"):
+			resp = mkArtifactResponse("test_spec")
+		case strings.Contains(opts.Context, "tasks"):
+			resp = mkArtifactResponse("tasks")
+		default:
 			resp = mkArtifactResponse("requirements") // fallback
 		}
 		// Record the call in the doer for verification.

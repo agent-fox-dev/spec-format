@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // isZeroAssessment returns true if the Assessment has all zero-value fields.
@@ -965,13 +966,11 @@ func TestSpec07_RefinePRD_NoToolCalls(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestSpec07_GenerateArtifacts_HappyPath verifies that GenerateArtifacts
-// generates requirements, test_spec, and tasks sequentially with
+// generates requirements first, then test_spec and tasks concurrently, with
 // temperature=0.2, validates each, and invokes the OnArtifact callback.
 // Test Spec: TS-07-33, Requirement: 07-REQ-7.1
 func TestSpec07_GenerateArtifacts_HappyPath(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
-	var mu sync.Mutex
 
 	requirementsContent := map[string]any{
 		"spec_id":      "07",
@@ -989,26 +988,22 @@ func TestSpec07_GenerateArtifacts_HappyPath(t *testing.T) {
 		"tasks":     []any{},
 	}
 
+	// Route by artifact name in Context (parallel-safe).
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
 		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
 		var resp *MessageResponse
-		switch c {
-		case 0:
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("requirements", requirementsContent))
-		case 1:
+		case strings.Contains(opts.Context, "test_spec"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("test_spec", testSpecContent))
-		case 2:
+		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", tasksContent))
 		default:
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
 		return "", resp, nil
 	}
@@ -1043,15 +1038,18 @@ func TestSpec07_GenerateArtifacts_HappyPath(t *testing.T) {
 		}
 	}
 
-	// Verify callback was invoked 3 times with correct names in order.
-	expectedNames := []string{"requirements", "test_spec", "tasks"}
-	if len(callbackNames) != len(expectedNames) {
-		t.Fatalf("callback invocation count = %d; want %d", len(callbackNames), len(expectedNames))
+	// Verify callback was invoked 3 times; requirements must be first.
+	// test_spec and tasks may arrive in either order (parallel execution).
+	if len(callbackNames) != 3 {
+		t.Fatalf("callback invocation count = %d; want 3", len(callbackNames))
 	}
-	for i, want := range expectedNames {
-		if callbackNames[i] != want {
-			t.Errorf("callback invocation[%d] = %q; want %q", i, callbackNames[i], want)
-		}
+	if callbackNames[0] != "requirements" {
+		t.Errorf("callback invocation[0] = %q; want %q", callbackNames[0], "requirements")
+	}
+	parallelSet := map[string]bool{callbackNames[1]: true, callbackNames[2]: true}
+	if !parallelSet["test_spec"] || !parallelSet["tasks"] {
+		t.Errorf("callback invocations[1,2] = %q, %q; want {test_spec, tasks} in any order",
+			callbackNames[1], callbackNames[2])
 	}
 
 	// Verify temperature=0.2 was set for each call.
@@ -1075,7 +1073,8 @@ func TestSpec07_GenerateArtifacts_HappyPath(t *testing.T) {
 // Test Spec: TS-07-34, Requirement: 07-REQ-7.2
 func TestSpec07_GenerateArtifacts_RepairLoop_Success(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
+	// Track how many times requirements was called (initial + repair).
+	reqCallCount := 0
 	var mu sync.Mutex
 
 	// Invalid requirements (will fail validation).
@@ -1099,31 +1098,33 @@ func TestSpec07_GenerateArtifacts_RepairLoop_Success(t *testing.T) {
 		"tasks":     []any{},
 	}
 
+	// Route by artifact name in Context (parallel-safe).
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
 		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
 		var resp *MessageResponse
-		switch c {
-		case 0:
-			// First requirements call: returns invalid payload.
-			resp = makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", invalidContent))
-		case 1:
-			// Repair call: returns valid payload.
-			resp = makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", validRequirements))
-		case 2:
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			mu.Lock()
+			n := reqCallCount
+			reqCallCount++
+			mu.Unlock()
+			if n == 0 {
+				// First requirements call: returns invalid payload.
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", invalidContent))
+			} else {
+				// Repair call: returns valid payload.
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", validRequirements))
+			}
+		case strings.Contains(opts.Context, "test_spec"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("test_spec", validTestSpec))
-		case 3:
+		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", validTasks))
 		default:
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
 		return "", resp, nil
 	}
@@ -1205,13 +1206,11 @@ func TestSpec07_GenerateArtifacts_RepairLoop_Exhaustion(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestSpec07_GenerateArtifacts_PriorArtifactsContext verifies that
-// GenerateArtifacts passes all previously generated artifacts as
-// priorArtifacts context when building the prompt for each subsequent artifact.
+// GenerateArtifacts passes requirements as priorArtifacts context when
+// building prompts for test_spec and tasks (which run in parallel).
 // Test Spec: TS-07-36, Requirement: 07-REQ-7.4
 func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
-	var mu sync.Mutex
 
 	requirementsContent := map[string]any{
 		"spec_id":      "07",
@@ -1229,26 +1228,22 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 		"tasks":     []any{map[string]any{"id": "T-1", "description": "Implement REQ-1"}},
 	}
 
+	// Route by artifact name in Context (parallel-safe).
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
 		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
 		var resp *MessageResponse
-		switch c {
-		case 0:
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("requirements", requirementsContent))
-		case 1:
+		case strings.Contains(opts.Context, "test_spec"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("test_spec", testSpecContent))
-		case 2:
+		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", tasksContent))
 		default:
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
 		return "", resp, nil
 	}
@@ -1266,35 +1261,50 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 		t.Fatal("GenerateArtifacts() returned nil result")
 	}
 
-	// Verify we had 3 calls.
+	// Verify we had exactly 3 calls (requirements + test_spec + tasks).
 	if capture.count() != 3 {
 		t.Fatalf("AICall count = %d; want 3", capture.count())
 	}
 
-	// The test_spec call (index 1) should have system or user prompt containing
-	// the requirements content. We verify the prompt messages mention
-	// previously generated artifacts.
-	testSpecOpts := capture.get(1)
+	// Find the test_spec and tasks call options by context.
+	var testSpecOpts, tasksOpts *AICallOptions
+	for i := 0; i < capture.count(); i++ {
+		o := capture.get(i)
+		switch {
+		case strings.Contains(o.Context, "test_spec"):
+			cp := o
+			testSpecOpts = &cp
+		case strings.Contains(o.Context, "tasks"):
+			cp := o
+			tasksOpts = &cp
+		}
+	}
+
+	if testSpecOpts == nil {
+		t.Fatal("no test_spec AICall recorded")
+	}
+	if tasksOpts == nil {
+		t.Fatal("no tasks AICall recorded")
+	}
+
+	// test_spec prompt must contain requirements content (priorArtifacts).
 	testSpecPrompt := testSpecOpts.System
 	for _, msg := range testSpecOpts.Messages {
 		testSpecPrompt += " " + messageContentString(msg)
 	}
-	// The test_spec prompt should reference requirements content.
 	if !strings.Contains(testSpecPrompt, "REQ-1") && !strings.Contains(testSpecPrompt, "requirements") {
 		t.Error("test_spec prompt does not contain requirements artifact content; want priorArtifacts context")
 	}
 
-	// The tasks call (index 2) should have both requirements and test_spec content.
-	tasksOpts := capture.get(2)
+	// tasks prompt must contain requirements content (priorArtifacts).
+	// Note: tasks runs in parallel with test_spec, so it receives only
+	// requirements as prior context — not test_spec.
 	tasksPrompt := tasksOpts.System
 	for _, msg := range tasksOpts.Messages {
 		tasksPrompt += " " + messageContentString(msg)
 	}
 	if !strings.Contains(tasksPrompt, "REQ-1") && !strings.Contains(tasksPrompt, "requirements") {
 		t.Error("tasks prompt does not contain requirements artifact content; want priorArtifacts context")
-	}
-	if !strings.Contains(tasksPrompt, "TC-1") && !strings.Contains(tasksPrompt, "test_spec") {
-		t.Error("tasks prompt does not contain test_spec artifact content; want priorArtifacts context")
 	}
 }
 
@@ -1375,7 +1385,7 @@ func TestSpec07_GenerateArtifacts_CallbackPanic(t *testing.T) {
 // repair loop.
 // Edge Case: 07-REQ-7.E3
 func TestSpec07_GenerateArtifacts_MalformedPayload(t *testing.T) {
-	callCount := 0
+	reqCallCount := 0
 	var mu sync.Mutex
 
 	validRequirements := map[string]any{
@@ -1394,34 +1404,36 @@ func TestSpec07_GenerateArtifacts_MalformedPayload(t *testing.T) {
 		"tasks":     []any{},
 	}
 
+	// Route by artifact name in Context (parallel-safe).
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
 		var resp *MessageResponse
-		switch c {
-		case 0:
-			// First requirements call: malformed payload (not a valid map/struct).
-			resp = makeToolCallResponse("end_turn", ContentBlock{
-				Type:  "tool_use",
-				ID:    "toolu_bad",
-				Name:  "submit_requirements",
-				Input: "this-is-not-json",
-			})
-		case 1:
-			// Repair call: valid payload.
-			resp = makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", validRequirements))
-		case 2:
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			mu.Lock()
+			n := reqCallCount
+			reqCallCount++
+			mu.Unlock()
+			if n == 0 {
+				// First requirements call: malformed payload (not a valid map/struct).
+				resp = makeToolCallResponse("end_turn", ContentBlock{
+					Type:  "tool_use",
+					ID:    "toolu_bad",
+					Name:  "submit_requirements",
+					Input: "this-is-not-json",
+				})
+			} else {
+				// Repair call: valid payload.
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", validRequirements))
+			}
+		case strings.Contains(opts.Context, "test_spec"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("test_spec", validTestSpec))
-		case 3:
+		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", validTasks))
 		default:
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
 		return "", resp, nil
 	}
@@ -1699,28 +1711,24 @@ func TestSpec07_AgentOption_NilCallback(t *testing.T) {
 // with a nil callback does not panic.
 // Edge Case: 07-REQ-8.E1
 func TestSpec07_AgentOption_NilCallbackGeneration(t *testing.T) {
-	callCount := 0
-	var mu sync.Mutex
-
+	// Route by artifact name in Context (parallel-safe).
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
 		var content map[string]any
-		switch c {
-		case 0:
+		var artifactName string
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			artifactName = "requirements"
 			content = map[string]any{"spec_id": "07", "spec_name": "test", "requirements": []any{}}
-		case 1:
+		case strings.Contains(opts.Context, "test_spec"):
+			artifactName = "test_spec"
 			content = map[string]any{"spec_id": "07", "spec_name": "test", "test_cases": []any{}}
-		case 2:
+		case strings.Contains(opts.Context, "tasks"):
+			artifactName = "tasks"
 			content = map[string]any{"spec_id": "07", "spec_name": "test", "tasks": []any{}}
 		default:
-			return "", nil, fmt.Errorf("unexpected call")
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
-		resp := makeToolCallResponse("end_turn",
-			makeArtifactToolCall([]string{"requirements", "test_spec", "tasks"}[c], content))
+		resp := makeToolCallResponse("end_turn", makeArtifactToolCall(artifactName, content))
 		return "", resp, nil
 	}
 
@@ -1752,7 +1760,6 @@ func TestSpec07_AgentOption_NilCallbackGeneration(t *testing.T) {
 // Test Spec: TS-NS-1, Requirement: NS-REQ-1
 func TestNS55_RepairConversation_FirstMessage(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
 	var mu sync.Mutex
 
 	invalidContent := map[string]any{"invalid": true}
@@ -1762,51 +1769,45 @@ func TestNS55_RepairConversation_FirstMessage(t *testing.T) {
 		"requirements": []any{},
 	}
 
+	reqCallCount := 0
 	var initialUserPrompt string
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
 		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
-		switch c {
-		case 0:
-			// Capture the user prompt from the initial generation call.
-			if len(opts.Messages) > 0 {
-				if s, ok := opts.Messages[0].Content.(string); ok {
-					initialUserPrompt = s
+		var resp *MessageResponse
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			mu.Lock()
+			n := reqCallCount
+			reqCallCount++
+			mu.Unlock()
+			if n == 0 {
+				// Capture the user prompt from the initial generation call.
+				if len(opts.Messages) > 0 {
+					if s, ok := opts.Messages[0].Content.(string); ok {
+						initialUserPrompt = s
+					}
 				}
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", invalidContent))
+			} else {
+				// Repair call — return valid content.
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", validContent))
 			}
-			return "", makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", invalidContent)), nil
-		case 1:
-			// Repair call — return valid content.
-			return "", makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", validContent)), nil
+		case strings.Contains(opts.Context, "test_spec"):
+			resp = makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", map[string]any{
+					"spec_id": "07", "spec_name": "test", "test_cases": []any{},
+				}))
+		case strings.Contains(opts.Context, "tasks"):
+			resp = makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", map[string]any{
+					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+				}))
 		default:
-			// Remaining artifacts succeed immediately.
-			artifacts := []string{"requirements", "test_spec", "tasks"}
-			names := []string{"test_spec", "tasks"}
-			idx := c - 2
-			if idx < len(names) {
-				key := names[idx]
-				content := map[string]any{
-					"spec_id":   "07",
-					"spec_name": "test",
-				}
-				switch key {
-				case "test_spec":
-					content["test_cases"] = []any{}
-				case "tasks":
-					content["tasks"] = []any{}
-				}
-				_ = artifacts
-				return "", makeToolCallResponse("end_turn",
-					makeArtifactToolCall(key, content)), nil
-			}
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
+		return "", resp, nil
 	}
 
 	agent := NewSpecAgent("STANDARD")
@@ -1818,12 +1819,23 @@ func TestNS55_RepairConversation_FirstMessage(t *testing.T) {
 		t.Fatalf("GenerateArtifacts() returned error: %v", err)
 	}
 
-	// Call 0 = initial, call 1 = repair.
 	if capture.count() < 2 {
 		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
 	}
 
-	repairOpts := capture.get(1)
+	// Find the repair call (second requirements call by context).
+	var repairOpts AICallOptions
+	reqIdxFM := 0
+	for i := 0; i < capture.count(); i++ {
+		o := capture.get(i)
+		if strings.Contains(o.Context, "requirements") {
+			if reqIdxFM == 1 {
+				repairOpts = o
+				break
+			}
+			reqIdxFM++
+		}
+	}
 	if len(repairOpts.Messages) == 0 {
 		t.Fatal("repair call Messages is empty; want at least 1 message")
 	}
@@ -1854,7 +1866,6 @@ func TestNS55_RepairConversation_FirstMessage(t *testing.T) {
 // Test Spec: TS-NS-2, Requirement: NS-REQ-2
 func TestNS55_RepairConversation_AssistantMessage(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
 	var mu sync.Mutex
 
 	invalidContent := map[string]any{"invalid": true}
@@ -1867,32 +1878,36 @@ func TestNS55_RepairConversation_AssistantMessage(t *testing.T) {
 		"requirements": []any{},
 	}
 
+	reqCallCount2 := 0
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
 		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
-		switch c {
-		case 0:
-			return "", makeToolCallResponse("end_turn", initialToolUseBlock), nil
-		case 1:
-			return "", makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", validContent)), nil
-		case 2:
-			return "", makeToolCallResponse("end_turn",
+		var resp *MessageResponse
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			mu.Lock()
+			n := reqCallCount2
+			reqCallCount2++
+			mu.Unlock()
+			if n == 0 {
+				resp = makeToolCallResponse("end_turn", initialToolUseBlock)
+			} else {
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", validContent))
+			}
+		case strings.Contains(opts.Context, "test_spec"):
+			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("test_spec", map[string]any{
 					"spec_id": "07", "spec_name": "test", "test_cases": []any{},
-				})), nil
-		case 3:
-			return "", makeToolCallResponse("end_turn",
+				}))
+		case strings.Contains(opts.Context, "tasks"):
+			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
 					"spec_id": "07", "spec_name": "test", "tasks": []any{},
-				})), nil
+				}))
 		default:
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
+		return "", resp, nil
 	}
 
 	agent := NewSpecAgent("STANDARD")
@@ -1908,7 +1923,19 @@ func TestNS55_RepairConversation_AssistantMessage(t *testing.T) {
 		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
 	}
 
-	repairOpts := capture.get(1)
+	// Find the repair call (second requirements call by context order).
+	var repairOpts AICallOptions
+	reqIdx := 0
+	for i := 0; i < capture.count(); i++ {
+		o := capture.get(i)
+		if strings.Contains(o.Context, "requirements") {
+			if reqIdx == 1 {
+				repairOpts = o
+				break
+			}
+			reqIdx++
+		}
+	}
 	if len(repairOpts.Messages) < 2 {
 		t.Fatalf("repair call Messages length = %d; want at least 2", len(repairOpts.Messages))
 	}
@@ -1950,7 +1977,7 @@ func TestNS55_RepairConversation_AssistantMessage(t *testing.T) {
 // Test Spec: TS-NS-3, Requirement: NS-REQ-3
 func TestNS55_RepairConversation_ToolResultMessage(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
+	reqCallCount3 := 0
 	var mu sync.Mutex
 
 	invalidContent := map[string]any{"invalid": true}
@@ -1965,30 +1992,33 @@ func TestNS55_RepairConversation_ToolResultMessage(t *testing.T) {
 
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
 		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
-		switch c {
-		case 0:
-			return "", makeToolCallResponse("end_turn", initialToolUseBlock), nil
-		case 1:
-			return "", makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", validContent)), nil
-		case 2:
-			return "", makeToolCallResponse("end_turn",
+		var resp *MessageResponse
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			mu.Lock()
+			n := reqCallCount3
+			reqCallCount3++
+			mu.Unlock()
+			if n == 0 {
+				resp = makeToolCallResponse("end_turn", initialToolUseBlock)
+			} else {
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", validContent))
+			}
+		case strings.Contains(opts.Context, "test_spec"):
+			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("test_spec", map[string]any{
 					"spec_id": "07", "spec_name": "test", "test_cases": []any{},
-				})), nil
-		case 3:
-			return "", makeToolCallResponse("end_turn",
+				}))
+		case strings.Contains(opts.Context, "tasks"):
+			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
 					"spec_id": "07", "spec_name": "test", "tasks": []any{},
-				})), nil
+				}))
 		default:
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
+		return "", resp, nil
 	}
 
 	agent := NewSpecAgent("STANDARD")
@@ -2004,7 +2034,19 @@ func TestNS55_RepairConversation_ToolResultMessage(t *testing.T) {
 		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
 	}
 
-	repairOpts := capture.get(1)
+	// Find the repair call (second requirements call by context).
+	var repairOpts AICallOptions
+	reqIdx3 := 0
+	for i := 0; i < capture.count(); i++ {
+		o := capture.get(i)
+		if strings.Contains(o.Context, "requirements") {
+			if reqIdx3 == 1 {
+				repairOpts = o
+				break
+			}
+			reqIdx3++
+		}
+	}
 	if len(repairOpts.Messages) < 3 {
 		t.Fatalf("repair call Messages length = %d; want exactly 3 (user, assistant, user/tool_result)",
 			len(repairOpts.Messages))
@@ -2059,7 +2101,7 @@ func TestNS55_RepairConversation_ToolResultMessage(t *testing.T) {
 // Requirement: NS-REQ-1, NS-REQ-2, NS-REQ-3
 func TestNS55_RepairConversation_MessageCount(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
+	reqCallCount4 := 0
 	var mu sync.Mutex
 
 	invalidContent := map[string]any{"invalid": true}
@@ -2071,31 +2113,34 @@ func TestNS55_RepairConversation_MessageCount(t *testing.T) {
 
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
 		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-
-		switch c {
-		case 0:
-			return "", makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", invalidContent)), nil
-		case 1:
-			return "", makeToolCallResponse("end_turn",
-				makeArtifactToolCall("requirements", validContent)), nil
-		case 2:
-			return "", makeToolCallResponse("end_turn",
+		var resp *MessageResponse
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			mu.Lock()
+			n := reqCallCount4
+			reqCallCount4++
+			mu.Unlock()
+			if n == 0 {
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", invalidContent))
+			} else {
+				resp = makeToolCallResponse("end_turn",
+					makeArtifactToolCall("requirements", validContent))
+			}
+		case strings.Contains(opts.Context, "test_spec"):
+			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("test_spec", map[string]any{
 					"spec_id": "07", "spec_name": "test", "test_cases": []any{},
-				})), nil
-		case 3:
-			return "", makeToolCallResponse("end_turn",
+				}))
+		case strings.Contains(opts.Context, "tasks"):
+			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
 					"spec_id": "07", "spec_name": "test", "tasks": []any{},
-				})), nil
+				}))
 		default:
-			return "", nil, fmt.Errorf("unexpected call %d", c)
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
+		return "", resp, nil
 	}
 
 	agent := NewSpecAgent("STANDARD")
@@ -2111,10 +2156,330 @@ func TestNS55_RepairConversation_MessageCount(t *testing.T) {
 		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
 	}
 
-	repairOpts := capture.get(1)
+	// Find the repair call (second requirements call by context).
+	var repairOpts AICallOptions
+	reqIdx4 := 0
+	for i := 0; i < capture.count(); i++ {
+		o := capture.get(i)
+		if strings.Contains(o.Context, "requirements") {
+			if reqIdx4 == 1 {
+				repairOpts = o
+				break
+			}
+			reqIdx4++
+		}
+	}
 	// Expect exactly 3 messages: user (original prompt), assistant (tool_use), user (tool_result).
 	if len(repairOpts.Messages) != 3 {
 		t.Errorf("repair call Messages count = %d; want 3 (user, assistant, user/tool_result)",
 			len(repairOpts.Messages))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1: test_spec and tasks LLM calls are issued concurrently (NS-REQ-1)
+// TS-NS-2: Error in either parallel call returns error, nil result (NS-REQ-2)
+// TS-NS-3: Both parallel calls succeed → all 3 artifacts in result (NS-REQ-3)
+// TS-NS-4: OnArtifact callback order (NS-REQ-4)
+// TS-NS-5: Context cancellation during parallel phase (NS-REQ-5)
+// ---------------------------------------------------------------------------
+
+// TestNS57_ConcurrentGeneration verifies that test_spec and tasks LLM calls
+// are issued concurrently after requirements completes (NS-REQ-1).
+//
+// The mock blocks the test_spec response until the tasks goroutine has also
+// started. A sequential implementation would deadlock on the barrier.
+func TestNS57_ConcurrentGeneration(t *testing.T) {
+	t.Parallel()
+
+	// started signals that both parallel goroutines have entered the mock.
+	var taskStarted, testSpecUnblocked sync.WaitGroup
+	taskStarted.Add(1)
+	testSpecUnblocked.Add(1)
+
+	requirementsContent := map[string]any{
+		"spec_id":      "57",
+		"spec_name":    "test",
+		"requirements": []any{},
+	}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			resp := makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", requirementsContent))
+			return "", resp, nil
+
+		case strings.Contains(opts.Context, "test_spec"):
+			// Signal that test_spec has started, then wait until tasks also starts.
+			// If tasks never starts (sequential impl), this blocks until the
+			// test timeout fires.
+			taskStarted.Wait() // wait until tasks goroutine has reached mock
+			testSpecUnblocked.Done()
+			resp := makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", map[string]any{
+					"spec_id": "57", "spec_name": "test", "test_cases": []any{},
+				}))
+			return "", resp, nil
+
+		case strings.Contains(opts.Context, "tasks"):
+			// Signal that tasks has started (unblocks test_spec above).
+			taskStarted.Done()
+			testSpecUnblocked.Wait() // wait until test_spec is unblocked
+			resp := makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", map[string]any{
+					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+				}))
+			return "", resp, nil
+
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := agent.GenerateArtifacts(ctx, "PRD", "57", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() error: %v — likely sequential (would deadlock with concurrent barrier)", err)
+	}
+	if result == nil {
+		t.Fatal("result is nil; want map with 3 artifacts")
+	}
+	for _, name := range []string{"requirements", "test_spec", "tasks"} {
+		if _, ok := result[name]; !ok {
+			t.Errorf("result[%q] missing", name)
+		}
+	}
+}
+
+// TestNS57_ParallelError_TestSpecFails verifies that when test_spec returns
+// an error, GenerateArtifacts returns a non-nil error and a nil result map (NS-REQ-2).
+func TestNS57_ParallelError_TestSpecFails(t *testing.T) {
+	t.Parallel()
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", map[string]any{
+					"spec_id": "57", "spec_name": "test", "requirements": []any{},
+				})), nil
+		case strings.Contains(opts.Context, "test_spec"):
+			return "", nil, &AgentError{Detail: "test_spec failed", ErrorCategory: "transient"}
+		case strings.Contains(opts.Context, "tasks"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", map[string]any{
+					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+				})), nil
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	result, err := agent.GenerateArtifacts(context.Background(), "PRD", "57", "test")
+	if err == nil {
+		t.Fatal("expected error when test_spec fails; got nil")
+	}
+	if result != nil {
+		t.Errorf("result = %v; want nil on error", result)
+	}
+}
+
+// TestNS57_ParallelError_TasksFails verifies that when tasks returns an error,
+// GenerateArtifacts returns a non-nil error and a nil result map (NS-REQ-2).
+func TestNS57_ParallelError_TasksFails(t *testing.T) {
+	t.Parallel()
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", map[string]any{
+					"spec_id": "57", "spec_name": "test", "requirements": []any{},
+				})), nil
+		case strings.Contains(opts.Context, "test_spec"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", map[string]any{
+					"spec_id": "57", "spec_name": "test", "test_cases": []any{},
+				})), nil
+		case strings.Contains(opts.Context, "tasks"):
+			return "", nil, &AgentError{Detail: "tasks failed", ErrorCategory: "transient"}
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	result, err := agent.GenerateArtifacts(context.Background(), "PRD", "57", "test")
+	if err == nil {
+		t.Fatal("expected error when tasks fails; got nil")
+	}
+	if result != nil {
+		t.Errorf("result = %v; want nil on error", result)
+	}
+}
+
+// TestNS57_AllArtifactsPresent verifies that when both parallel calls succeed,
+// all three artifacts appear in the returned result map with no data race (NS-REQ-3).
+// Run with -race to detect concurrent write races.
+func TestNS57_AllArtifactsPresent(t *testing.T) {
+	t.Parallel()
+
+	wantRequirements := map[string]any{
+		"spec_id": "57", "spec_name": "test", "requirements": []any{"req1"},
+	}
+	wantTestSpec := map[string]any{
+		"spec_id": "57", "spec_name": "test", "test_cases": []any{"tc1"},
+	}
+	wantTasks := map[string]any{
+		"spec_id": "57", "spec_name": "test", "tasks": []any{"task1"},
+	}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", wantRequirements)), nil
+		case strings.Contains(opts.Context, "test_spec"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", wantTestSpec)), nil
+		case strings.Contains(opts.Context, "tasks"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", wantTasks)), nil
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	result, err := agent.GenerateArtifacts(context.Background(), "PRD", "57", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("result is nil")
+	}
+	if len(result) != 3 {
+		t.Errorf("len(result) = %d; want 3", len(result))
+	}
+	for _, name := range []string{"requirements", "test_spec", "tasks"} {
+		if _, ok := result[name]; !ok {
+			t.Errorf("result[%q] missing", name)
+		}
+	}
+}
+
+// TestNS57_CallbackOrder verifies that the OnArtifact callback is invoked
+// exactly 3 times, requirements is always first, and test_spec and tasks appear
+// in either order (NS-REQ-4).
+func TestNS57_CallbackOrder(t *testing.T) {
+	t.Parallel()
+
+	var callbackMu sync.Mutex
+	var callbackNames []string
+	callback := func(name string, content any) {
+		callbackMu.Lock()
+		defer callbackMu.Unlock()
+		callbackNames = append(callbackNames, name)
+	}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", map[string]any{
+					"spec_id": "57", "spec_name": "test", "requirements": []any{},
+				})), nil
+		case strings.Contains(opts.Context, "test_spec"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", map[string]any{
+					"spec_id": "57", "spec_name": "test", "test_cases": []any{},
+				})), nil
+		case strings.Contains(opts.Context, "tasks"):
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", map[string]any{
+					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+				})), nil
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	_, err := agent.GenerateArtifacts(context.Background(), "PRD", "57", "test",
+		WithOnArtifact(callback))
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() error: %v", err)
+	}
+
+	if len(callbackNames) != 3 {
+		t.Fatalf("callback count = %d; want 3", len(callbackNames))
+	}
+	// requirements must be first.
+	if callbackNames[0] != "requirements" {
+		t.Errorf("callbackNames[0] = %q; want %q", callbackNames[0], "requirements")
+	}
+	// test_spec and tasks may arrive in either order.
+	parallelSet := map[string]bool{callbackNames[1]: true, callbackNames[2]: true}
+	if !parallelSet["test_spec"] || !parallelSet["tasks"] {
+		t.Errorf("callbackNames[1,2] = %q, %q; want {test_spec, tasks} in any order",
+			callbackNames[1], callbackNames[2])
+	}
+}
+
+// TestNS57_ContextCancellationDuringParallelPhase verifies that cancelling the
+// context while test_spec and tasks are in-flight causes GenerateArtifacts to
+// return context.Canceled and a nil result (NS-REQ-5).
+func TestNS57_ContextCancellationDuringParallelPhase(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Both parallel goroutines block until cancelled.
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			// requirements completes normally.
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", map[string]any{
+					"spec_id": "57", "spec_name": "test", "requirements": []any{},
+				})), nil
+		case strings.Contains(opts.Context, "test_spec"),
+			strings.Contains(opts.Context, "tasks"):
+			// Cancel the context as soon as either parallel call starts, then block.
+			cancel()
+			<-ctx.Done()
+			return "", nil, ctx.Err()
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	result, err := agent.GenerateArtifacts(ctx, "PRD", "57", "test")
+	if err == nil {
+		t.Fatal("expected error from cancelled context; got nil")
+	}
+	if result != nil {
+		t.Errorf("result = %v; want nil on cancellation", result)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v; want context.Canceled", err)
 	}
 }

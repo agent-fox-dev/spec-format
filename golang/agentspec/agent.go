@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // agentOptions holds the resolved configuration from AgentOption functional options.
@@ -292,8 +295,10 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 	return updatedPRD, assessment, nil
 }
 
-// GenerateArtifacts sequentially generates requirements, test_spec, and tasks
-// artifacts with validation and repair loops.
+// GenerateArtifacts generates requirements first, then test_spec and tasks
+// concurrently (both depend only on requirements). Returns the three artifacts
+// in a map on success. If either parallel call fails, the error is propagated
+// and no partial result is returned.
 func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, specName string, opts ...AgentOption) (map[string]any, error) {
 	// Apply agent options.
 	o := applyOptions(opts)
@@ -309,17 +314,13 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 	}
 
 	callFn := sa.resolveCallFunc()
-
-	// Generate artifacts sequentially: requirements, test_spec, tasks.
-	artifactOrder := []string{"requirements", "test_spec", "tasks"}
-	result := make(map[string]any)
-	priorArtifacts := make(map[string]any)
-
 	temp := 0.2
 	const maxRepairs = 2
 
-	for _, artifactName := range artifactOrder {
-		// Check context before each artifact.
+	// generateOne runs the generation + repair loop for a single artifact name.
+	// priorArtifacts is read-only (no writes during the parallel phase).
+	generateOne := func(ctx context.Context, artifactName string, priorArtifacts map[string]any) (map[string]any, error) {
+		// Check context before starting.
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -337,8 +338,8 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 			}
 		}
 
-		// Build tool definitions for this artifact.
 		toolDefs := mapToTools(ArtifactTool(artifactName))
+		toolName := "submit_" + artifactName
 
 		callOpts := AICallOptions{
 			ModelTier:   sa.modelTier,
@@ -367,15 +368,11 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 			return nil, err
 		}
 
-		// Extract artifact tool call.
-		toolName := "submit_" + artifactName
 		toolInput, err := extractToolCall(resp, toolName)
 		if err != nil {
-			// Treat missing tool call as validation error — enter repair loop.
 			toolInput = nil
 		}
 
-		// Validate the artifact content.
 		content, validErr := validateArtifactContent(toolInput, artifactName)
 
 		// Repair loop: up to maxRepairs attempts if validation fails.
@@ -388,12 +385,8 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 				return nil, err
 			}
 
-			// Locate the tool_use ID in the most recent response so the
-			// tool_result can reference it correctly.
 			toolUseID := findToolUseID(resp, toolName)
 
-			// Build conversation continuation:
-			//   [original user prompt, assistant tool_use response, tool_result with error]
 			repairMessages := []Message{
 				{Role: "user", Content: userPrompt},
 				{Role: "assistant", Content: resp.Content},
@@ -447,16 +440,72 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 			}
 		}
 
-		// Store artifact content.
-		result[artifactName] = content
-		priorArtifacts[artifactName] = content
+		return content, nil
+	}
 
-		// Invoke OnArtifact callback if set.
+	// Phase 1: generate requirements sequentially — both test_spec and tasks need it.
+	requirementsContent, err := generateOne(ctx, "requirements", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Invoke OnArtifact callback for requirements (guaranteed before test_spec/tasks).
+	if o.onArtifact != nil {
+		if cbErr := safeCallback(o.onArtifact, "requirements", requirementsContent); cbErr != nil {
+			return nil, cbErr
+		}
+	}
+
+	// Phase 2: generate test_spec and tasks concurrently.
+	// Both depend only on requirements, not on each other.
+	priorForParallel := map[string]any{"requirements": requirementsContent}
+
+	type artifactResult struct {
+		name    string
+		content map[string]any
+	}
+
+	var (
+		resultsMu sync.Mutex
+		results   []artifactResult
+	)
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	for _, name := range []string{"test_spec", "tasks"} {
+		name := name // capture loop variable
+		g.Go(func() error {
+			content, err := generateOne(gCtx, name, priorForParallel)
+			if err != nil {
+				return err
+			}
+			resultsMu.Lock()
+			results = append(results, artifactResult{name: name, content: content})
+			resultsMu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Invoke OnArtifact callbacks for the two parallel artifacts.
+	// Order is non-deterministic (test_spec or tasks may arrive first).
+	for _, r := range results {
 		if o.onArtifact != nil {
-			if cbErr := safeCallback(o.onArtifact, artifactName, content); cbErr != nil {
+			if cbErr := safeCallback(o.onArtifact, r.name, r.content); cbErr != nil {
 				return nil, cbErr
 			}
 		}
+	}
+
+	// Build final result map.
+	result := map[string]any{
+		"requirements": requirementsContent,
+	}
+	for _, r := range results {
+		result[r.name] = r.content
 	}
 
 	return result, nil
