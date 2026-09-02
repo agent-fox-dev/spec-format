@@ -1,6 +1,7 @@
 package afspec
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -673,6 +674,25 @@ func (ts *TestSpecV1Json) Render() string {
 	return sb.String()
 }
 
+// renderInterfaceValue converts an interface{} field value to a string
+// suitable for Markdown output.  It returns ("", false) when the value is nil
+// (caller should omit the field), the raw string for string values, and
+// compact JSON for any other type (map, slice, number, bool, …).
+func renderInterfaceValue(v interface{}) (string, bool) {
+	if v == nil {
+		return "", false
+	}
+	if s, ok := v.(string); ok {
+		return s, true
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		// Fallback to fmt if Marshal fails (should not happen in practice).
+		return fmt.Sprintf("%v", v), true
+	}
+	return string(b), true
+}
+
 // renderTestCase renders a single test case as Markdown.
 func renderTestCase(sb *strings.Builder, tc TestCase) {
 	sb.WriteString(fmt.Sprintf("### %s: %s\n\n", tc.Id, tc.Description))
@@ -687,11 +707,13 @@ func renderTestCase(sb *strings.Builder, tc TestCase) {
 		sb.WriteString("\n")
 	}
 
-	if tc.Input != "" {
-		sb.WriteString(fmt.Sprintf("**Input:** `%s`\n\n", tc.Input))
+	if inputStr, ok := renderInterfaceValue(tc.Input); ok {
+		sb.WriteString(fmt.Sprintf("**Input:** `%s`\n\n", inputStr))
 	}
 
-	sb.WriteString(fmt.Sprintf("**Expected:** %s\n\n", tc.Expected))
+	if expectedStr, ok := renderInterfaceValue(tc.Expected); ok {
+		sb.WriteString(fmt.Sprintf("**Expected:** %s\n\n", expectedStr))
+	}
 
 	if tc.AssertionPseudocode != "" {
 		sb.WriteString("**Assertion pseudocode:**\n\n")

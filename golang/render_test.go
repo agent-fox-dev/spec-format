@@ -812,3 +812,172 @@ func TestRenderCombined_NoArchitectureWhenEmpty(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderTestCaseObjectInput verifies that a map-typed Input is rendered
+// as compact JSON, not as a Go map literal. (NS-REQ-1 / TS-NS-1)
+func TestRenderTestCaseObjectInput(t *testing.T) {
+	defer requireImplemented(t)
+
+	ts := &TestSpecV1Json{
+		SchemaVersion: 1,
+		SpecId:        "01",
+		SpecName:      "test_feature",
+		TestCases: []TestCase{
+			{
+				Id:            "TS-01-2",
+				RequirementId: "01-REQ-1.1",
+				Kind:          TestCaseKindUnit,
+				Description:   "Object input is JSON",
+				Preconditions: []string{},
+				Input:         map[string]interface{}{"prompt": "test", "max_tokens": 100},
+				Expected:      "ok",
+			},
+		},
+		PropertyTests: []PropertyTest{},
+		EdgeCaseTests: []EdgeCaseTest{},
+		SmokeTests:    []SmokeTest{},
+		Coverage:      Coverage{},
+	}
+
+	result := ts.Render()
+
+	if strings.Contains(result, "map[") {
+		t.Errorf("rendered output contains Go map literal; want JSON: %s", result)
+	}
+	assertContains(t, result, `**Input:**`, "Input label")
+	assertContains(t, result, `"prompt"`, "JSON key prompt")
+	assertContains(t, result, `"max_tokens"`, "JSON key max_tokens")
+	assertContains(t, result, `{`, "opening brace")
+	assertContains(t, result, `}`, "closing brace")
+}
+
+// TestRenderTestCaseObjectExpected verifies that a map-typed Expected is
+// rendered as compact JSON. (NS-REQ-2 / TS-NS-2)
+func TestRenderTestCaseObjectExpected(t *testing.T) {
+	defer requireImplemented(t)
+
+	ts := &TestSpecV1Json{
+		SchemaVersion: 1,
+		SpecId:        "01",
+		SpecName:      "test_feature",
+		TestCases: []TestCase{
+			{
+				Id:            "TS-01-3",
+				RequirementId: "01-REQ-1.1",
+				Kind:          TestCaseKindUnit,
+				Description:   "Object expected is JSON",
+				Preconditions: []string{},
+				Expected:      map[string]interface{}{"result": "success", "code": 200},
+			},
+		},
+		PropertyTests: []PropertyTest{},
+		EdgeCaseTests: []EdgeCaseTest{},
+		SmokeTests:    []SmokeTest{},
+		Coverage:      Coverage{},
+	}
+
+	result := ts.Render()
+
+	if strings.Contains(result, "map[") {
+		t.Errorf("rendered output contains Go map literal; want JSON: %s", result)
+	}
+	assertContains(t, result, `**Expected:**`, "Expected label")
+	assertContains(t, result, `"result"`, "JSON key result")
+	assertContains(t, result, `"code"`, "JSON key code")
+}
+
+// TestRenderTestCaseStringInput verifies that string-typed Input is rendered
+// as-is, without JSON quoting. (NS-REQ-3 / TS-NS-3)
+func TestRenderTestCaseStringInput(t *testing.T) {
+	defer requireImplemented(t)
+
+	ts := &TestSpecV1Json{
+		SchemaVersion: 1,
+		SpecId:        "01",
+		SpecName:      "test_feature",
+		TestCases: []TestCase{
+			{
+				Id:            "TS-01-4",
+				RequirementId: "01-REQ-1.1",
+				Kind:          TestCaseKindUnit,
+				Description:   "String input is literal",
+				Preconditions: []string{},
+				Input:         "hello",
+				Expected:      "world",
+			},
+		},
+		PropertyTests: []PropertyTest{},
+		EdgeCaseTests: []EdgeCaseTest{},
+		SmokeTests:    []SmokeTest{},
+		Coverage:      Coverage{},
+	}
+
+	result := ts.Render()
+
+	assertContains(t, result, "**Input:** `hello`", "literal string input")
+	assertContains(t, result, "**Expected:** world", "literal string expected")
+}
+
+// TestRenderTestCaseNilInput verifies that a nil Input omits the Input line
+// entirely. (NS-REQ-4 / TS-NS-4)
+func TestRenderTestCaseNilInput(t *testing.T) {
+	defer requireImplemented(t)
+
+	ts := &TestSpecV1Json{
+		SchemaVersion: 1,
+		SpecId:        "01",
+		SpecName:      "test_feature",
+		TestCases: []TestCase{
+			{
+				Id:            "TS-01-5",
+				RequirementId: "01-REQ-1.1",
+				Kind:          TestCaseKindUnit,
+				Description:   "Nil input is omitted",
+				Preconditions: []string{},
+				// Input intentionally omitted (nil)
+				Expected: "anything",
+			},
+		},
+		PropertyTests: []PropertyTest{},
+		EdgeCaseTests: []EdgeCaseTest{},
+		SmokeTests:    []SmokeTest{},
+		Coverage:      Coverage{},
+	}
+
+	result := ts.Render()
+
+	if strings.Contains(result, "**Input:**") {
+		t.Errorf("expected no **Input:** line when Input is nil, got: %s", result)
+	}
+}
+
+// TestRenderTestCaseArrayInput verifies that a slice-typed Input is rendered
+// as a compact JSON array. (NS-REQ-5 / TS-NS-5)
+func TestRenderTestCaseArrayInput(t *testing.T) {
+	defer requireImplemented(t)
+
+	ts := &TestSpecV1Json{
+		SchemaVersion: 1,
+		SpecId:        "01",
+		SpecName:      "test_feature",
+		TestCases: []TestCase{
+			{
+				Id:            "TS-01-6",
+				RequirementId: "01-REQ-1.1",
+				Kind:          TestCaseKindUnit,
+				Description:   "Array input is JSON",
+				Preconditions: []string{},
+				Input:         []interface{}{"a", "b"},
+				Expected:      "ok",
+			},
+		},
+		PropertyTests: []PropertyTest{},
+		EdgeCaseTests: []EdgeCaseTest{},
+		SmokeTests:    []SmokeTest{},
+		Coverage:      Coverage{},
+	}
+
+	result := ts.Render()
+
+	assertContains(t, result, "**Input:** `[\"a\",\"b\"]`", "JSON array input")
+}
