@@ -8,8 +8,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
+	afspec "github.com/agent-fox-dev/spec-format"
 	"github.com/spf13/cobra"
 )
 
@@ -64,22 +66,87 @@ func newNewCmd() *cobra.Command {
 			// Determine the next numeric prefix.
 			prefix := nextSpecPrefix(specDir)
 
-			// Create the spec directory.
-			specName := fmt.Sprintf("%02d_%s", prefix, name)
-			specPath := filepath.Join(specDir, specName)
-			if err := os.MkdirAll(specPath, 0755); err != nil {
+			// Derive spec directory name and validate against IsSpecDirName.
+			dirName := fmt.Sprintf("%02d_%s", prefix, name)
+			if !afspec.IsSpecDirName(dirName) {
+				return fmt.Errorf("derived directory name %q is invalid: must match NN_snake_case pattern", dirName)
+			}
+
+			// Create the spec directory; fail if it already exists.
+			specPath := filepath.Join(specDir, dirName)
+			if err := os.Mkdir(specPath, 0755); err != nil {
+				if os.IsExist(err) {
+					return fmt.Errorf("spec directory %q already exists", specPath)
+				}
 				return fmt.Errorf("cannot create spec %q: %w", specPath, err)
 			}
 
-			// Copy the PRD file into the spec directory.
+			// Read the PRD file content (becomes the PRD body).
 			prdContent, err := os.ReadFile(prdPath)
 			if err != nil {
+				os.RemoveAll(specPath)
 				return fmt.Errorf("cannot read PRD file %q: %w", prdPath, err)
 			}
-			if err := os.WriteFile(filepath.Join(specPath, "prd.md"), prdContent, 0644); err != nil {
-				// Clean up partial state.
+
+			// Build a minimal valid Spec and save all four required artifacts.
+			specID := fmt.Sprintf("%02d", prefix)
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+
+			reqSchemaURL := "https://agent-fox.dev/schemas/requirements.v1.json"
+			tsSchemaURL := "https://agent-fox.dev/schemas/test_spec.v1.json"
+			taskSchemaURL := "https://agent-fox.dev/schemas/tasks.v1.json"
+
+			spec := &afspec.Spec{
+				SpecID:        specID,
+				SpecName:      name,
+				Title:         "",
+				Status:        "draft",
+				CreatedAt:     now,
+				UpdatedAt:     now,
+				Owner:         "",
+				Source:        "",
+				Supersedes:    []string{},
+				Tags:          []string{},
+				IntentHash:    nil,
+				SchemaVersion: 1,
+				PRDBody:       string(prdContent),
+				Requirements: &afspec.RequirementsV1Json{
+					Schema:                afspec.RequirementsV1JsonSchema(&reqSchemaURL),
+					SpecId:                specID,
+					SpecName:              name,
+					SchemaVersion:         1,
+					Introduction:          "",
+					Glossary:              afspec.RequirementsV1JsonGlossary{},
+					Requirements:          []afspec.Requirement{},
+					CorrectnessProperties: []afspec.CorrectnessProperty{},
+					ExecutionPaths:        []afspec.ExecutionPath{},
+					ErrorHandling:         []afspec.ErrorHandlingEntry{},
+				},
+				TestSpec: &afspec.TestSpecV1Json{
+					Schema:        afspec.TestSpecV1JsonSchema(&tsSchemaURL),
+					SpecId:        specID,
+					SpecName:      name,
+					SchemaVersion: 1,
+					TestCases:     []afspec.TestCase{},
+					PropertyTests: []afspec.PropertyTest{},
+					EdgeCaseTests: []afspec.EdgeCaseTest{},
+					SmokeTests:    []afspec.SmokeTest{},
+				},
+				Tasks: &afspec.TasksV1Json{
+					Schema:        afspec.TasksV1JsonSchema(&taskSchemaURL),
+					SpecId:        specID,
+					SpecName:      name,
+					SchemaVersion: 1,
+					TestCommands:  afspec.TestCommands{},
+					Dependencies:  []afspec.TaskDependency{},
+					TaskGroups:    []afspec.TaskGroup{},
+					Traceability:  []afspec.TraceabilityEntry{},
+				},
+			}
+
+			if err := spec.Save(specPath); err != nil {
 				os.RemoveAll(specPath)
-				return fmt.Errorf("cannot write prd.md: %w", err)
+				return fmt.Errorf("cannot save spec artifacts: %w", err)
 			}
 
 			// Create initial _session.json.

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	afspec "github.com/agent-fox-dev/spec-format"
 )
 
 // --- TS-08-14: Verify that spec new with a valid PRD file auto-initializes
@@ -286,14 +288,14 @@ func TestTS08_15_NewInvalidNamePattern(t *testing.T) {
 	specDir := filepath.Join(tmpDir, ".specs")
 
 	invalidNames := []string{
-		"MySpec",     // uppercase
-		"1spec",      // starts with digit
-		"_spec",      // starts with underscore
-		"spec-name",  // contains hyphen
-		"ALLCAPS",    // all uppercase
-		"spec name",  // contains space
-		"spec.name",  // contains dot
-		"",           // empty string
+		"MySpec",    // uppercase
+		"1spec",     // starts with digit
+		"_spec",     // starts with underscore
+		"spec-name", // contains hyphen
+		"ALLCAPS",   // all uppercase
+		"spec name", // contains space
+		"spec.name", // contains dot
+		"",          // empty string
 	}
 
 	for _, name := range invalidNames {
@@ -499,5 +501,358 @@ func TestTS08_14_NewPRDIsDirectory(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("Execute() with SPEC_PATH pointing to a directory returned nil; want error")
+	}
+}
+
+// --- TS-NS-1: All four required artifact files are created by spec new ---
+
+// TestTS_NS_1_NewCreatesAllArtifacts verifies that spec new creates all four
+// required artifact files: prd.md, requirements.json, test_spec.json, tasks.json,
+// plus _session.json.
+// Covers: TS-NS-1, NS-REQ-1
+func TestTS_NS_1_NewCreatesAllArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	prdPath := filepath.Join(tmpDir, "test_prd.md")
+	if err := os.WriteFile(prdPath, []byte("# Test PRD\n\nSome content."), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "new", prdPath, "--name", "my_spec"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	// Find the spec directory (should be 01_my_spec).
+	entries, err := os.ReadDir(specDir)
+	if err != nil {
+		t.Fatalf("cannot read spec dir: %v", err)
+	}
+	var specPath string
+	for _, e := range entries {
+		if e.IsDir() && strings.Contains(e.Name(), "my_spec") {
+			specPath = filepath.Join(specDir, e.Name())
+			break
+		}
+	}
+	if specPath == "" {
+		t.Fatal("spec directory not found")
+	}
+
+	// Verify all five required files exist.
+	for _, fname := range []string{"prd.md", "requirements.json", "test_spec.json", "tasks.json", "_session.json"} {
+		if _, err := os.Stat(filepath.Join(specPath, fname)); os.IsNotExist(err) {
+			t.Errorf("required file %q does not exist in spec directory", fname)
+		}
+	}
+}
+
+// --- TS-NS-2: prd.md contains valid YAML frontmatter ---
+
+// TestTS_NS_2_PrdMdHasValidFrontmatter verifies that the created prd.md
+// contains valid YAML frontmatter with all required fields and the original
+// PRD content as body.
+// Covers: TS-NS-2, NS-REQ-2
+func TestTS_NS_2_PrdMdHasValidFrontmatter(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	prdBody := "# Test PRD\n\nThis is my product requirements document."
+	prdPath := filepath.Join(tmpDir, "myprd.md")
+	if err := os.WriteFile(prdPath, []byte(prdBody), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	cmd := newRootCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "new", prdPath, "--name", "my_spec"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	// Find the spec directory.
+	entries, err := os.ReadDir(specDir)
+	if err != nil {
+		t.Fatalf("cannot read spec dir: %v", err)
+	}
+	var specPath string
+	for _, e := range entries {
+		if e.IsDir() && strings.Contains(e.Name(), "my_spec") {
+			specPath = filepath.Join(specDir, e.Name())
+			break
+		}
+	}
+	if specPath == "" {
+		t.Fatal("spec directory not found")
+	}
+
+	// Load the spec and verify frontmatter.
+	spec, err := afspec.LoadSpec(specPath)
+	if err != nil {
+		t.Fatalf("LoadSpec() failed: %v", err)
+	}
+
+	if spec.Status != "draft" {
+		t.Errorf("spec.Status = %q; want %q", spec.Status, "draft")
+	}
+	if spec.SchemaVersion != 1 {
+		t.Errorf("spec.SchemaVersion = %d; want 1", spec.SchemaVersion)
+	}
+	if spec.SpecID == "" {
+		t.Error("spec.SpecID is empty; want non-empty")
+	}
+	if spec.SpecName == "" {
+		t.Error("spec.SpecName is empty; want non-empty")
+	}
+	if spec.CreatedAt == "" {
+		t.Error("spec.CreatedAt is empty; want non-empty timestamp")
+	}
+	if spec.UpdatedAt == "" {
+		t.Error("spec.UpdatedAt is empty; want non-empty timestamp")
+	}
+
+	// Verify the original PRD content is the body.
+	if !strings.Contains(spec.PRDBody, prdBody) {
+		t.Errorf("prd.md body does not contain original PRD content; body=%q", spec.PRDBody)
+	}
+
+	// Verify prd.md starts with ---.
+	prdData, err := os.ReadFile(filepath.Join(specPath, "prd.md"))
+	if err != nil {
+		t.Fatalf("cannot read prd.md: %v", err)
+	}
+	if !strings.HasPrefix(string(prdData), "---") {
+		t.Error("prd.md does not start with ---")
+	}
+}
+
+// --- TS-NS-3: JSON artifacts pass schema validation ---
+
+// TestTS_NS_3_JSONArtifactsValidate verifies that the three JSON artifacts
+// can be parsed by json.Unmarshal into their typed structs and that
+// spec_id, spec_name, and schema_version=1 are populated correctly.
+// Covers: TS-NS-3, NS-REQ-3
+func TestTS_NS_3_JSONArtifactsValidate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	prdPath := filepath.Join(tmpDir, "test_prd.md")
+	if err := os.WriteFile(prdPath, []byte("# PRD\nContent"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	cmd := newRootCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "new", prdPath, "--name", "validate_spec"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	// Find the spec directory.
+	entries, err := os.ReadDir(specDir)
+	if err != nil {
+		t.Fatalf("cannot read spec dir: %v", err)
+	}
+	var specPath string
+	for _, e := range entries {
+		if e.IsDir() && strings.Contains(e.Name(), "validate_spec") {
+			specPath = filepath.Join(specDir, e.Name())
+			break
+		}
+	}
+	if specPath == "" {
+		t.Fatal("spec directory not found")
+	}
+
+	// Parse requirements.json.
+	reqData, err := os.ReadFile(filepath.Join(specPath, "requirements.json"))
+	if err != nil {
+		t.Fatalf("cannot read requirements.json: %v", err)
+	}
+	var req afspec.RequirementsV1Json
+	if err := json.Unmarshal(reqData, &req); err != nil {
+		t.Errorf("json.Unmarshal requirements.json failed: %v", err)
+	} else {
+		if req.SpecId == "" {
+			t.Error("requirements.json: spec_id is empty")
+		}
+		if req.SpecName == "" {
+			t.Error("requirements.json: spec_name is empty")
+		}
+		if req.SchemaVersion != 1 {
+			t.Errorf("requirements.json: schema_version = %d; want 1", req.SchemaVersion)
+		}
+	}
+
+	// Parse test_spec.json.
+	tsData, err := os.ReadFile(filepath.Join(specPath, "test_spec.json"))
+	if err != nil {
+		t.Fatalf("cannot read test_spec.json: %v", err)
+	}
+	var ts afspec.TestSpecV1Json
+	if err := json.Unmarshal(tsData, &ts); err != nil {
+		t.Errorf("json.Unmarshal test_spec.json failed: %v", err)
+	} else {
+		if ts.SpecId == "" {
+			t.Error("test_spec.json: spec_id is empty")
+		}
+		if ts.SpecName == "" {
+			t.Error("test_spec.json: spec_name is empty")
+		}
+		if ts.SchemaVersion != 1 {
+			t.Errorf("test_spec.json: schema_version = %d; want 1", ts.SchemaVersion)
+		}
+	}
+
+	// Parse tasks.json.
+	tasksData, err := os.ReadFile(filepath.Join(specPath, "tasks.json"))
+	if err != nil {
+		t.Fatalf("cannot read tasks.json: %v", err)
+	}
+	var tasks afspec.TasksV1Json
+	if err := json.Unmarshal(tasksData, &tasks); err != nil {
+		t.Errorf("json.Unmarshal tasks.json failed: %v", err)
+	} else {
+		if tasks.SpecId == "" {
+			t.Error("tasks.json: spec_id is empty")
+		}
+		if tasks.SpecName == "" {
+			t.Error("tasks.json: spec_name is empty")
+		}
+		if tasks.SchemaVersion != 1 {
+			t.Errorf("tasks.json: schema_version = %d; want 1", tasks.SchemaVersion)
+		}
+	}
+
+	// Verify spec_id and spec_name are consistent across all artifacts.
+	if req.SpecId != ts.SpecId || ts.SpecId != tasks.SpecId {
+		t.Errorf("spec_id mismatch: req=%q ts=%q tasks=%q", req.SpecId, ts.SpecId, tasks.SpecId)
+	}
+	if req.SpecName != ts.SpecName || ts.SpecName != tasks.SpecName {
+		t.Errorf("spec_name mismatch: req=%q ts=%q tasks=%q", req.SpecName, ts.SpecName, tasks.SpecName)
+	}
+}
+
+// --- TS-NS-4: Directory name validated against IsSpecDirName ---
+
+// TestTS_NS_4_InvalidDirNameRejected verifies that spec new returns an error
+// when the derived directory name would be invalid. Names that produce invalid
+// directory names (e.g., trailing underscore, double underscore) are rejected.
+// Covers: TS-NS-4, NS-REQ-4
+func TestTS_NS_4_InvalidDirNameRejected(t *testing.T) {
+	// Names that pass specNameRE but produce an invalid IsSpecDirName directory.
+	// "a_" → "01_a_" fails IsSpecDirName (trailing underscore in name segment).
+	invalidDirNames := []string{
+		"a_",   // trailing underscore → 01_a_ fails IsSpecDirName
+		"a__b", // double underscore → 01_a__b fails IsSpecDirName
+	}
+
+	for _, name := range invalidDirNames {
+		t.Run("name="+name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			prdPath := filepath.Join(tmpDir, "test_prd.md")
+			if err := os.WriteFile(prdPath, []byte("# PRD"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			specDir := filepath.Join(tmpDir, ".specs")
+
+			cmd := newRootCmd()
+			cmd.SetOut(new(bytes.Buffer))
+			cmd.SetErr(new(bytes.Buffer))
+			cmd.SetArgs([]string{"--spec-dir", specDir, "new", prdPath, "--name", name})
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Errorf("Execute() with --name=%q returned nil; want error for invalid directory name", name)
+			}
+
+			// Verify the spec directory was NOT created.
+			if _, statErr := os.Stat(specDir); os.IsNotExist(statErr) {
+				// specDir itself not created — fine, no spec dir means no spec dir either.
+				return
+			}
+			entries, _ := os.ReadDir(specDir)
+			for _, e := range entries {
+				if e.IsDir() && strings.Contains(e.Name(), name[:strings.IndexByte(name, '_')]) {
+					t.Errorf("spec directory containing name was created despite error")
+				}
+			}
+		})
+	}
+}
+
+// --- TS-NS-5: Collision detection via prefix increment ---
+
+// TestTS_NS_5_CollisionIncrementsPrefix verifies that when a spec directory
+// with the same name already exists (e.g., 01_my_spec), a second invocation
+// creates 02_my_spec without clobbering the first.
+// Covers: TS-NS-5, NS-REQ-5
+func TestTS_NS_5_CollisionIncrementsPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	prdPath := filepath.Join(tmpDir, "test_prd.md")
+	originalContent := "# Original PRD\nOriginal content."
+	if err := os.WriteFile(prdPath, []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// First creation: produces 01_my_spec.
+	cmd1 := newRootCmd()
+	cmd1.SetOut(new(bytes.Buffer))
+	cmd1.SetErr(new(bytes.Buffer))
+	cmd1.SetArgs([]string{"--spec-dir", specDir, "new", prdPath, "--name", "my_spec"})
+	if err := cmd1.Execute(); err != nil {
+		t.Fatalf("first spec new returned error: %v", err)
+	}
+
+	// Verify 01_my_spec was created.
+	firstSpecDir := filepath.Join(specDir, "01_my_spec")
+	if _, err := os.Stat(firstSpecDir); os.IsNotExist(err) {
+		t.Fatal("01_my_spec was not created")
+	}
+
+	// Second creation with same name: should produce 02_my_spec.
+	prdPath2 := filepath.Join(tmpDir, "test_prd2.md")
+	newContent := "# New PRD\nNew content."
+	if err := os.WriteFile(prdPath2, []byte(newContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd2 := newRootCmd()
+	cmd2.SetOut(new(bytes.Buffer))
+	cmd2.SetErr(new(bytes.Buffer))
+	cmd2.SetArgs([]string{"--spec-dir", specDir, "new", prdPath2, "--name", "my_spec"})
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("second spec new returned error: %v", err)
+	}
+
+	// Verify 02_my_spec was created.
+	secondSpecDir := filepath.Join(specDir, "02_my_spec")
+	if _, err := os.Stat(secondSpecDir); os.IsNotExist(err) {
+		t.Error("02_my_spec was not created on second invocation")
+	}
+
+	// Verify 01_my_spec prd.md still has original content (not overwritten).
+	prdData, err := os.ReadFile(filepath.Join(firstSpecDir, "prd.md"))
+	if err != nil {
+		t.Fatalf("cannot read 01_my_spec/prd.md: %v", err)
+	}
+	if !strings.Contains(string(prdData), "Original") {
+		t.Errorf("01_my_spec/prd.md was clobbered; content=%q", string(prdData))
 	}
 }
