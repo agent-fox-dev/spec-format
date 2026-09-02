@@ -105,6 +105,49 @@ A requirement with an empty `edge_cases` array is almost always wrong.
 
 **Bad:** `ears_pattern: "ubiquitous"`, `action: "handle organization creation properly"`, `return_contract: null`
 
+### Example: concrete requirements artifact fragment
+
+The JSON below shows a correctly structured requirements artifact for a recipe-manager system. Use a different domain for your actual output — this example exists for structural reference only.
+
+```json
+{
+  "spec_id": "07",
+  "spec_name": "recipe-manager",
+  "schema_version": "1.0",
+  "introduction": "The recipe catalog stores user-created recipes and their ingredients.",
+  "glossary": {
+    "Recipe": "A named collection of ingredients and preparation steps in the catalog",
+    "Ingredient": "A measurable food item referenced by a Recipe"
+  },
+  "requirements": [
+    {
+      "id": "07-REQ-1",
+      "title": "Recipe creation",
+      "user_story": "As a cook, I want to save a Recipe so that I can retrieve it later.",
+      "acceptance_criteria": [
+        {
+          "id": "07-REQ-1.1",
+          "ears_pattern": "event_driven",
+          "trigger": "a user submits POST /recipes with a valid `Recipe` body",
+          "system": "recipe catalog",
+          "action": "persist the `Recipe` and return its assigned ID",
+          "return_contract": "returns HTTP 201 with JSON body {id: string, name: string}"
+        },
+        {
+          "id": "07-REQ-1.2",
+          "ears_pattern": "unwanted",
+          "error_condition": "the submitted `Recipe` body is missing the required name field",
+          "system": "recipe catalog",
+          "action": "reject the request with a descriptive validation error",
+          "return_contract": "returns HTTP 400 with JSON body {error: string}"
+        }
+      ],
+      "edge_cases": []
+    }
+  ]
+}
+```
+
 ### External library references
 If the PRD contains a `## Verified External API` section, use **only** the
 function names, signatures, return types, and import paths listed there when

@@ -531,6 +531,120 @@ func TestGenPrompts_UserTestSpec_NonTrivialBody(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TS-NS-1 (issue #52): generation_user_requirements includes a concrete JSON example
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserRequirements_ExampleSection_Issue52 verifies that the
+// generation_user_requirements template includes a labelled example section
+// with a valid requirements artifact fragment covering IDs, EARS fields, and
+// glossary conventions.
+// Test Spec: TS-NS-1 (issue #52), Requirement: NS-REQ-1
+func TestGenPrompts_UserRequirements_ExampleSection_Issue52(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_requirements", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_requirements) returned error: %v", err)
+	}
+
+	// Must include an example marker.
+	if !strings.Contains(content, "Example") {
+		t.Error("requirements template does not contain an 'Example' section marker")
+	}
+
+	// Must contain at least one ID matching the {spec_id}-REQ-{N} pattern.
+	if !strings.Contains(content, "-REQ-") {
+		t.Error("requirements template example does not contain a requirement ID (pattern: -REQ-)")
+	}
+
+	// Must contain the ears_pattern field name inside the example JSON.
+	if !strings.Contains(content, "ears_pattern") {
+		t.Error("requirements template example does not contain the 'ears_pattern' field")
+	}
+
+	// Must reference the glossary structure.
+	if !strings.Contains(content, "glossary") {
+		t.Error("requirements template example does not contain a 'glossary' entry")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-2 (issue #52): generation_user_test_spec includes a concrete JSON example
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserTestSpec_ExampleSection_Issue52 verifies that the
+// generation_user_test_spec template includes a labelled example section
+// with a valid test_spec artifact fragment covering test IDs, requirement_id
+// cross-references, assertion pseudocode, and the coverage object.
+// Test Spec: TS-NS-2 (issue #52), Requirement: NS-REQ-2
+func TestGenPrompts_UserTestSpec_ExampleSection_Issue52(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_test_spec", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_test_spec) returned error: %v", err)
+	}
+
+	// Must contain a test ID using the TS- prefix.
+	if !strings.Contains(content, `"TS-`) {
+		t.Error("test_spec template example does not contain a test ID with 'TS-' prefix")
+	}
+
+	// Must contain the requirement_id cross-reference field.
+	if !strings.Contains(content, "requirement_id") {
+		t.Error("test_spec template example does not contain the 'requirement_id' field")
+	}
+
+	// Must contain an assert statement inside assertion_pseudocode.
+	if !strings.Contains(content, "assert") {
+		t.Error("test_spec template example assertion_pseudocode does not contain an 'assert' statement")
+	}
+
+	// Must contain the coverage object with empty requirements_covered array.
+	if !strings.Contains(content, `"requirements_covered": []`) {
+		t.Error("test_spec template example does not contain the coverage object with empty 'requirements_covered' array")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-3 (issue #52): generation_user_tasks includes a concrete JSON example
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserTasks_ExampleSection_Issue52 verifies that the
+// generation_user_tasks template includes a labelled example section
+// with a valid tasks artifact fragment covering kind ordering, subtask IDs,
+// and verification subtask IDs.
+// Test Spec: TS-NS-3 (issue #52), Requirement: NS-REQ-3
+func TestGenPrompts_UserTasks_ExampleSection_Issue52(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_tasks", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_tasks) returned error: %v", err)
+	}
+
+	// Must contain kind: "tests" for the first task group.
+	if !strings.Contains(content, `"kind": "tests"`) {
+		t.Error("tasks template example does not contain a group with '\"kind\": \"tests\"'")
+	}
+
+	// Must contain kind: "wiring_verification" for the last task group.
+	if !strings.Contains(content, `"kind": "wiring_verification"`) {
+		t.Error("tasks template example does not contain a group with '\"kind\": \"wiring_verification\"'")
+	}
+
+	// Must contain a subtask ID in {group_id}.{N} format (e.g. "1.1").
+	if !strings.Contains(content, `"1.1"`) {
+		t.Error("tasks template example does not contain a subtask ID in {group_id}.{N} format (e.g. \"1.1\")")
+	}
+
+	// Must contain a verification subtask ID in {group_id}.V format.
+	if !strings.Contains(content, `".V"`) && !strings.Contains(content, `"1.V"`) {
+		t.Error("tasks template example does not contain a verification subtask ID in {group_id}.V format (e.g. \"1.V\")")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TS-NS-5 (issue #29): generation_user_requirements specifies pattern field sets
 // ---------------------------------------------------------------------------
 

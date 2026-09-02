@@ -75,3 +75,37 @@ Submit `coverage` with empty arrays — the validation library computes coverage
   "gaps": []
 }
 ```
+
+## Example
+
+The fragment below shows a correctly structured test_spec artifact excerpt for a recipe-manager system. Use a different domain for your actual output — this example is for structural reference only.
+
+```json
+{
+  "spec_id": "07",
+  "spec_name": "recipe-manager",
+  "schema_version": "1.0",
+  "test_cases": [
+    {
+      "id": "TS-07-1",
+      "requirement_id": "07-REQ-1.1",
+      "description": "Creating a valid recipe returns HTTP 201 with the assigned ID",
+      "preconditions": ["Recipe catalog database is initialised and empty"],
+      "input": {"name": "Pasta Carbonara", "ingredients": ["eggs", "pancetta"]},
+      "expected": {"status": 201, "body": {"id": "string", "name": "Pasta Carbonara"}},
+      "assertion_pseudocode": "result = client.post('/recipes', body); assert result.status == 201; assert result.body.name == 'Pasta Carbonara'",
+      "coverage": {"requirements_covered": [], "properties_covered": [], "paths_covered": [], "gaps": []}
+    },
+    {
+      "id": "TS-07-2",
+      "requirement_id": "07-REQ-1.2",
+      "description": "Submitting a recipe with a missing name field returns HTTP 400",
+      "preconditions": ["Recipe catalog database is initialised"],
+      "input": {"ingredients": ["eggs"]},
+      "expected": {"status": 400, "body": {"error": "name is required"}},
+      "assertion_pseudocode": "result = client.post('/recipes', body); assert result.status == 400; assert 'name' in result.body.error",
+      "coverage": {"requirements_covered": [], "properties_covered": [], "paths_covered": [], "gaps": []}
+    }
+  ]
+}
+```
