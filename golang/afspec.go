@@ -182,6 +182,11 @@ func (s *Spec) Save(dir string) error {
 		}
 	}
 
+	// Spec section 7.6: coverage is computed on every save, not authored.
+	if s.TestSpec != nil && s.Requirements != nil {
+		s.TestSpec.Coverage = s.TestSpec.ComputeCoverageStruct(s.Requirements)
+	}
+
 	return s.saveToDisk(dir)
 }
 

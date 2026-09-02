@@ -2,6 +2,7 @@ package afspec
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -319,4 +320,449 @@ func TestSave_TwoPhase_NoOrphanedTempsOnSuccess(t *testing.T) {
 			t.Errorf("orphaned temp file %q found after successful save", entry.Name())
 		}
 	}
+}
+
+// buildMinimalSpec constructs a minimal Spec containing one requirement with
+// one acceptance criterion and one test case that references that criterion.
+// It is used across multiple Save coverage tests.
+func buildMinimalSpec(reqID, criterionID string) *Spec {
+	schema := "https://agent-fox.dev/schemas/requirements.v1.json"
+	tsSchema := "https://agent-fox.dev/schemas/test_spec.v1.json"
+	tasksSchema := "https://agent-fox.dev/schemas/tasks.v1.json"
+	schemaRef := TestSpecV1JsonSchema(&tsSchema)
+	reqSchemaRef := RequirementsV1JsonSchema(&schema)
+	tasksSchemaRef := TasksV1JsonSchema(&tasksSchema)
+
+	return &Spec{
+		SpecID:        "99",
+		SpecName:      "coverage_test",
+		Title:         "Coverage Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://github.com/test/repo/issues/99",
+		SchemaVersion: 1,
+		PRDBody:       "# Coverage Test\n",
+		Requirements: &RequirementsV1Json{
+			Schema:        reqSchemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_test",
+			Introduction:  "Coverage test spec.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    reqID,
+					Title: "Test Requirement",
+					UserStory: UserStory{
+						Role:    "developer",
+						Goal:    "verify coverage",
+						Benefit: "correct coverage data",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          criterionID,
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "the system",
+							Action:      "behave correctly",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			Schema:        schemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_test",
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-99-1",
+					RequirementId:       criterionID,
+					Kind:                TestCaseKindUnit,
+					Description:         "Covers the requirement",
+					Preconditions:       []string{},
+					Expected:            "ok",
+					AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			Schema:        tasksSchemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_test",
+			TestCommands:  TestCommands{},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+}
+
+// TestSave_CoveragePopulated verifies that after calling Save on a spec with
+// requirements and test cases, the persisted test_spec.json contains a
+// populated coverage object.
+// Requirements: NS-REQ-1, NS-REQ-2; Test Spec: TS-NS-1, TS-NS-2
+func TestSave_CoveragePopulated(t *testing.T) {
+	defer requireImplemented(t)
+
+	reqID := "99-REQ-1"
+	criterionID := "99-REQ-1.1"
+	spec := buildMinimalSpec(reqID, criterionID)
+
+	tmpDir := t.TempDir()
+	if err := spec.Save(tmpDir); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Read and unmarshal the persisted test_spec.json.
+	data, err := os.ReadFile(filepath.Join(tmpDir, "test_spec.json"))
+	if err != nil {
+		t.Fatalf("failed to read test_spec.json: %v", err)
+	}
+	var ts TestSpecV1Json
+	if err := json.Unmarshal(data, &ts); err != nil {
+		t.Fatalf("failed to unmarshal test_spec.json: %v", err)
+	}
+
+	// NS-REQ-1.1: requirements_covered must include the requirement ID.
+	if diff := cmp.Diff([]string{reqID}, ts.Coverage.RequirementsCovered); diff != "" {
+		t.Errorf("RequirementsCovered mismatch (-want +got):\n%s", diff)
+	}
+
+	// NS-REQ-2.1: properties_covered and paths_covered are empty; gaps is empty.
+	if diff := cmp.Diff([]string{}, ts.Coverage.PropertiesCovered); diff != "" {
+		t.Errorf("PropertiesCovered mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{}, ts.Coverage.PathsCovered); diff != "" {
+		t.Errorf("PathsCovered mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{}, ts.Coverage.Gaps); diff != "" {
+		t.Errorf("Gaps mismatch (-want +got):\n%s", diff)
+	}
+
+	// The requirement ID must not appear in gaps.
+	for _, g := range ts.Coverage.Gaps {
+		if g == reqID {
+			t.Errorf("covered requirement %q must not appear in gaps", reqID)
+		}
+	}
+}
+
+// TestSave_CoverageAllFields verifies that requirements, properties, and paths
+// are correctly separated into their respective coverage fields.
+// Requirements: NS-REQ-2; Test Spec: TS-NS-2
+func TestSave_CoverageAllFields(t *testing.T) {
+	defer requireImplemented(t)
+
+	schema := "https://agent-fox.dev/schemas/requirements.v1.json"
+	tsSchema := "https://agent-fox.dev/schemas/test_spec.v1.json"
+	tasksSchema := "https://agent-fox.dev/schemas/tasks.v1.json"
+	schemaRef := TestSpecV1JsonSchema(&tsSchema)
+	reqSchemaRef := RequirementsV1JsonSchema(&schema)
+	tasksSchemaRef := TasksV1JsonSchema(&tasksSchema)
+
+	spec := &Spec{
+		SpecID:        "99",
+		SpecName:      "coverage_all",
+		Title:         "Coverage All Fields",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://github.com/test/repo/issues/99",
+		SchemaVersion: 1,
+		PRDBody:       "# Coverage All\n",
+		Requirements: &RequirementsV1Json{
+			Schema:        reqSchemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_all",
+			Introduction:  "All-fields coverage test.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "99-REQ-1",
+					Title: "The Requirement",
+					UserStory: UserStory{
+						Role:    "dev",
+						Goal:    "coverage",
+						Benefit: "accuracy",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "99-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "sys",
+							Action:      "act",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{
+				{
+					Id:        "99-PROP-1",
+					Title:     "The Property",
+					ForAny:    "any input",
+					Invariant: "invariant holds",
+					Validates: []string{"99-REQ-1.1"},
+				},
+			},
+			ExecutionPaths: []ExecutionPath{
+				{
+					Id:    "99-PATH-1",
+					Title: "The Path",
+					Steps: []PathStep{
+						{Actor: "caller", Action: "invokes"},
+						{Actor: "system", Action: "responds"},
+					},
+				},
+			},
+			ErrorHandling: []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			Schema:        schemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_all",
+			TestCases: []TestCase{
+				{
+					Id:                  "TS-99-1",
+					RequirementId:       "99-REQ-1.1",
+					Kind:                TestCaseKindUnit,
+					Description:         "Covers the requirement",
+					Preconditions:       []string{},
+					Expected:            "ok",
+					AssertionPseudocode: "assert true",
+				},
+			},
+			PropertyTests: []PropertyTest{
+				{
+					Id:             "TS-99-P1",
+					PropertyId:     "99-PROP-1",
+					Validates:      []string{"99-REQ-1.1"},
+					Description:    "Property test",
+					ForAnyStrategy: "any strategy",
+					InvariantCheck: "check",
+				},
+			},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests: []SmokeTest{
+				{
+					Id:              "TS-99-SMOKE-1",
+					ExecutionPathId: "99-PATH-1",
+					Description:     "Smoke test",
+					Trigger:         "invoke",
+					RealComponents:  []string{"core"},
+					Mockable:        []string{},
+					ExpectedEffects: []string{"responds"},
+				},
+			},
+			Coverage: Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			Schema:        tasksSchemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_all",
+			TestCommands:  TestCommands{},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	tmpDir := t.TempDir()
+	if err := spec.Save(tmpDir); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "test_spec.json"))
+	if err != nil {
+		t.Fatalf("failed to read test_spec.json: %v", err)
+	}
+	var ts TestSpecV1Json
+	if err := json.Unmarshal(data, &ts); err != nil {
+		t.Fatalf("failed to unmarshal test_spec.json: %v", err)
+	}
+
+	// NS-REQ-2.1: each field has exactly the right IDs, nothing mixed up.
+	if diff := cmp.Diff([]string{"99-REQ-1"}, ts.Coverage.RequirementsCovered); diff != "" {
+		t.Errorf("RequirementsCovered mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"99-PROP-1"}, ts.Coverage.PropertiesCovered); diff != "" {
+		t.Errorf("PropertiesCovered mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"99-PATH-1"}, ts.Coverage.PathsCovered); diff != "" {
+		t.Errorf("PathsCovered mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{}, ts.Coverage.Gaps); diff != "" {
+		t.Errorf("Gaps mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestSave_CoverageNoTestCases verifies that Save on a spec with no test cases
+// does not panic and produces a coverage object where all requirement IDs
+// appear in gaps.
+// Requirements: NS-REQ-3; Test Spec: TS-NS-3
+func TestSave_CoverageNoTestCases(t *testing.T) {
+	defer requireImplemented(t)
+
+	schema := "https://agent-fox.dev/schemas/requirements.v1.json"
+	tsSchema := "https://agent-fox.dev/schemas/test_spec.v1.json"
+	tasksSchema := "https://agent-fox.dev/schemas/tasks.v1.json"
+	schemaRef := TestSpecV1JsonSchema(&tsSchema)
+	reqSchemaRef := RequirementsV1JsonSchema(&schema)
+	tasksSchemaRef := TasksV1JsonSchema(&tasksSchema)
+
+	spec := &Spec{
+		SpecID:        "99",
+		SpecName:      "coverage_empty",
+		Title:         "Coverage Empty",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://github.com/test/repo/issues/99",
+		SchemaVersion: 1,
+		PRDBody:       "# Coverage Empty\n",
+		Requirements: &RequirementsV1Json{
+			Schema:        reqSchemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_empty",
+			Introduction:  "Empty test cases.",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements: []Requirement{
+				{
+					Id:    "99-REQ-1",
+					Title: "The Requirement",
+					UserStory: UserStory{
+						Role:    "dev",
+						Goal:    "gap",
+						Benefit: "visibility",
+					},
+					AcceptanceCriteria: []Criterion{
+						{
+							Id:          "99-REQ-1.1",
+							EarsPattern: CriterionEarsPatternUbiquitous,
+							System:      "sys",
+							Action:      "act",
+						},
+					},
+					EdgeCases: []Criterion{},
+				},
+			},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			Schema:        schemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_empty",
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			Schema:        tasksSchemaRef,
+			SchemaVersion: 1,
+			SpecId:        "99",
+			SpecName:      "coverage_empty",
+			TestCommands:  TestCommands{},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	tmpDir := t.TempDir()
+	// NS-REQ-3: must not panic; Save must return nil.
+	err := spec.Save(tmpDir)
+	if err != nil {
+		t.Fatalf("Save returned unexpected error: %v", err)
+	}
+
+	data, readErr := os.ReadFile(filepath.Join(tmpDir, "test_spec.json"))
+	if readErr != nil {
+		t.Fatalf("failed to read test_spec.json: %v", readErr)
+	}
+	var ts TestSpecV1Json
+	if jsonErr := json.Unmarshal(data, &ts); jsonErr != nil {
+		t.Fatalf("failed to unmarshal test_spec.json: %v", jsonErr)
+	}
+
+	// NS-REQ-3.1: coverage.gaps contains the requirement ID.
+	found := false
+	for _, g := range ts.Coverage.Gaps {
+		if g == "99-REQ-1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected gaps to contain %q, got %v", "99-REQ-1", ts.Coverage.Gaps)
+	}
+
+	// requirements_covered, properties_covered, paths_covered must be empty.
+	if len(ts.Coverage.RequirementsCovered) != 0 {
+		t.Errorf("expected RequirementsCovered to be empty, got %v", ts.Coverage.RequirementsCovered)
+	}
+	if len(ts.Coverage.PropertiesCovered) != 0 {
+		t.Errorf("expected PropertiesCovered to be empty, got %v", ts.Coverage.PropertiesCovered)
+	}
+	if len(ts.Coverage.PathsCovered) != 0 {
+		t.Errorf("expected PathsCovered to be empty, got %v", ts.Coverage.PathsCovered)
+	}
+}
+
+// TestSave_CoverageNilTestSpec verifies that calling Save when TestSpec is nil
+// does not cause a nil-pointer dereference from the coverage computation guard.
+// Requirements: NS-REQ-4; Test Spec: TS-NS-4
+func TestSave_CoverageNilTestSpec(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec := &Spec{
+		SpecID:        "99",
+		SpecName:      "nil_testspec",
+		Title:         "Nil TestSpec",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test-author",
+		Source:        "https://github.com/test/repo/issues/99",
+		SchemaVersion: 1,
+		PRDBody:       "# Nil TestSpec\n",
+		// TestSpec intentionally nil; Requirements is also nil.
+	}
+
+	tmpDir := t.TempDir()
+
+	// NS-REQ-4.1: must not panic. The guard `if s.TestSpec != nil && s.Requirements != nil`
+	// in Save prevents ComputeCoverageStruct from being called on nil receivers.
+	// MarshalJSON handles nil pointers by writing "null", so Save may succeed or
+	// return a SaveError — either outcome is acceptable. A nil-pointer panic is not.
+	err := spec.Save(tmpDir)
+	if err != nil {
+		var saveErr *SaveError
+		if !errors.As(err, &saveErr) {
+			t.Errorf("expected nil or *SaveError, got %T: %v", err, err)
+		}
+	}
+	// If we reach here without panicking, the guard is working correctly.
 }
