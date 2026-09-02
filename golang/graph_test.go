@@ -28,7 +28,8 @@ func writeMinimalTasksJSON(t *testing.T, dir, specID string, deps []TaskDependen
 				`"depends_on_spec": "`+d.DependsOnSpec+`", `+
 				`"from_group": 1, `+
 				`"to_group": 1, `+
-				`"relationship": "`+d.Relationship+`"`+
+				`"relationship": "`+d.Relationship+`", `+
+				`"sentinel": false`+
 				`}`)
 		}
 		depsJSON = "[" + strings.Join(parts, ", ") + "]"
@@ -71,7 +72,8 @@ func writeMinimalTasksJSON(t *testing.T, dir, specID string, deps []TaskDependen
     {
       "requirement_id": "01-REQ-1.1",
       "test_spec_id": "TS-01-1",
-      "task_id": "1.1"
+      "task_id": "1.1",
+      "test_path": null
     }
   ]
 }`

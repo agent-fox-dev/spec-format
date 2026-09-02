@@ -93,6 +93,9 @@ func (j *PrdFrontmatterV1Json) UnmarshalJSON(value []byte) error {
 	if _, ok := raw["created_at"]; raw != nil && !ok {
 		return fmt.Errorf("field created_at in PrdFrontmatterV1Json: required")
 	}
+	if _, ok := raw["intent_hash"]; raw != nil && !ok {
+		return fmt.Errorf("field intent_hash in PrdFrontmatterV1Json: required")
+	}
 	if _, ok := raw["owner"]; raw != nil && !ok {
 		return fmt.Errorf("field owner in PrdFrontmatterV1Json: required")
 	}
@@ -104,6 +107,9 @@ func (j *PrdFrontmatterV1Json) UnmarshalJSON(value []byte) error {
 	}
 	if _, ok := raw["spec_id"]; raw != nil && !ok {
 		return fmt.Errorf("field spec_id in PrdFrontmatterV1Json: required")
+	}
+	if _, ok := raw["supersedes"]; raw != nil && !ok {
+		return fmt.Errorf("field supersedes in PrdFrontmatterV1Json: required")
 	}
 	if _, ok := raw["spec_name"]; raw != nil && !ok {
 		return fmt.Errorf("field spec_name in PrdFrontmatterV1Json: required")

@@ -382,6 +382,9 @@ func (j *TestSpecV1Json) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &raw); err != nil {
 		return err
 	}
+	if _, ok := raw["$schema"]; raw != nil && !ok {
+		return fmt.Errorf("field $schema in TestSpecV1Json: required")
+	}
 	if _, ok := raw["coverage"]; raw != nil && !ok {
 		return fmt.Errorf("field coverage in TestSpecV1Json: required")
 	}

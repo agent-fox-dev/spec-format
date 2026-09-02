@@ -25,6 +25,8 @@ created_at: "2024-01-01"
 updated_at: "2024-01-01"
 owner: "test"
 source: "manual"
+supersedes: []
+intent_hash: null
 schema_version: 1
 ---
 # Test PRD
@@ -37,6 +39,7 @@ This is a test PRD body.
 
 	// Write minimal valid requirements.json.
 	reqJSON := `{
+		"$schema": "https://agent-fox.dev/schemas/requirements.v1.json",
 		"spec_id": "06",
 		"spec_name": "test_spec",
 		"schema_version": 1,
@@ -54,6 +57,7 @@ This is a test PRD body.
 
 	// Write minimal valid test_spec.json.
 	tsJSON := `{
+		"$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
 		"spec_id": "06",
 		"spec_name": "test_spec",
 		"schema_version": 1,
@@ -69,6 +73,7 @@ This is a test PRD body.
 
 	// Write minimal valid tasks.json.
 	tasksJSON := `{
+		"$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
 		"spec_id": "06",
 		"spec_name": "test_spec",
 		"schema_version": 1,

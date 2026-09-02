@@ -12,7 +12,11 @@ import (
 // buildValidBootstrapArtifacts returns valid artifacts suitable for a
 // BootstrapSpec that should pass validation.
 func buildValidBootstrapArtifacts() (*RequirementsV1Json, *TestSpecV1Json, *TasksV1Json, string) {
+	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
+	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
+	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
 	req := &RequirementsV1Json{
+		Schema:        RequirementsV1JsonSchema(&reqSchemaStr),
 		SchemaVersion: 1,
 		SpecId:        "01",
 		SpecName:      "my_spec",
@@ -51,6 +55,7 @@ func buildValidBootstrapArtifacts() (*RequirementsV1Json, *TestSpecV1Json, *Task
 	}
 
 	testSpec := &TestSpecV1Json{
+		Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
 		SchemaVersion: 1,
 		SpecId:        "01",
 		SpecName:      "my_spec",
@@ -86,6 +91,7 @@ func buildValidBootstrapArtifacts() (*RequirementsV1Json, *TestSpecV1Json, *Task
 	}
 
 	tasks := &TasksV1Json{
+		Schema:        TasksV1JsonSchema(&tasksSchemaStr),
 		SchemaVersion: 1,
 		SpecId:        "01",
 		SpecName:      "my_spec",

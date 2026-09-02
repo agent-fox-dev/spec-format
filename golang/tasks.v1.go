@@ -121,7 +121,7 @@ type TaskDependency struct {
 	Relationship string `json:"relationship" yaml:"relationship" mapstructure:"relationship"`
 
 	// Sentinel corresponds to the JSON schema field "sentinel".
-	Sentinel *bool `json:"sentinel,omitempty,omitzero" yaml:"sentinel,omitempty" mapstructure:"sentinel,omitempty"`
+	Sentinel bool `json:"sentinel" yaml:"sentinel" mapstructure:"sentinel"`
 
 	// ToGroup corresponds to the JSON schema field "to_group".
 	ToGroup int `json:"to_group" yaml:"to_group" mapstructure:"to_group"`
@@ -141,6 +141,9 @@ func (j *TaskDependency) UnmarshalJSON(value []byte) error {
 	}
 	if _, ok := raw["relationship"]; raw != nil && !ok {
 		return fmt.Errorf("field relationship in TaskDependency: required")
+	}
+	if _, ok := raw["sentinel"]; raw != nil && !ok {
+		return fmt.Errorf("field sentinel in TaskDependency: required")
 	}
 	if _, ok := raw["to_group"]; raw != nil && !ok {
 		return fmt.Errorf("field to_group in TaskDependency: required")
@@ -276,6 +279,9 @@ func (j *TasksV1Json) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &raw); err != nil {
 		return err
 	}
+	if _, ok := raw["$schema"]; raw != nil && !ok {
+		return fmt.Errorf("field $schema in TasksV1Json: required")
+	}
 	if _, ok := raw["dependencies"]; raw != nil && !ok {
 		return fmt.Errorf("field dependencies in TasksV1Json: required")
 	}
@@ -358,7 +364,7 @@ type TraceabilityEntry struct {
 	TaskId string `json:"task_id" yaml:"task_id" mapstructure:"task_id"`
 
 	// TestPath corresponds to the JSON schema field "test_path".
-	TestPath TraceabilityEntryTestPath `json:"test_path,omitempty,omitzero" yaml:"test_path,omitempty" mapstructure:"test_path,omitempty"`
+	TestPath TraceabilityEntryTestPath `json:"test_path" yaml:"test_path" mapstructure:"test_path"`
 
 	// TestSpecId corresponds to the JSON schema field "test_spec_id".
 	TestSpecId string `json:"test_spec_id" yaml:"test_spec_id" mapstructure:"test_spec_id"`
@@ -377,6 +383,9 @@ func (j *TraceabilityEntry) UnmarshalJSON(value []byte) error {
 	}
 	if _, ok := raw["task_id"]; raw != nil && !ok {
 		return fmt.Errorf("field task_id in TraceabilityEntry: required")
+	}
+	if _, ok := raw["test_path"]; raw != nil && !ok {
+		return fmt.Errorf("field test_path in TraceabilityEntry: required")
 	}
 	if _, ok := raw["test_spec_id"]; raw != nil && !ok {
 		return fmt.Errorf("field test_spec_id in TraceabilityEntry: required")

@@ -1116,6 +1116,9 @@ func buildSpecWithDanglingRef(danglingID string) *Spec {
 // at least one warning (vague language in a criterion action field).
 // All criteria have test coverage so no coverage_gap errors are produced.
 func buildSpecWithWarnings() *Spec {
+	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
+	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
+	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
 	return &Spec{
 		SpecID:        "01",
 		SpecName:      "test_feature",
@@ -1125,9 +1128,11 @@ func buildSpecWithWarnings() *Spec {
 		UpdatedAt:     "2026-01-01T00:00:00Z",
 		Owner:         "test-author",
 		Source:        "https://example.com",
+		Supersedes:    []string{},
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
+			Schema:        RequirementsV1JsonSchema(&reqSchemaStr),
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -1159,6 +1164,7 @@ func buildSpecWithWarnings() *Spec {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
+			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -1181,6 +1187,7 @@ func buildSpecWithWarnings() *Spec {
 			},
 		},
 		Tasks: &TasksV1Json{
+			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
 			SpecId:        "01",
 			SpecName:      "test_feature",
 			SchemaVersion: 1,
@@ -1467,6 +1474,9 @@ func filterByCheck(entries []ValidationEntry, check string) []ValidationEntry {
 // all required fields populated. Callers mutate the returned spec to add
 // specific test data for cross-file rules.
 func buildCrossFileBaseSpec() *Spec {
+	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
+	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
+	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
 	return &Spec{
 		SpecID:        "04",
 		SpecName:      "test_crossfile",
@@ -1476,9 +1486,11 @@ func buildCrossFileBaseSpec() *Spec {
 		UpdatedAt:     "2026-01-01T00:00:00Z",
 		Owner:         "test",
 		Source:        "https://example.com",
+		Supersedes:    []string{},
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
+			Schema:                RequirementsV1JsonSchema(&reqSchemaStr),
 			SpecId:                "04",
 			SpecName:              "test_crossfile",
 			SchemaVersion:         1,
@@ -1490,6 +1502,7 @@ func buildCrossFileBaseSpec() *Spec {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
+			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
 			SpecId:        "04",
 			SpecName:      "test_crossfile",
 			SchemaVersion: 1,
@@ -1500,6 +1513,7 @@ func buildCrossFileBaseSpec() *Spec {
 			Coverage:      Coverage{},
 		},
 		Tasks: &TasksV1Json{
+			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
 			SpecId:        "04",
 			SpecName:      "test_crossfile",
 			SchemaVersion: 1,
@@ -4180,6 +4194,9 @@ func TestValidateCrossSpec_ContractSetOverlap(t *testing.T) {
 
 // makeMinimalSpec creates a minimal Spec with matching IDs across all artifacts.
 func makeMinimalSpec() *Spec {
+	reqSchemaStr := "https://agent-fox.dev/schemas/requirements.v1.json"
+	tsSchemaStr := "https://agent-fox.dev/schemas/test_spec.v1.json"
+	tasksSchemaStr := "https://agent-fox.dev/schemas/tasks.v1.json"
 	return &Spec{
 		SpecID:        "04",
 		SpecName:      "test_warnings",
@@ -4189,9 +4206,11 @@ func makeMinimalSpec() *Spec {
 		UpdatedAt:     "2026-01-01T00:00:00Z",
 		Owner:         "test-author",
 		Source:        "https://example.com",
+		Supersedes:    []string{},
 		SchemaVersion: 1,
 		PRDBody:       "# Test\n",
 		Requirements: &RequirementsV1Json{
+			Schema:                RequirementsV1JsonSchema(&reqSchemaStr),
 			SpecId:                "04",
 			SpecName:              "test_warnings",
 			SchemaVersion:         1,
@@ -4203,6 +4222,7 @@ func makeMinimalSpec() *Spec {
 			ErrorHandling:         []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
+			Schema:        TestSpecV1JsonSchema(&tsSchemaStr),
 			SpecId:        "04",
 			SpecName:      "test_warnings",
 			SchemaVersion: 1,
@@ -4213,6 +4233,7 @@ func makeMinimalSpec() *Spec {
 			Coverage:      Coverage{},
 		},
 		Tasks: &TasksV1Json{
+			Schema:        TasksV1JsonSchema(&tasksSchemaStr),
 			SpecId:        "04",
 			SpecName:      "test_warnings",
 			SchemaVersion: 1,

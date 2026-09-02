@@ -72,6 +72,7 @@ func (b *BootstrapSpec) Finalize() (*Spec, []ValidationError) {
 		SpecName:      b.SpecName,
 		Status:        "draft",
 		SchemaVersion: 1,
+		Supersedes:    []string{},
 		PRDBody:       b.PRDBody,
 		Requirements:  b.Requirements,
 		TestSpec:      b.TestSpec,

@@ -235,7 +235,7 @@ type prdFrontmatterForSchema struct {
 	UpdatedAt     string   `json:"updated_at"`
 	Owner         string   `json:"owner"`
 	Source        string   `json:"source"`
-	Supersedes    []string `json:"supersedes,omitempty"`
+	Supersedes    []string `json:"supersedes"`
 	Tags          []string `json:"tags,omitempty"`
 	IntentHash    *string  `json:"intent_hash"`
 	SchemaVersion int      `json:"schema_version"`

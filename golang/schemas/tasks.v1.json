@@ -42,7 +42,7 @@
       }
     }
   },
-  "required": ["spec_id", "spec_name", "schema_version", "test_commands", "task_groups", "traceability", "dependencies"],
+  "required": ["$schema", "spec_id", "spec_name", "schema_version", "test_commands", "task_groups", "traceability", "dependencies"],
   "additionalProperties": false,
   "$defs": {
     "test_commands": {
@@ -64,7 +64,7 @@
         "relationship": { "type": "string" },
         "sentinel": { "type": "boolean" }
       },
-      "required": ["depends_on_spec", "from_group", "to_group", "relationship"],
+      "required": ["depends_on_spec", "from_group", "to_group", "relationship", "sentinel"],
       "additionalProperties": false
     },
     "subtask": {
@@ -132,7 +132,7 @@
         "task_id": { "type": "string", "minLength": 1 },
         "test_path": { "type": ["string", "null"] }
       },
-      "required": ["requirement_id", "test_spec_id", "task_id"],
+      "required": ["requirement_id", "test_spec_id", "task_id", "test_path"],
       "additionalProperties": false
     }
   }

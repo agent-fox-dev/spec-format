@@ -17,13 +17,14 @@ func writeDepSpecDir(t *testing.T, dir, specID, specName string, deps []string) 
 
 	prd := fmt.Sprintf("---\nspec_id: %q\nspec_name: %q\ntitle: %q\nstatus: \"draft\"\n"+
 		"created_at: \"2026-01-01T00:00:00Z\"\nupdated_at: \"2026-01-01T00:00:00Z\"\n"+
-		"owner: \"test\"\nsource: \"test\"\nschema_version: 1\n---\n# %s\n",
+		"owner: \"test\"\nsource: \"test\"\nsupersedes: []\nintent_hash: null\nschema_version: 1\n---\n# %s\n",
 		specID, specName, specName, specName)
 	mustWriteFile(t, filepath.Join(dir, "prd.md"), prd)
 
 	// Requirements with glossary entries and an external API symbol.
 	req := fmt.Sprintf(
-		`{"spec_id":%q,"spec_name":%q,"schema_version":1,"introduction":"Test",`+
+		`{"$schema":"https://agent-fox.dev/schemas/requirements.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,"introduction":"Test",`+
 			`"glossary":{"term_%s":"definition for %s"},`+
 			`"requirements":[{"id":"%s-REQ-1","title":"R1",`+
 			`"user_story":{"role":"developer","goal":"test","benefit":"verify"},`+
@@ -42,7 +43,8 @@ func writeDepSpecDir(t *testing.T, dir, specID, specName string, deps []string) 
 	mustWriteFile(t, filepath.Join(dir, "requirements.json"), req)
 
 	ts := fmt.Sprintf(
-		`{"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+		`{"$schema":"https://agent-fox.dev/schemas/test_spec.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
 			`"test_cases":[],"property_tests":[],"edge_case_tests":[],`+
 			`"smoke_tests":[],"coverage":{}}`,
 		specID, specName)
@@ -52,13 +54,14 @@ func writeDepSpecDir(t *testing.T, dir, specID, specName string, deps []string) 
 	var depEntries []string
 	for _, depID := range deps {
 		depEntries = append(depEntries, fmt.Sprintf(
-			`{"depends_on_spec":%q,"from_group":1,"to_group":1,"relationship":"blocks"}`,
+			`{"depends_on_spec":%q,"from_group":1,"to_group":1,"relationship":"blocks","sentinel":false}`,
 			depID))
 	}
 	depsJSON := "[" + strings.Join(depEntries, ",") + "]"
 
 	tasks := fmt.Sprintf(
-		`{"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+		`{"$schema":"https://agent-fox.dev/schemas/tasks.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
 			`"test_commands":{"spec_tests":"go test","all_tests":"go test","linter":"go vet"},`+
 			`"dependencies":%s,"task_groups":[],"traceability":[]}`,
 		specID, specName, depsJSON)

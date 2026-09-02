@@ -48,7 +48,7 @@
       "$ref": "#/$defs/coverage"
     }
   },
-  "required": ["spec_id", "spec_name", "schema_version", "test_cases", "property_tests", "edge_case_tests", "smoke_tests", "coverage"],
+  "required": ["$schema", "spec_id", "spec_name", "schema_version", "test_cases", "property_tests", "edge_case_tests", "smoke_tests", "coverage"],
   "additionalProperties": false,
   "$defs": {
     "test_case": {

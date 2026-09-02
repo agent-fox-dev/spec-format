@@ -80,9 +80,6 @@ func init() {
 		reflect.TypeOf(ExternalApiSymbol{}): {
 			"notes": true,
 		},
-		reflect.TypeOf(TaskDependency{}): {
-			"sentinel": true,
-		},
 	}
 }
 

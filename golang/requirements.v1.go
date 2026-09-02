@@ -485,6 +485,9 @@ func (j *RequirementsV1Json) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &raw); err != nil {
 		return err
 	}
+	if _, ok := raw["$schema"]; raw != nil && !ok {
+		return fmt.Errorf("field $schema in RequirementsV1Json: required")
+	}
 	if _, ok := raw["correctness_properties"]; raw != nil && !ok {
 		return fmt.Errorf("field correctness_properties in RequirementsV1Json: required")
 	}
