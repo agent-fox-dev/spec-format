@@ -744,6 +744,21 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 				})
 			}
 			seenProps[cp.Id] = true
+			// Check that each validates entry resolves to a known criterion ID
+			// (acceptance_criteria or edge_case). Top-level requirement IDs are
+			// not valid targets (spec section 6.3).
+			for _, vid := range cp.Validates {
+				if !criterionIDs[vid] {
+					errors = append(errors, ValidationEntry{
+						Category:      "integrity",
+						Check:         "validates_ref",
+						Message:       fmt.Sprintf("correctness property '%s' validates unknown criterion ID '%s'", cp.Id, vid),
+						Artifact:      "requirements.json",
+						EntityID:      cp.Id,
+						RequirementID: vid,
+					})
+				}
+			}
 		}
 		seenPaths := map[string]bool{}
 		for _, ep := range s.Requirements.ExecutionPaths {

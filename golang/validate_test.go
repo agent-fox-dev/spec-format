@@ -1651,6 +1651,162 @@ func TestValidateCrossFile_PropertyTestCoverage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #24: correctness_property.validates referential integrity
+// Test Spec: TS-NS-1, TS-NS-2, TS-NS-3, TS-NS-4
+// Requirements: NS-REQ-1, NS-REQ-2, NS-REQ-3, NS-REQ-4
+// ---------------------------------------------------------------------------
+
+// buildBaseSpecWithCriterion returns a spec with one requirement whose
+// acceptance criterion has ID "04-REQ-1.1", for use in validates-ref tests.
+func buildBaseSpecWithCriterion() *Spec {
+	s := buildCrossFileBaseSpec()
+	s.Requirements.Requirements = []Requirement{
+		{
+			Id:    "04-REQ-1",
+			Title: "Req 1",
+			UserStory: UserStory{
+				Role: "dev", Goal: "test", Benefit: "validation",
+			},
+			AcceptanceCriteria: []Criterion{
+				{
+					Id:          "04-REQ-1.1",
+					EarsPattern: CriterionEarsPatternUbiquitous,
+					System:      "the system",
+					Action:      "do something",
+				},
+			},
+			EdgeCases: []Criterion{},
+		},
+	}
+	return s
+}
+
+// TestValidateCrossFile_ValidatesRefIntegrity verifies that ValidateCrossFile
+// emits a validates_ref integrity error for each unknown criterion ID in a
+// correctness property's validates list, and emits no error when all IDs are
+// valid criterion IDs. Requirements: NS-REQ-1.1, NS-REQ-2.1, NS-REQ-3.1,
+// NS-REQ-4.1.
+func TestValidateCrossFile_ValidatesRefIntegrity(t *testing.T) {
+	tests := []struct {
+		name           string
+		spec           *Spec
+		wantErrorCount int    // expected count of validates_ref errors
+		wantMsgContain string // substring expected in at least one error message
+	}{
+		{
+			// TS-NS-1: single non-existent criterion ID emits one error
+			name: "single_unknown_criterion_emits_error",
+			spec: func() *Spec {
+				s := buildBaseSpecWithCriterion()
+				s.Requirements.CorrectnessProperties = []CorrectnessProperty{
+					{
+						Id:        "04-PROP-1",
+						Title:     "Prop 1",
+						ForAny:    "any input",
+						Invariant: "holds",
+						Validates: []string{"XX-REQ-99.1"},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount: 1,
+			wantMsgContain: "XX-REQ-99.1",
+		},
+		{
+			// TS-NS-2: all validates entries resolve to valid criterion IDs — no error
+			name: "valid_criterion_ids_no_error",
+			spec: func() *Spec {
+				s := buildBaseSpecWithCriterion()
+				s.Requirements.CorrectnessProperties = []CorrectnessProperty{
+					{
+						Id:        "04-PROP-1",
+						Title:     "Prop 1",
+						ForAny:    "any input",
+						Invariant: "holds",
+						Validates: []string{"04-REQ-1.1"},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount: 0,
+		},
+		{
+			// TS-NS-3: two unknown IDs in one property → two separate errors
+			name: "two_unknown_ids_emit_two_errors",
+			spec: func() *Spec {
+				s := buildBaseSpecWithCriterion()
+				s.Requirements.CorrectnessProperties = []CorrectnessProperty{
+					{
+						Id:        "04-PROP-1",
+						Title:     "Prop 1",
+						ForAny:    "any input",
+						Invariant: "holds",
+						Validates: []string{"04-REQ-1.1", "MISSING-REQ-9.9", "ALSO-MISSING-REQ-8.8"},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount: 2,
+			wantMsgContain: "MISSING-REQ-9.9",
+		},
+		{
+			// TS-NS-4: top-level requirement ID is NOT a valid criterion target
+			name: "top_level_req_id_emits_error",
+			spec: func() *Spec {
+				s := buildBaseSpecWithCriterion()
+				s.Requirements.CorrectnessProperties = []CorrectnessProperty{
+					{
+						Id:        "04-PROP-1",
+						Title:     "Prop 1",
+						ForAny:    "any input",
+						Invariant: "holds",
+						// "04-REQ-1" is a top-level requirement ID, not a criterion
+						Validates: []string{"04-REQ-1"},
+					},
+				}
+				return s
+			}(),
+			wantErrorCount: 1,
+			wantMsgContain: "04-REQ-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.spec.ValidateCrossFile()
+			errs := filterByCheck(result.Errors, "validates_ref")
+
+			if len(errs) != tt.wantErrorCount {
+				t.Errorf("validates_ref error count = %d, want %d; errors: %v",
+					len(errs), tt.wantErrorCount, errs)
+			}
+
+			for _, e := range errs {
+				if e.Category != "integrity" {
+					t.Errorf("validates_ref error category = %q, want %q", e.Category, "integrity")
+				}
+				if e.Message == "" {
+					t.Error("validates_ref error has empty Message")
+				}
+			}
+
+			if tt.wantMsgContain != "" {
+				found := false
+				for _, e := range errs {
+					if strings.Contains(e.Message, tt.wantMsgContain) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("no validates_ref error message contains %q; errors: %v", tt.wantMsgContain, errs)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Subtask 1.2: Execution path smoke test coverage rule (04-REQ-2)
 // Test Spec: TS-04-3
 // ---------------------------------------------------------------------------
