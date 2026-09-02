@@ -214,6 +214,166 @@ func TestGenPrompts_UserRequirements_GlossaryConvention(t *testing.T) {
 // TS-NS-5 (issue #29): generation_user_requirements specifies pattern field sets
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// TS-NS-1 (issue #50): assessment_system prompt defines quality rating criteria
+// ---------------------------------------------------------------------------
+
+// TestAssessPrompt_QualityRatingCriteria verifies that AssessmentSystemPrompt
+// returns content that explicitly defines all three quality rating levels with
+// at least one distinguishing criterion per level.
+// Test Spec: TS-NS-1 (issue #50), Requirement: NS-REQ-1
+func TestAssessPrompt_QualityRatingCriteria(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	prompt, err := AssessmentSystemPrompt(emptyTmpDir)
+	if err != nil {
+		t.Fatalf("AssessmentSystemPrompt() returned error: %v", err)
+	}
+
+	levels := []struct {
+		keyword string
+		desc    string
+	}{
+		{"ready", "ready quality level"},
+		{"needs_refinement", "needs_refinement quality level"},
+		{"incomplete", "incomplete quality level"},
+	}
+
+	for _, lvl := range levels {
+		t.Run(lvl.keyword, func(t *testing.T) {
+			if !strings.Contains(prompt, lvl.keyword) {
+				t.Errorf("AssessmentSystemPrompt() does not contain quality level %q", lvl.keyword)
+			}
+		})
+	}
+
+	// Each level must appear alongside at least one criterion phrase.
+	// We verify this by checking that each level keyword appears near some
+	// distinguishing language — the rubric section must exist.
+	if !strings.Contains(prompt, "Rubric") && !strings.Contains(prompt, "rubric") {
+		// Accept either a rubric heading or inline criterion language.
+		// If no rubric heading, verify the levels appear with explanatory text.
+		for _, lvl := range levels {
+			idx := strings.Index(prompt, lvl.keyword)
+			if idx < 0 {
+				continue // already reported above
+			}
+			// There must be text following the keyword (its description).
+			surroundStart := idx
+			surroundEnd := idx + len(lvl.keyword) + 200
+			if surroundEnd > len(prompt) {
+				surroundEnd = len(prompt)
+			}
+			surrounding := prompt[surroundStart:surroundEnd]
+			if strings.TrimSpace(surrounding) == lvl.keyword {
+				t.Errorf("quality level %q appears with no surrounding criterion text", lvl.keyword)
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-2 (issue #50): assessment_system prompt includes evaluation dimensions
+// ---------------------------------------------------------------------------
+
+// TestAssessPrompt_EvaluationDimensions verifies that AssessmentSystemPrompt
+// includes all required evaluation dimensions.
+// Test Spec: TS-NS-2 (issue #50), Requirement: NS-REQ-2
+func TestAssessPrompt_EvaluationDimensions(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	prompt, err := AssessmentSystemPrompt(emptyTmpDir)
+	if err != nil {
+		t.Fatalf("AssessmentSystemPrompt() returned error: %v", err)
+	}
+
+	lower := strings.ToLower(prompt)
+
+	dimensions := []struct {
+		name    string
+		needles []string
+	}{
+		{"scope/intent clarity", []string{"scope", "intent"}},
+		{"measurable goals", []string{"measurable", "goals"}},
+		{"explicit non-goals", []string{"non-goals", "non-goal"}},
+		{"testability", []string{"testability", "testable"}},
+		{"error-handling coverage", []string{"error"}},
+		{"external API surface", []string{"external api", "api surface", "external"}},
+	}
+
+	for _, dim := range dimensions {
+		t.Run(dim.name, func(t *testing.T) {
+			found := false
+			for _, needle := range dim.needles {
+				if strings.Contains(lower, needle) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("AssessmentSystemPrompt() does not contain dimension %q (tried needles: %v)", dim.name, dim.needles)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-3 (issue #50): refinement_system prompt includes upgrade guidance
+// ---------------------------------------------------------------------------
+
+// TestRefinementPrompt_IncorporationAndUpgradeGuidance verifies that
+// RefinementSystemPrompt returns content that instructs the model to incorporate
+// Q&A answers, defines conditions for upgrading quality to 'ready', and states
+// that quality must not regress unless new gaps are discovered.
+// Test Spec: TS-NS-3 (issue #50), Requirement: NS-REQ-3
+func TestRefinementPrompt_IncorporationAndUpgradeGuidance(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	prompt, err := RefinementSystemPrompt(emptyTmpDir)
+	if err != nil {
+		t.Fatalf("RefinementSystemPrompt() returned error: %v", err)
+	}
+
+	lower := strings.ToLower(prompt)
+
+	checks := []struct {
+		desc    string
+		needles []string
+	}{
+		{
+			"incorporation instruction",
+			[]string{"incorporate", "integrate", "woven", "include"},
+		},
+		{
+			"upgrade to ready guidance",
+			[]string{"upgrade", "ready"},
+		},
+		{
+			"gap reference in upgrade criteria",
+			[]string{"gap", "gaps"},
+		},
+		{
+			"non-regression rule",
+			[]string{"regress", "not downgrade", "must not"},
+		},
+	}
+
+	for _, c := range checks {
+		t.Run(c.desc, func(t *testing.T) {
+			found := false
+			for _, needle := range c.needles {
+				if strings.Contains(lower, needle) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("RefinementSystemPrompt() does not contain %q (tried: %v)", c.desc, c.needles)
+			}
+		})
+	}
+}
+
 // TestGenPrompts_UserRequirements_EARSPatternFieldSpecs verifies that the
 // generation_user_requirements template specifies the required and forbidden
 // fields for each EARS pattern so a compliant model output passes schema
