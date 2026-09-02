@@ -302,10 +302,21 @@ func GenerationUserPrompt(prdText, artifactName, specID, projectDir string, prio
 
 	var priorArtifactsBlock string
 	if len(priorArtifacts) > 0 {
-		data, err := json.MarshalIndent(priorArtifacts, "", "  ")
-		if err == nil {
-			priorArtifactsBlock = "Previously generated artifacts:\n" + string(data)
+		// Sort keys for deterministic output.
+		keys := make([]string, 0, len(priorArtifacts))
+		for k := range priorArtifacts {
+			keys = append(keys, k)
 		}
+		sort.Strings(keys)
+
+		var pab strings.Builder
+		pab.WriteString("Previously generated artifacts:\n\n")
+		for _, k := range keys {
+			pab.WriteString(fmt.Sprintf("### %s\n\n", k))
+			pab.WriteString(renderPriorArtifact(k, priorArtifacts[k]))
+			pab.WriteString("\n")
+		}
+		priorArtifactsBlock = pab.String()
 	}
 
 	var dependentInterfacesBlock string
@@ -344,6 +355,130 @@ func GenerationUserPrompt(prdText, artifactName, specID, projectDir string, prio
 	}
 
 	return basePrompt + "\n\n" + artifactPrompt, nil
+}
+
+// renderPriorArtifact renders a single prior artifact entry as compact Markdown.
+// For recognized artifact types (requirements, test_spec, tasks), it extracts
+// key fields and formats them as Markdown to reduce token count compared to
+// json.MarshalIndent. Falls back to JSON serialization when the value is not a
+// map[string]any or for unrecognized artifact types.
+func renderPriorArtifact(key string, value any) string {
+	m, ok := value.(map[string]any)
+	if !ok {
+		// Not a map; fall back to JSON.
+		data, err := json.MarshalIndent(value, "", "  ")
+		if err != nil {
+			return fmt.Sprintf("%v", value)
+		}
+		return string(data)
+	}
+	switch key {
+	case "requirements":
+		return renderRequirementsArtifact(m)
+	case "test_spec":
+		return renderTestSpecArtifact(m)
+	case "tasks":
+		return renderTasksArtifact(m)
+	}
+	// Unknown artifact type: fall back to JSON.
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("%v", m)
+	}
+	return string(data)
+}
+
+// renderRequirementsArtifact renders a requirements artifact map as compact
+// Markdown, preserving all requirement IDs, titles, and criteria IDs needed for
+// cross-referencing in downstream artifact generation.
+func renderRequirementsArtifact(m map[string]any) string {
+	var sb strings.Builder
+	sb.WriteString("## Requirements\n\n")
+	reqs, _ := m["requirements"].([]any)
+	for _, r := range reqs {
+		reqMap, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := reqMap["id"].(string)
+		title, _ := reqMap["title"].(string)
+		sb.WriteString(fmt.Sprintf("### %s: %s\n\n", id, title))
+		criteria, _ := reqMap["acceptance_criteria"].([]any)
+		for _, c := range criteria {
+			cMap, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			cID, _ := cMap["id"].(string)
+			if cID != "" {
+				sb.WriteString(fmt.Sprintf("- [%s]\n", cID))
+			}
+		}
+		if len(criteria) > 0 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+// renderTestSpecArtifact renders a test_spec artifact map as compact Markdown,
+// preserving all test case IDs, descriptions, and requirement cross-references.
+func renderTestSpecArtifact(m map[string]any) string {
+	var sb strings.Builder
+	sb.WriteString("## Test Cases\n\n")
+	cases, _ := m["test_cases"].([]any)
+	for _, tc := range cases {
+		tcMap, ok := tc.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := tcMap["id"].(string)
+		desc, _ := tcMap["description"].(string)
+		reqID, _ := tcMap["requirement_id"].(string)
+		sb.WriteString(fmt.Sprintf("### %s: %s\n\n", id, desc))
+		if reqID != "" {
+			sb.WriteString(fmt.Sprintf("**Requirement:** %s\n\n", reqID))
+		}
+	}
+	return sb.String()
+}
+
+// renderTasksArtifact renders a tasks artifact map as compact Markdown,
+// preserving all task group IDs, titles, and subtask summaries.
+func renderTasksArtifact(m map[string]any) string {
+	var sb strings.Builder
+	sb.WriteString("## Tasks\n\n")
+	groups, _ := m["task_groups"].([]any)
+	for _, g := range groups {
+		gMap, ok := g.(map[string]any)
+		if !ok {
+			continue
+		}
+		// Task group IDs are JSON numbers decoded as float64.
+		var gid int
+		switch n := gMap["id"].(type) {
+		case float64:
+			gid = int(n)
+		case int:
+			gid = n
+		}
+		title, _ := gMap["title"].(string)
+		sb.WriteString(fmt.Sprintf("### %d. %s\n\n", gid, title))
+		subtasks, _ := gMap["subtasks"].([]any)
+		for _, sub := range subtasks {
+			subMap, ok := sub.(map[string]any)
+			if !ok {
+				continue
+			}
+			subID, _ := subMap["id"].(string)
+			subTitle, _ := subMap["title"].(string)
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", subID, subTitle))
+		}
+		if len(subtasks) > 0 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
 }
 
 // RepairUserPrompt loads the repair_user template via LoadPromptTemplate,
