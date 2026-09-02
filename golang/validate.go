@@ -306,12 +306,12 @@ func (s *Spec) ValidateSchema() ValidationResult {
 // earsRequiredFields maps each valid EARS pattern to its required
 // pattern-specific fields, matching the Python _EARS_REQUIRED_FIELDS.
 var earsRequiredFields = map[CriterionEarsPattern][]string{
-	CriterionEarsPatternUbiquitous:  {},
-	CriterionEarsPatternEventDriven: {"trigger"},
+	CriterionEarsPatternUbiquitous:   {},
+	CriterionEarsPatternEventDriven:  {"trigger"},
 	CriterionEarsPatternComplexEvent: {"trigger", "condition"},
-	CriterionEarsPatternStateDriven: {"state"},
-	CriterionEarsPatternUnwanted:    {"error_condition"},
-	CriterionEarsPatternOptional:    {"feature"},
+	CriterionEarsPatternStateDriven:  {"state"},
+	CriterionEarsPatternUnwanted:     {"error_condition"},
+	CriterionEarsPatternOptional:     {"feature"},
 }
 
 // allPatternFields is the set of all pattern-specific fields on a Criterion.
@@ -666,8 +666,8 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 
 	// Collect all known requirement IDs (including criterion IDs)
 	reqIDs := map[string]bool{}
-	topReqIDs := map[string]bool{}       // top-level requirement IDs only
-	criterionIDs := map[string]bool{}    // acceptance_criteria + edge_case IDs only
+	topReqIDs := map[string]bool{}    // top-level requirement IDs only
+	criterionIDs := map[string]bool{} // acceptance_criteria + edge_case IDs only
 	if s.Requirements != nil {
 		for _, req := range s.Requirements.Requirements {
 			reqIDs[req.Id] = true

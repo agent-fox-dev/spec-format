@@ -141,8 +141,31 @@ func newNewCmd() *cobra.Command {
 					SchemaVersion: 1,
 					TestCommands:  afspec.TestCommands{},
 					Dependencies:  []afspec.TaskDependency{},
-					TaskGroups:    []afspec.TaskGroup{},
-					Traceability:  []afspec.TraceabilityEntry{},
+					// task_groups requires minItems:1 per Section 8.3; scaffold with
+					// the mandatory first ("tests") and last ("wiring_verification") groups.
+					TaskGroups: []afspec.TaskGroup{
+						{
+							Id:       1,
+							Kind:     afspec.TaskGroupKindTests,
+							Title:    "Write Tests",
+							Subtasks: []afspec.Subtask{},
+							Verification: afspec.VerificationSubtask{
+								Id:     "1.V",
+								Checks: []string{"all tests pass"},
+							},
+						},
+						{
+							Id:       2,
+							Kind:     afspec.TaskGroupKindWiringVerification,
+							Title:    "Wiring Verification",
+							Subtasks: []afspec.Subtask{},
+							Verification: afspec.VerificationSubtask{
+								Id:     "2.V",
+								Checks: []string{"no stubs remain"},
+							},
+						},
+					},
+					Traceability: []afspec.TraceabilityEntry{},
 				},
 			}
 

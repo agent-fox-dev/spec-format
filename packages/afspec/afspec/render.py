@@ -1045,9 +1045,7 @@ def render_tasks_scoped(t: Tasks, target_group: int) -> str:
     return "\n".join(lines)
 
 
-def render_individual_scoped(
-    spec: Spec, target_group: int, *, max_tokens: int | None = None
-) -> dict[str, str]:
+def render_individual_scoped(spec: Spec, target_group: int, *, max_tokens: int | None = None) -> dict[str, str]:
     """Render each spec artifact scoped to a target task group.
 
     Collects ``requirement_refs`` and ``test_spec_refs`` from the target

@@ -278,8 +278,8 @@ func TestTS08_17_ListEmptySpecDir(t *testing.T) {
 // Covers: 08-PROP-8
 func TestTS08_17_ListAlwaysExits0(t *testing.T) {
 	scenarios := []struct {
-		name    string
-		setup   func(t *testing.T, specDir string)
+		name  string
+		setup func(t *testing.T, specDir string)
 	}{
 		{
 			name:  "nonexistent_dir",

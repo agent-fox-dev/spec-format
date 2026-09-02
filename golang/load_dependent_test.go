@@ -63,7 +63,9 @@ func writeDepSpecDir(t *testing.T, dir, specID, specName string, deps []string) 
 		`{"$schema":"https://agent-fox.dev/schemas/tasks.v1.json",`+
 			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
 			`"test_commands":{"spec_tests":"go test","all_tests":"go test","linter":"go vet"},`+
-			`"dependencies":%s,"task_groups":[],"traceability":[]}`,
+			`"dependencies":%s,`+
+			`"task_groups":[{"id":1,"kind":"tests","title":"Tests","subtasks":[],"verification":{"id":"1.V","checks":["ok"]}}],`+
+			`"traceability":[]}`,
 		specID, specName, depsJSON)
 	mustWriteFile(t, filepath.Join(dir, "tasks.json"), tasks)
 }

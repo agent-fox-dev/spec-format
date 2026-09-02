@@ -124,7 +124,7 @@ func buildAllRulesViolatingSpec() *Spec {
 							Id: "1.1", Title: "subtask A", State: SubtaskStatePending,
 							Details:         []string{},
 							TestSpecRefs:    []string{"TS-04-NONEXISTENT"}, // unresolvable test_spec_id => cross_file_5
-							RequirementRefs: []string{"04-REQ-999"},       // unresolvable requirement_ref => cross_file_9
+							RequirementRefs: []string{"04-REQ-999"},        // unresolvable requirement_ref => cross_file_9
 						},
 					},
 				},

@@ -33,7 +33,8 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/task_group"
-      }
+      },
+      "minItems": 1
     },
     "traceability": {
       "type": "array",

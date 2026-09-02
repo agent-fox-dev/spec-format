@@ -16,9 +16,9 @@ type ConfigError struct {
 	Cause error
 }
 
-func (e *ConfigError) Error() string   { return e.Msg }
+func (e *ConfigError) Error() string    { return e.Msg }
 func (e *ConfigError) Category() string { return "config" }
-func (e *ConfigError) Unwrap() error   { return e.Cause }
+func (e *ConfigError) Unwrap() error    { return e.Cause }
 
 // CampaignError is returned for campaign directory operation failures
 // such as duplicate paths, missing campaign.yaml, or invalid spec names.
@@ -27,9 +27,9 @@ type CampaignError struct {
 	Cause error
 }
 
-func (e *CampaignError) Error() string   { return e.Msg }
+func (e *CampaignError) Error() string    { return e.Msg }
 func (e *CampaignError) Category() string { return "campaign" }
-func (e *CampaignError) Unwrap() error   { return e.Cause }
+func (e *CampaignError) Unwrap() error    { return e.Cause }
 
 // SessionError is returned for illegal state transitions or invalid
 // session state operations.
@@ -38,9 +38,9 @@ type SessionError struct {
 	Cause error
 }
 
-func (e *SessionError) Error() string   { return e.Msg }
+func (e *SessionError) Error() string    { return e.Msg }
 func (e *SessionError) Category() string { return "state" }
-func (e *SessionError) Unwrap() error   { return e.Cause }
+func (e *SessionError) Unwrap() error    { return e.Cause }
 
 // AgentError is the richest error type, carrying structured details about
 // an agent operation failure.
@@ -52,6 +52,6 @@ type AgentError struct {
 	Cause         error
 }
 
-func (e *AgentError) Error() string   { return e.Detail }
+func (e *AgentError) Error() string    { return e.Detail }
 func (e *AgentError) Category() string { return e.ErrorCategory }
-func (e *AgentError) Unwrap() error   { return e.Cause }
+func (e *AgentError) Unwrap() error    { return e.Cause }

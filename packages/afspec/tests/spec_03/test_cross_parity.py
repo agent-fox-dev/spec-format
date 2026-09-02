@@ -254,9 +254,7 @@ def test_estimate_tokens_parity_formula_match() -> None:
     for text in test_strings:
         result = _estimate_tokens(text)
         expected = len(text) // 4
-        assert result == expected, (
-            f"estimate_tokens({text!r:.20}) returned {result}, expected {expected}"
-        )
+        assert result == expected, f"estimate_tokens({text!r:.20}) returned {result}, expected {expected}"
 
 
 # ---------------------------------------------------------------------------

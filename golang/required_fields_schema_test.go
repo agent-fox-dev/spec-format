@@ -158,7 +158,7 @@ func TestRequiredFields_TaskDependency_Sentinel(t *testing.T) {
 		"traceability": []
 	}`
 
-	// With sentinel: false → must pass.
+	// With sentinel: false → must pass (task_groups requires minItems:1).
 	withSentinel := parseJSON(t, `{
 		"$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
 		"spec_id": "02",
@@ -168,7 +168,7 @@ func TestRequiredFields_TaskDependency_Sentinel(t *testing.T) {
 		"dependencies": [
 			{"depends_on_spec": "01", "from_group": 1, "to_group": 1, "relationship": "blocks", "sentinel": false}
 		],
-		"task_groups": [],
+		"task_groups": [{"id":1,"kind":"tests","title":"Tests","subtasks":[],"verification":{"id":"1.V","checks":["ok"]}}],
 		"traceability": []
 	}`)
 	requireSchemaOK(t, withSentinel, "tasks.v1.json")
@@ -210,7 +210,7 @@ func TestRequiredFields_TaskDependency_Sentinel(t *testing.T) {
 // traceability entry missing `test_path` fails schema validation, while an
 // entry with `test_path: null` passes.
 func TestRequiredFields_TraceabilityEntry_TestPath(t *testing.T) {
-	// With test_path: null → must pass.
+	// With test_path: null → must pass (task_groups requires minItems:1).
 	withNullTestPath := parseJSON(t, `{
 		"$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
 		"spec_id": "02",
@@ -218,7 +218,7 @@ func TestRequiredFields_TraceabilityEntry_TestPath(t *testing.T) {
 		"schema_version": 1,
 		"test_commands": {"spec_tests": "go test", "all_tests": "go test", "linter": "go vet"},
 		"dependencies": [],
-		"task_groups": [],
+		"task_groups": [{"id":1,"kind":"tests","title":"Tests","subtasks":[],"verification":{"id":"1.V","checks":["ok"]}}],
 		"traceability": [
 			{"requirement_id": "02-REQ-1.1", "test_spec_id": "TS-02-1", "task_id": "1.1", "test_path": null}
 		]
@@ -343,7 +343,7 @@ func TestRequiredFields_TestSpecSchema(t *testing.T) {
 // TestRequiredFields_TasksSchema verifies that a tasks.v1.json document
 // missing `$schema` fails schema validation.
 func TestRequiredFields_TasksSchema(t *testing.T) {
-	// Complete tasks → must pass.
+	// Complete tasks → must pass (task_groups requires minItems:1).
 	withSchema := parseJSON(t, `{
 		"$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
 		"spec_id": "01",
@@ -351,7 +351,7 @@ func TestRequiredFields_TasksSchema(t *testing.T) {
 		"schema_version": 1,
 		"test_commands": {"spec_tests": "go test", "all_tests": "go test", "linter": "go vet"},
 		"dependencies": [],
-		"task_groups": [],
+		"task_groups": [{"id":1,"kind":"tests","title":"Tests","subtasks":[],"verification":{"id":"1.V","checks":["ok"]}}],
 		"traceability": []
 	}`)
 	requireSchemaOK(t, withSchema, "tasks.v1.json")
@@ -433,7 +433,19 @@ func TestRequiredFields_ValidateSchemaPasses(t *testing.T) {
 				Linter:    "go vet ./...",
 			},
 			Dependencies: []TaskDependency{},
-			TaskGroups:   []TaskGroup{},
+			// task_groups requires minItems:1 per Section 8.3.
+			TaskGroups: []TaskGroup{
+				{
+					Id:       1,
+					Kind:     TaskGroupKindTests,
+					Title:    "Write Tests",
+					Subtasks: []Subtask{},
+					Verification: VerificationSubtask{
+						Id:     "1.V",
+						Checks: []string{"all tests pass"},
+					},
+				},
+			},
 			Traceability: []TraceabilityEntry{},
 		},
 	}
@@ -603,8 +615,8 @@ func TestRequiredFields_UnmarshalJSON_TestSpecV1Json_Schema(t *testing.T) {
 // TestRequiredFields_UnmarshalJSON_TasksV1Json_Schema verifies that
 // unmarshaling a tasks JSON without `$schema` returns an error.
 func TestRequiredFields_UnmarshalJSON_TasksV1Json_Schema(t *testing.T) {
-	// With $schema → must succeed.
-	withSchema := `{"$schema":"https://agent-fox.dev/schemas/tasks.v1.json","spec_id":"01","spec_name":"test","schema_version":1,"test_commands":{"spec_tests":"go test","all_tests":"go test","linter":"go vet"},"dependencies":[],"task_groups":[],"traceability":[]}`
+	// With $schema → must succeed (task_groups must have ≥1 entry per minItems:1).
+	withSchema := `{"$schema":"https://agent-fox.dev/schemas/tasks.v1.json","spec_id":"01","spec_name":"test","schema_version":1,"test_commands":{"spec_tests":"go test","all_tests":"go test","linter":"go vet"},"dependencies":[],"task_groups":[{"id":1,"kind":"tests","title":"Tests","subtasks":[],"verification":{"id":"1.V","checks":["ok"]}}],"traceability":[]}`
 	var t1 TasksV1Json
 	if err := json.Unmarshal([]byte(withSchema), &t1); err != nil {
 		t.Errorf("Unmarshal with $schema failed: %v", err)

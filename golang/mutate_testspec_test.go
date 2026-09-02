@@ -38,12 +38,12 @@ func makeTestCase(id string) TestCase {
 
 func makePropertyTest(id string) PropertyTest {
 	return PropertyTest{
-		Id:               id,
-		Description:      "property " + id,
-		PropertyId:       "05-PROP-1",
-		ForAnyStrategy:   "random",
-		InvariantCheck:   "check",
-		Validates:        []string{"05-REQ-1"},
+		Id:             id,
+		Description:    "property " + id,
+		PropertyId:     "05-PROP-1",
+		ForAnyStrategy: "random",
+		InvariantCheck: "check",
+		Validates:      []string{"05-REQ-1"},
 	}
 }
 

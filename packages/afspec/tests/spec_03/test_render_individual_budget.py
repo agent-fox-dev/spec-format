@@ -120,9 +120,7 @@ def _make_large_spec_with_architecture() -> Spec:
     exceeds a moderate budget, but removing architecture (Level 1) fits.
     """
     # Use a large architecture string to inflate token count
-    arch_content = "# Architecture\n\n" + (
-        "This is detailed architecture content. " * 100
-    )
+    arch_content = "# Architecture\n\n" + ("This is detailed architecture content. " * 100)
 
     return Spec(
         prd=PRDDocument(

@@ -45,8 +45,31 @@ func CreateSpec(specID, specName string) *Spec {
 			SchemaVersion: 1,
 			TestCommands:  TestCommands{},
 			Dependencies:  []TaskDependency{},
-			TaskGroups:    []TaskGroup{},
-			Traceability:  []TraceabilityEntry{},
+			// task_groups requires minItems:1 per Section 8.3; scaffold with
+			// the mandatory first ("tests") and last ("wiring_verification") groups.
+			TaskGroups: []TaskGroup{
+				{
+					Id:       1,
+					Kind:     TaskGroupKindTests,
+					Title:    "Write Tests",
+					Subtasks: []Subtask{},
+					Verification: VerificationSubtask{
+						Id:     "1.V",
+						Checks: []string{"all tests pass"},
+					},
+				},
+				{
+					Id:       2,
+					Kind:     TaskGroupKindWiringVerification,
+					Title:    "Wiring Verification",
+					Subtasks: []Subtask{},
+					Verification: VerificationSubtask{
+						Id:     "2.V",
+						Checks: []string{"no stubs remain"},
+					},
+				},
+			},
+			Traceability: []TraceabilityEntry{},
 		},
 	}
 }

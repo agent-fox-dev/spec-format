@@ -751,4 +751,3 @@ func formatValidationEntries(artifactName string, entries []afspec.ValidationEnt
 	return fmt.Errorf("artifact %s has %d validation error(s):\n%s",
 		artifactName, len(entries), strings.Join(parts, "\n"))
 }
-

@@ -38,6 +38,7 @@ This is a test PRD body.
 	}
 
 	// Write minimal valid requirements.json.
+	// Includes one execution path (≥2 steps) so the smoke test can reference it.
 	reqJSON := `{
 		"$schema": "https://agent-fox.dev/schemas/requirements.v1.json",
 		"spec_id": "06",
@@ -47,7 +48,16 @@ This is a test PRD body.
 		"glossary": {},
 		"requirements": [],
 		"correctness_properties": [],
-		"execution_paths": [],
+		"execution_paths": [
+			{
+				"id": "06-PATH-1",
+				"title": "Basic path",
+				"steps": [
+					{"actor": "caller", "action": "invoke"},
+					{"actor": "system", "action": "return result"}
+				]
+			}
+		],
 		"error_handling": [],
 		"external_apis": []
 	}`
@@ -56,6 +66,7 @@ This is a test PRD body.
 	}
 
 	// Write minimal valid test_spec.json.
+	// Includes one smoke test referencing the execution path above.
 	tsJSON := `{
 		"$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
 		"spec_id": "06",
@@ -64,7 +75,17 @@ This is a test PRD body.
 		"test_cases": [],
 		"property_tests": [],
 		"edge_case_tests": [],
-		"smoke_tests": [],
+		"smoke_tests": [
+			{
+				"id": "TS-06-SMOKE-1",
+				"execution_path_id": "06-PATH-1",
+				"description": "Smoke test",
+				"trigger": "invoke",
+				"real_components": ["core"],
+				"mockable": [],
+				"expected_effects": ["returns result"]
+			}
+		],
 		"coverage": {}
 	}`
 	if err := os.WriteFile(filepath.Join(specDir, "test_spec.json"), []byte(tsJSON), 0o644); err != nil {
@@ -72,6 +93,8 @@ This is a test PRD body.
 	}
 
 	// Write minimal valid tasks.json.
+	// task_groups requires minItems:1 (Section 8.3); first must be "tests",
+	// last must be "wiring_verification" per task_group_structure check.
 	tasksJSON := `{
 		"$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
 		"spec_id": "06",
@@ -83,7 +106,32 @@ This is a test PRD body.
 			"spec_tests": "go test ./agentspec/...",
 			"linter": "go vet ./..."
 		},
-		"task_groups": [],
+		"task_groups": [
+			{
+				"id": 1,
+				"kind": "tests",
+				"title": "Write Tests",
+				"subtasks": [],
+				"verification": {"id": "1.V", "checks": ["all tests pass"]}
+			},
+			{
+				"id": 2,
+				"kind": "wiring_verification",
+				"title": "Wiring Verification",
+				"subtasks": [
+					{
+						"id": "2.1",
+						"title": "Stub and dead-code audit",
+						"details": [],
+						"test_spec_refs": ["TS-06-SMOKE-1"],
+						"requirement_refs": [],
+						"state": "pending",
+						"optional": false
+					}
+				],
+				"verification": {"id": "2.V", "checks": ["stub check"]}
+			}
+		],
 		"traceability": []
 	}`
 	if err := os.WriteFile(filepath.Join(specDir, "tasks.json"), []byte(tasksJSON), 0o644); err != nil {
@@ -612,4 +660,3 @@ schema_version: 1
 		t.Errorf("Render(false) returned map with %d entries; want empty map", len(resultMap))
 	}
 }
-

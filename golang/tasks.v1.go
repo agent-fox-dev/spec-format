@@ -317,6 +317,9 @@ func (j *TasksV1Json) UnmarshalJSON(value []byte) error {
 	if utf8.RuneCountInString(string(plain.SpecName)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "spec_name", 1)
 	}
+	if len(plain.TaskGroups) < 1 {
+		return fmt.Errorf("field %s length: must be >= %d", "task_groups", 1)
+	}
 	*j = TasksV1Json(plain)
 	return nil
 }

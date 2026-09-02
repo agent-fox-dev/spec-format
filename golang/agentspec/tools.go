@@ -15,8 +15,8 @@ func assessmentToolDef() map[string]any {
 			"type": "object",
 			"properties": map[string]any{
 				"quality": map[string]any{
-					"type": "string",
-					"enum": []any{"ready", "needs_refinement", "incomplete"},
+					"type":        "string",
+					"enum":        []any{"ready", "needs_refinement", "incomplete"},
 					"description": "Overall quality rating of the PRD.",
 				},
 				"summary": map[string]any{

@@ -58,9 +58,7 @@ def _make_spec_with_all_artifacts() -> Spec:
                 Requirement(
                     id="03-REQ-1",
                     title="Combined requirement",
-                    user_story=UserStory(
-                        role="user", goal="test combined", benefit="accuracy"
-                    ),
+                    user_story=UserStory(role="user", goal="test combined", benefit="accuracy"),
                     acceptance_criteria=[
                         Criterion(
                             id="03-REQ-1.1",
@@ -123,9 +121,7 @@ def _make_spec_with_large_combined_content() -> Spec:
     The architecture section provides the bulk of the content, so that
     Level 1 truncation (dropping architecture) meaningfully reduces tokens.
     """
-    arch_content = "# Architecture\n\n" + (
-        "This is detailed architecture content for combined rendering. " * 100
-    )
+    arch_content = "# Architecture\n\n" + ("This is detailed architecture content for combined rendering. " * 100)
 
     return Spec(
         prd=PRDDocument(
@@ -141,9 +137,7 @@ def _make_spec_with_large_combined_content() -> Spec:
                 Requirement(
                     id="03-REQ-1",
                     title="Large combined requirement",
-                    user_story=UserStory(
-                        role="user", goal="test large combined", benefit="value"
-                    ),
+                    user_story=UserStory(role="user", goal="test large combined", benefit="value"),
                     acceptance_criteria=[
                         Criterion(
                             id="03-REQ-1.1",

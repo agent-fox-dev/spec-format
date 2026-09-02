@@ -326,7 +326,22 @@ SAMPLE_TASKS_JSON: dict[str, Any] = {
         "linter": "ruff check",
     },
     "dependencies": [],
-    "task_groups": [],
+    "task_groups": [
+        {
+            "id": 1,
+            "kind": "tests",
+            "title": "Write Tests",
+            "subtasks": [],
+            "verification": {"id": "1.V", "checks": ["all tests pass"]},
+        },
+        {
+            "id": 2,
+            "kind": "wiring_verification",
+            "title": "Wiring Verification",
+            "subtasks": [],
+            "verification": {"id": "2.V", "checks": ["no stubs remain"]},
+        },
+    ],
     "traceability": [],
 }
 

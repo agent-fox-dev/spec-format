@@ -46,9 +46,7 @@ def _make_scoped_spec_with_architecture() -> Spec:
     enabling scoped rendering. Architecture content is large to inflate
     token count for truncation testing.
     """
-    arch_content = "# Architecture\n\n" + (
-        "Detailed architecture explanation with diagrams and rationale. " * 100
-    )
+    arch_content = "# Architecture\n\n" + ("Detailed architecture explanation with diagrams and rationale. " * 100)
 
     return Spec(
         prd=PRDDocument(
@@ -64,9 +62,7 @@ def _make_scoped_spec_with_architecture() -> Spec:
                 Requirement(
                     id="03-REQ-1",
                     title="First requirement",
-                    user_story=UserStory(
-                        role="user", goal="test scoped", benefit="accuracy"
-                    ),
+                    user_story=UserStory(role="user", goal="test scoped", benefit="accuracy"),
                     acceptance_criteria=[
                         Criterion(
                             id="03-REQ-1.1",
@@ -79,9 +75,7 @@ def _make_scoped_spec_with_architecture() -> Spec:
                 Requirement(
                     id="03-REQ-2",
                     title="Second requirement",
-                    user_story=UserStory(
-                        role="developer", goal="test budget", benefit="efficiency"
-                    ),
+                    user_story=UserStory(role="developer", goal="test budget", benefit="efficiency"),
                     acceptance_criteria=[
                         Criterion(
                             id="03-REQ-2.1",

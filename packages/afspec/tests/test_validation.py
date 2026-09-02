@@ -19,10 +19,12 @@ from afspec import (
     EARSPattern,
     Requirement,
     Spec,
+    TaskGroup,
     TaskGroupKind,
     TestCase,
     TraceabilityEntry,
     UserStory,
+    VerificationSubtask,
     validate_cross_file,
     validate_schema,
 )
@@ -445,6 +447,23 @@ def _make_single_criterion_spec(criterion: Criterion) -> Spec:
         edge_cases=[],
     )
     spec.requirements.requirements = [req]
+    # task_groups requires minItems:1 per schema §8.3 — include a minimal valid pair.
+    spec.tasks.task_groups = [
+        TaskGroup(
+            id=1,
+            kind=TaskGroupKind.TESTS,
+            title="Tests",
+            subtasks=[],
+            verification=VerificationSubtask(id="1.V", checks=["verify"]),
+        ),
+        TaskGroup(
+            id=2,
+            kind=TaskGroupKind.WIRING_VERIFICATION,
+            title="Wiring Verification",
+            subtasks=[],
+            verification=VerificationSubtask(id="2.V", checks=["verify"]),
+        ),
+    ]
     return spec
 
 
@@ -518,3 +537,37 @@ class TestSmokeValidate:
         result = afspec.validate(invalid_spec)
         assert len(result.errors) > 0
         assert any("99-REQ-99.1" in e.message for e in result.errors)
+
+
+# ---------------------------------------------------------------------------
+# Issue #41: task_groups minItems:1 — TS-NS-1, TS-NS-2
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaEmptyTaskGroups:
+    """TS-NS-1: validate_schema rejects an empty task_groups array."""
+
+    def test_empty_task_groups_rejected(self, valid_spec_dir: Path) -> None:
+        """AC-1: A tasks.json with task_groups=[] fails schema validation with a
+        minItems error on the task_groups property."""
+        spec = _load_golden(valid_spec_dir)
+        spec.tasks.task_groups = []
+
+        errors = validate_schema(spec)
+
+        assert len(errors) > 0, "expected at least one schema error for empty task_groups"
+        assert any("task_groups" in e.path.lower() or "task_groups" in e.message.lower() for e in errors), (
+            f"no error mentions task_groups; got: {errors}"
+        )
+
+    def test_nonempty_task_groups_accepted(self, valid_spec_dir: Path) -> None:
+        """AC-2: A tasks.json with one or more task groups passes schema validation."""
+        spec = _load_golden(valid_spec_dir)
+        assert len(spec.tasks.task_groups) >= 1, "golden fixture must have at least one task group"
+
+        errors = validate_schema(spec)
+
+        task_groups_errors = [
+            e for e in errors if "task_groups" in e.path.lower() or "task_groups" in e.message.lower()
+        ]
+        assert task_groups_errors == [], f"unexpected task_groups errors on valid spec: {task_groups_errors}"

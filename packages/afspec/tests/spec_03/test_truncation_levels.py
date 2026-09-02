@@ -279,9 +279,7 @@ def test_prd_body_never_dropped_individual() -> None:
     # Level 0 (no cap)
     result_l0 = render_individual(spec, max_tokens=None)
     assert "prd" in result_l0
-    assert (
-        _PRD_BODY in result_l0["prd"] or "This is the PRD content" in result_l0["prd"]
-    )
+    assert _PRD_BODY in result_l0["prd"] or "This is the PRD content" in result_l0["prd"]
 
     # Level 1 (moderate cap)
     level0_tokens = sum(_estimate_tokens(v) for v in result_l0.values())

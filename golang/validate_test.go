@@ -1,6 +1,7 @@
 package afspec
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -238,7 +239,7 @@ func TestValidateSchema_MultipleArtifactErrors(t *testing.T) {
 // Test Spec: TS-NS-2, Requirement: NS-REQ-2
 func TestValidateSchema_InvalidPRDStatus(t *testing.T) {
 	spec := buildSpecWithDanglingRef("01-REQ-1") // valid base spec
-	spec.Status = "unknown"                       // invalid status
+	spec.Status = "unknown"                      // invalid status
 
 	result := spec.ValidateSchema()
 	if result.Valid {
@@ -262,7 +263,7 @@ func TestValidateSchema_InvalidPRDStatus(t *testing.T) {
 // Test Spec: TS-NS-3, Requirement: NS-REQ-3
 func TestValidateSchema_InvalidPRDSchemaVersion(t *testing.T) {
 	spec := buildSpecWithDanglingRef("01-REQ-1") // valid base spec
-	spec.SchemaVersion = 0                        // violates const: 1
+	spec.SchemaVersion = 0                       // violates const: 1
 
 	result := spec.ValidateSchema()
 	if result.Valid {
@@ -287,7 +288,7 @@ func TestValidateSchema_InvalidPRDSchemaVersion(t *testing.T) {
 // Test Spec: TS-NS-4, Requirement: NS-REQ-4
 func TestValidateSchema_MissingPRDSpecID(t *testing.T) {
 	spec := buildSpecWithDanglingRef("01-REQ-1") // valid base spec
-	spec.SpecID = ""                              // violates minLength: 1
+	spec.SpecID = ""                             // violates minLength: 1
 
 	result := spec.ValidateSchema()
 	if result.Valid {
@@ -1288,8 +1289,13 @@ func buildSpecWithWarnings() *Spec {
 				},
 			},
 			CorrectnessProperties: []CorrectnessProperty{},
-			ExecutionPaths:        []ExecutionPath{},
-			ErrorHandling:         []ErrorHandlingEntry{},
+			ExecutionPaths: []ExecutionPath{
+				{Id: "01-PATH-1", Title: "Load spec", Steps: []PathStep{
+					{Actor: "caller", Action: "invoke load"},
+					{Actor: "system", Action: "return result"},
+				}},
+			},
+			ErrorHandling: []ErrorHandlingEntry{},
 		},
 		TestSpec: &TestSpecV1Json{
 			Schema:        "https://agent-fox.dev/schemas/test_spec.v1.json",
@@ -1309,7 +1315,9 @@ func buildSpecWithWarnings() *Spec {
 			},
 			PropertyTests: []PropertyTest{},
 			EdgeCaseTests: []EdgeCaseTest{},
-			SmokeTests:    []SmokeTest{},
+			SmokeTests: []SmokeTest{
+				{Id: "TS-01-SMOKE-1", ExecutionPathId: "01-PATH-1", Description: "Smoke test", Trigger: "invoke load", RealComponents: []string{"core"}, Mockable: []string{}, ExpectedEffects: []string{"returns result"}},
+			},
 			Coverage: Coverage{
 				RequirementsCovered: []string{"01-REQ-1.1"},
 			},
@@ -1325,7 +1333,22 @@ func buildSpecWithWarnings() *Spec {
 				Linter:    "go vet ./...",
 			},
 			Dependencies: []TaskDependency{},
-			TaskGroups:   []TaskGroup{},
+			TaskGroups: []TaskGroup{
+				{
+					Id: 1, Kind: TaskGroupKindTests, Title: "Tests",
+					Subtasks: []Subtask{
+						{Id: "1.1", Title: "Write tests", State: SubtaskStatePending, Details: []string{"create tests"}, TestSpecRefs: []string{"TS-01-1"}, RequirementRefs: []string{"01-REQ-1"}, Optional: false},
+					},
+					Verification: VerificationSubtask{Id: "1.V", Checks: []string{"all tests pass"}},
+				},
+				{
+					Id: 2, Kind: TaskGroupKindWiringVerification, Title: "Wiring Verification",
+					Subtasks: []Subtask{
+						{Id: "2.1", Title: "Stub and dead-code audit", State: SubtaskStatePending, Details: []string{"verify wiring"}, TestSpecRefs: []string{"TS-01-SMOKE-1"}, RequirementRefs: []string{"01-REQ-1"}, Optional: false},
+					},
+					Verification: VerificationSubtask{Id: "2.V", Checks: []string{"smoke tests pass"}},
+				},
+			},
 			Traceability: []TraceabilityEntry{},
 		},
 	}
@@ -1648,7 +1671,30 @@ func buildCrossFileBaseSpec() *Spec {
 				Linter:    "go vet ./...",
 			},
 			Dependencies: []TaskDependency{},
-			TaskGroups:   []TaskGroup{},
+			// task_groups requires minItems:1 per Section 8.3; scaffold with
+			// the mandatory first ("tests") and last ("wiring_verification") groups.
+			TaskGroups: []TaskGroup{
+				{
+					Id:       1,
+					Kind:     TaskGroupKindTests,
+					Title:    "Write Tests",
+					Subtasks: []Subtask{},
+					Verification: VerificationSubtask{
+						Id:     "1.V",
+						Checks: []string{"all tests pass"},
+					},
+				},
+				{
+					Id:       2,
+					Kind:     TaskGroupKindWiringVerification,
+					Title:    "Wiring Verification",
+					Subtasks: []Subtask{},
+					Verification: VerificationSubtask{
+						Id:     "2.V",
+						Checks: []string{"no stubs remain"},
+					},
+				},
+			},
 			Traceability: []TraceabilityEntry{},
 		},
 	}
@@ -2866,8 +2912,8 @@ func TestValidateCrossFile_UnwantedReturnContract(t *testing.T) {
 				s := buildCrossFileBaseSpec()
 				s.Requirements.Requirements = []Requirement{
 					{
-						Id:    "04-REQ-99",
-						Title: "Unwanted Test",
+						Id:        "04-REQ-99",
+						Title:     "Unwanted Test",
 						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
 						AcceptanceCriteria: []Criterion{
 							{
@@ -2895,8 +2941,8 @@ func TestValidateCrossFile_UnwantedReturnContract(t *testing.T) {
 				s := buildCrossFileBaseSpec()
 				s.Requirements.Requirements = []Requirement{
 					{
-						Id:    "04-REQ-99",
-						Title: "Unwanted Test",
+						Id:        "04-REQ-99",
+						Title:     "Unwanted Test",
 						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
 						AcceptanceCriteria: []Criterion{
 							{
@@ -2919,8 +2965,8 @@ func TestValidateCrossFile_UnwantedReturnContract(t *testing.T) {
 				s := buildCrossFileBaseSpec()
 				s.Requirements.Requirements = []Requirement{
 					{
-						Id:    "04-REQ-99",
-						Title: "Non-Unwanted Test",
+						Id:        "04-REQ-99",
+						Title:     "Non-Unwanted Test",
 						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
 						AcceptanceCriteria: []Criterion{
 							{
@@ -2947,8 +2993,8 @@ func TestValidateCrossFile_UnwantedReturnContract(t *testing.T) {
 				s := buildCrossFileBaseSpec()
 				s.Requirements.Requirements = []Requirement{
 					{
-						Id:    "04-REQ-99",
-						Title: "Unwanted Edge Case Test",
+						Id:        "04-REQ-99",
+						Title:     "Unwanted Edge Case Test",
 						UserStory: UserStory{Role: "dev", Goal: "test", Benefit: "validation"},
 						AcceptanceCriteria: []Criterion{
 							{
@@ -3023,11 +3069,11 @@ func TestValidateCrossFile_UnwantedReturnContract(t *testing.T) {
 // NS-REQ-1, NS-REQ-2, NS-REQ-3, NS-REQ-4.
 func TestValidateCrossFile_TaskGroupStructure(t *testing.T) {
 	tests := []struct {
-		name                  string
-		spec                  *Spec
-		wantErrorCount        int
-		wantFirstGroupErr     bool // error about first group not being 'tests'
-		wantLastGroupErr      bool // error about last group not being 'wiring_verification'
+		name                   string
+		spec                   *Spec
+		wantErrorCount         int
+		wantFirstGroupErr      bool // error about first group not being 'tests'
+		wantLastGroupErr       bool // error about last group not being 'wiring_verification'
 		wantDuplicateWiringErr bool // error about more than one wiring_verification group
 	}{
 		{
@@ -4558,7 +4604,7 @@ func TestValidate_Warning_ErrorPathReturnContract(t *testing.T) {
 	spec.Requirements.Requirements = []Requirement{
 		{
 			Id: "04-REQ-1", Title: "Error Handling",
-			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			UserStory: UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
 			AcceptanceCriteria: []Criterion{{
 				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternEventDriven, System: "the system",
 				Action: "handle the error", ErrorCondition: strPtr("network timeout"), ReturnContract: nil,
@@ -4587,7 +4633,7 @@ func TestValidate_Warning_ErrorPathReturnContract_ActionKeyword(t *testing.T) {
 	spec.Requirements.Requirements = []Requirement{
 		{
 			Id: "04-REQ-1", Title: "Error keyword",
-			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			UserStory: UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
 			AcceptanceCriteria: []Criterion{{
 				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternEventDriven, System: "the system",
 				Action: "reject the invalid input", ReturnContract: nil,
@@ -4616,7 +4662,7 @@ func TestValidate_Warning_ErrorPathReturnContract_NonNull(t *testing.T) {
 	spec.Requirements.Requirements = []Requirement{
 		{
 			Id: "04-REQ-1", Title: "Error With Contract",
-			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			UserStory: UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
 			AcceptanceCriteria: []Criterion{{
 				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternEventDriven, System: "the system",
 				Action: "handle the error", ErrorCondition: strPtr("network timeout"),
@@ -4641,7 +4687,7 @@ func TestValidate_Warning_ErrorPathReturnContract_UnwantedDualEntry(t *testing.T
 	spec.Requirements.Requirements = []Requirement{
 		{
 			Id: "04-REQ-1", Title: "Unwanted Error Path",
-			UserStory:      UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
+			UserStory: UserStory{Role: "developer", Goal: "handle errors", Benefit: "reliability"},
 			AcceptanceCriteria: []Criterion{{
 				Id: "04-REQ-1.1", EarsPattern: CriterionEarsPatternUnwanted, System: "the system",
 				Action: "fail with error", ErrorCondition: strPtr("unexpected input"), ReturnContract: nil,
@@ -4977,9 +5023,12 @@ func TestValidateStructured_OutputShape_ValidKeys(t *testing.T) {
 	defer requireImplemented(t)
 
 	t.Run("valid_spec_all_keys_present", func(t *testing.T) {
-		// Use a programmatically-built minimal valid spec to avoid
-		// testdata dependencies on cross-file rule implementation state.
-		spec := makeMinimalSpec()
+		// Use the golden valid spec: task_groups now requires minItems:1 so a
+		// programmatically-built spec with empty task_groups is invalid.
+		spec, err := LoadSpec("./../testdata/valid_spec")
+		if err != nil {
+			t.Fatalf("LoadSpec returned unexpected error: %v", err)
+		}
 		output := spec.ValidateStructured()
 
 		// Assert required keys exist
@@ -5067,8 +5116,8 @@ func TestValidateStructured_OutputShape_ErrorFields(t *testing.T) {
 			Glossary:      RequirementsV1JsonGlossary{},
 			Requirements: []Requirement{
 				{
-					Id:    "",    // empty ID — schema violation
-					Title: "",   // empty title — schema violation
+					Id:    "", // empty ID — schema violation
+					Title: "", // empty title — schema violation
 					UserStory: UserStory{
 						Role: "dev", Goal: "test", Benefit: "validation",
 					},
@@ -5373,10 +5422,10 @@ func TestValidateSchema_EarsConstraints_ValidCombinations(t *testing.T) {
 			State:       strPtr("while in state A"),
 		},
 		{
-			Id:          "01-REQ-1.5",
-			EarsPattern: CriterionEarsPatternUnwanted,
-			Action:      "the system SHALL do X",
-			System:      "system",
+			Id:             "01-REQ-1.5",
+			EarsPattern:    CriterionEarsPatternUnwanted,
+			Action:         "the system SHALL do X",
+			System:         "system",
 			ErrorCondition: strPtr("if error occurs"),
 			ReturnContract: CriterionReturnContract(strPtr("returns error")),
 		},
@@ -5953,10 +6002,10 @@ func TestValidateCrossFile_FullyCoveredSpec(t *testing.T) {
 // Requirements: NS-REQ-1, NS-REQ-3
 func TestCrossFile1_TraceabilityDanglingRef(t *testing.T) {
 	tests := []struct {
-		name        string
-		reqID       string // traceability entry's RequirementId
-		wantError   bool
-		wantCheck   string
+		name         string
+		reqID        string // traceability entry's RequirementId
+		wantError    bool
+		wantCheck    string
 		wantArtifact string
 	}{
 		{
@@ -7214,5 +7263,115 @@ func TestExtractTestPrefix(t *testing.T) {
 				t.Errorf("extractTestPrefix(%q) = %q, want %q", tt.id, got, tt.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #41: task_groups minItems:1 constraint
+// TS-NS-1, TS-NS-2, TS-NS-4
+// ---------------------------------------------------------------------------
+
+// TestValidateSchema_EmptyTaskGroups verifies AC-1/NS-REQ-1: schema validation
+// returns an error for a tasks artifact with an empty task_groups array.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestValidateSchema_EmptyTaskGroups(t *testing.T) {
+	spec := buildSpecWithDanglingRef("01-REQ-1.1")
+	// The base spec has empty task_groups — exercise schema rejection.
+	if len(spec.Tasks.TaskGroups) != 0 {
+		t.Skip("buildSpecWithDanglingRef already has task groups; test assumption changed")
+	}
+
+	result := spec.ValidateSchema()
+
+	if result.Valid {
+		t.Error("ValidateSchema().Valid = true for empty task_groups, want false")
+	}
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Artifact == "tasks.json" && strings.Contains(e.Path, "task_groups") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one error with Artifact=tasks.json and Path containing task_groups; got: %v", result.Errors)
+	}
+}
+
+// TestValidateSchema_NonEmptyTaskGroups verifies AC-2/NS-REQ-2: schema
+// validation passes when task_groups contains at least one task group.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateSchema_NonEmptyTaskGroups(t *testing.T) {
+	spec, err := LoadSpec("./../testdata/valid_spec")
+	if err != nil {
+		t.Fatalf("LoadSpec returned unexpected error: %v", err)
+	}
+	if len(spec.Tasks.TaskGroups) == 0 {
+		t.Fatal("testdata/valid_spec has no task groups — fix the fixture")
+	}
+
+	result := spec.ValidateSchema()
+
+	taskGroupsErr := false
+	for _, e := range result.Errors {
+		if e.Artifact == "tasks.json" && strings.Contains(e.Path, "task_groups") {
+			taskGroupsErr = true
+			break
+		}
+	}
+	if taskGroupsErr {
+		t.Errorf("unexpected task_groups minItems error on valid spec: %v", result.Errors)
+	}
+}
+
+// TestUnmarshalJSON_TaskGroups_MinItems verifies AC-4/NS-REQ-4: the generated
+// Go UnmarshalJSON enforces the minItems:1 constraint on task_groups.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestUnmarshalJSON_TaskGroups_MinItems(t *testing.T) {
+	emptyGroups := `{
+		"$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
+		"spec_id": "01",
+		"spec_name": "test",
+		"schema_version": 1,
+		"test_commands": {"spec_tests": "go test", "all_tests": "go test", "linter": "go vet"},
+		"dependencies": [],
+		"task_groups": [],
+		"traceability": []
+	}`
+
+	var tasks TasksV1Json
+	err := json.Unmarshal([]byte(emptyGroups), &tasks)
+	if err == nil {
+		t.Error("json.Unmarshal with empty task_groups returned nil error, want non-nil")
+	}
+	if err != nil && !strings.Contains(err.Error(), "task_groups") {
+		t.Errorf("error %q does not mention task_groups", err.Error())
+	}
+}
+
+// TestUnmarshalJSON_TaskGroups_OneGroup verifies that UnmarshalJSON succeeds
+// with a single task group (boundary condition for minItems:1).
+// Test Spec: TS-NS-2 (boundary), Requirement: NS-REQ-2
+func TestUnmarshalJSON_TaskGroups_OneGroup(t *testing.T) {
+	oneGroup := `{
+		"$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
+		"spec_id": "01",
+		"spec_name": "test",
+		"schema_version": 1,
+		"test_commands": {"spec_tests": "go test", "all_tests": "go test", "linter": "go vet"},
+		"dependencies": [],
+		"task_groups": [
+			{"id": 1, "kind": "tests", "title": "Group 1", "subtasks": [], "verification": {"id": "1.V", "checks": ["check"]}}
+		],
+		"traceability": []
+	}`
+
+	var tasks TasksV1Json
+	if err := json.Unmarshal([]byte(oneGroup), &tasks); err != nil {
+		t.Errorf("json.Unmarshal with one task_group returned unexpected error: %v", err)
+	}
+	if len(tasks.TaskGroups) != 1 {
+		t.Errorf("TaskGroups length = %d, want 1", len(tasks.TaskGroups))
 	}
 }
