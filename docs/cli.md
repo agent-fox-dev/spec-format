@@ -213,6 +213,95 @@ No additional options.
 spec status 01_auth_redesign
 ```
 
+### seal
+
+Transition an active spec to the sealed state. Sealing marks a spec as finalized — no further edits are permitted.
+
+```
+spec seal SPEC
+```
+
+No additional options.
+
+**Output format:**
+
+```json
+{
+  "ok": true,
+  "spec": "my_feature",
+  "status": "sealed"
+}
+```
+
+**Example:**
+
+```bash
+spec seal 01_auth_redesign
+spec --spec-dir /path/to/specs seal 01
+```
+
+**Errors:** Returns exit code 1 if the transition is invalid (e.g., sealing a draft spec). In agent mode (`AF_AGENT=1`), errors are emitted as `{"ok": false, "error": "..."}`.
+
+### archive
+
+Move a spec directory to the `archive/` subdirectory inside the spec root. The original directory is removed and replaced by `<spec-dir>/archive/<name>/`. Creates the archive directory if it does not exist.
+
+```
+spec archive SPEC
+```
+
+No additional options.
+
+**Output format:**
+
+```json
+{
+  "ok": true,
+  "archived": "01_auth_redesign"
+}
+```
+
+**Example:**
+
+```bash
+spec archive 01_auth_redesign
+spec --spec-dir /path/to/specs archive 01
+```
+
+**Errors:** Returns exit code 1 if the spec cannot be found or if an archive conflict exists (a directory with the same name already exists in `archive/`).
+
+### supersede
+
+Transition a sealed spec to the superseded state, prepending a deprecation banner to the PRD body that references the superseding spec.
+
+```
+spec supersede [OPTIONS] SPEC
+```
+
+| Option | Description |
+|--------|-------------|
+| `--by TEXT` | ID of the superseding spec (required) |
+
+**Output format:**
+
+```json
+{
+  "ok": true,
+  "spec": "my_feature",
+  "status": "superseded",
+  "superseded_by": "02_auth_v2"
+}
+```
+
+**Example:**
+
+```bash
+spec supersede 01_auth_redesign --by 02_auth_v2
+spec --spec-dir /path/to/specs supersede 01 --by 02_auth_v2
+```
+
+**Errors:** Returns exit code 1 if `--by` is omitted, if the spec does not exist, or if the spec is not in the sealed state (only sealed specs can be superseded).
+
 ### campaign
 
 Create a new campaign directory at the specified path, independent of the global `--spec-dir` option. Fails if `campaign.yaml` already exists at the target path.

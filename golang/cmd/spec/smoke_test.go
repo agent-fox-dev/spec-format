@@ -268,6 +268,7 @@ func TestSmoke_SubcommandsRegistered(t *testing.T) {
 	expectedCmds := []string{
 		"new", "list", "refine", "generate", "render",
 		"validate", "lint", "status", "campaign",
+		"seal", "archive", "supersede",
 	}
 
 	registeredCmds := make(map[string]bool)
