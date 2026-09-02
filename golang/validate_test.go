@@ -2721,16 +2721,19 @@ func TestValidateCrossFile_UnwantedReturnContract(t *testing.T) {
 
 // TestValidateCrossFile_TaskGroupStructure verifies that ValidateCrossFile
 // produces a schema-category error when the first task group does not have
-// kind='tests' or the last task group does not have kind='wiring_verification'.
-// Test Spec: TS-04-10, TS-04-11. Requirements: 04-REQ-8.1, 04-REQ-8.2,
-// 04-REQ-8.E1, 04-REQ-8.E2.
+// kind='tests' or the last task group does not have kind='wiring_verification',
+// or when more than one wiring_verification group exists (spec 8.3).
+// Test Spec: TS-04-10, TS-04-11, TS-NS-1, TS-NS-2, TS-NS-3, TS-NS-4.
+// Requirements: 04-REQ-8.1, 04-REQ-8.2, 04-REQ-8.E1, 04-REQ-8.E2,
+// NS-REQ-1, NS-REQ-2, NS-REQ-3, NS-REQ-4.
 func TestValidateCrossFile_TaskGroupStructure(t *testing.T) {
 	tests := []struct {
-		name              string
-		spec              *Spec
-		wantErrorCount    int
-		wantFirstGroupErr bool // error about first group not being 'tests'
-		wantLastGroupErr  bool // error about last group not being 'wiring_verification'
+		name                  string
+		spec                  *Spec
+		wantErrorCount        int
+		wantFirstGroupErr     bool // error about first group not being 'tests'
+		wantLastGroupErr      bool // error about last group not being 'wiring_verification'
+		wantDuplicateWiringErr bool // error about more than one wiring_verification group
 	}{
 		{
 			name: "first_group_not_tests",
@@ -2792,6 +2795,56 @@ func TestValidateCrossFile_TaskGroupStructure(t *testing.T) {
 			wantFirstGroupErr: true,
 			wantLastGroupErr:  true,
 		},
+		// TS-NS-1: Two wiring_verification groups must fail with a schema error.
+		{
+			name: "duplicate_wiring_verification",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{
+					{Id: 1, Title: "Tests", Kind: TaskGroupKindTests, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}}},
+					{Id: 2, Title: "Wiring 1", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "2.V", Checks: []string{"check"}}},
+					{Id: 3, Title: "Standard", Kind: TaskGroupKindStandard, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "3.V", Checks: []string{"check"}}},
+					{Id: 4, Title: "Wiring 2", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "4.V", Checks: []string{"check"}}},
+				}
+				return s
+			}(),
+			wantErrorCount:         1,
+			wantDuplicateWiringErr: true,
+		},
+		// TS-NS-3: Three wiring_verification groups must also fail validation.
+		{
+			name: "triple_wiring_verification",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{
+					{Id: 1, Title: "Tests", Kind: TaskGroupKindTests, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}}},
+					{Id: 2, Title: "Wiring 1", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "2.V", Checks: []string{"check"}}},
+					{Id: 3, Title: "Wiring 2", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "3.V", Checks: []string{"check"}}},
+					{Id: 4, Title: "Wiring 3", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "4.V", Checks: []string{"check"}}},
+				}
+				return s
+			}(),
+			wantErrorCount:         1,
+			wantDuplicateWiringErr: true,
+		},
+		// TS-NS-4: Two wiring_verification groups AND last group not wiring_verification
+		// must produce both errors independently (last-group check + duplicate check).
+		{
+			name: "duplicate_wiring_verification_last_not_wiring",
+			spec: func() *Spec {
+				s := buildCrossFileBaseSpec()
+				s.Tasks.TaskGroups = []TaskGroup{
+					{Id: 1, Title: "Tests", Kind: TaskGroupKindTests, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "1.V", Checks: []string{"check"}}},
+					{Id: 2, Title: "Wiring 1", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "2.V", Checks: []string{"check"}}},
+					{Id: 3, Title: "Wiring 2", Kind: TaskGroupKindWiringVerification, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "3.V", Checks: []string{"check"}}},
+					{Id: 4, Title: "Standard", Kind: TaskGroupKindStandard, Subtasks: []Subtask{}, Verification: VerificationSubtask{Id: "4.V", Checks: []string{"check"}}},
+				}
+				return s
+			}(),
+			wantErrorCount:         2,
+			wantLastGroupErr:       true,
+			wantDuplicateWiringErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2835,6 +2888,27 @@ func TestValidateCrossFile_TaskGroupStructure(t *testing.T) {
 				}
 				if !found {
 					t.Error("expected error mentioning 'wiring_verification' or 'last' for last group rule, not found")
+				}
+			}
+
+			if tt.wantDuplicateWiringErr {
+				found := false
+				for _, e := range errors {
+					lower := strings.ToLower(e.Message)
+					hasWiring := strings.Contains(lower, "wiring_verification")
+					hasQuantifier := strings.Contains(lower, "once") ||
+						strings.Contains(lower, "one") ||
+						strings.Contains(lower, "duplicate") ||
+						strings.Contains(lower, "multiple") ||
+						strings.Contains(lower, "most") ||
+						strings.Contains(lower, "found")
+					if hasWiring && hasQuantifier {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Error("expected error about multiple wiring_verification groups (mentioning 'wiring_verification' and 'once'/'one'/'duplicate'/'multiple'/'most'/'found'), not found")
 				}
 			}
 		})

@@ -1330,6 +1330,21 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 				Artifact: "tasks.json",
 			})
 		}
+		// Count wiring_verification groups; no more than one is allowed (spec 8.3).
+		wiringCount := 0
+		for _, g := range groups {
+			if g.Kind == TaskGroupKindWiringVerification {
+				wiringCount++
+			}
+		}
+		if wiringCount > 1 {
+			errors = append(errors, ValidationEntry{
+				Category: "schema",
+				Check:    "task_group_structure",
+				Message:  fmt.Sprintf("at most one wiring_verification group is allowed, found %d", wiringCount),
+				Artifact: "tasks.json",
+			})
+		}
 	}
 
 	// --- Wiring verification group semantics (04-REQ-9) ---
