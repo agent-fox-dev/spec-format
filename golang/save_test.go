@@ -435,12 +435,13 @@ func TestSave_CoveragePopulated(t *testing.T) {
 		t.Fatalf("failed to unmarshal test_spec.json: %v", err)
 	}
 
-	// NS-REQ-1.1: requirements_covered must include the requirement ID.
-	if diff := cmp.Diff([]string{reqID}, ts.Coverage.RequirementsCovered); diff != "" {
+	// NS-REQ-5.1: requirements_covered must include the criterion ID, not the
+	// parent requirement ID.
+	if diff := cmp.Diff([]string{criterionID}, ts.Coverage.RequirementsCovered); diff != "" {
 		t.Errorf("RequirementsCovered mismatch (-want +got):\n%s", diff)
 	}
 
-	// NS-REQ-2.1: properties_covered and paths_covered are empty; gaps is empty.
+	// properties_covered and paths_covered are empty; gaps is empty.
 	if diff := cmp.Diff([]string{}, ts.Coverage.PropertiesCovered); diff != "" {
 		t.Errorf("PropertiesCovered mismatch (-want +got):\n%s", diff)
 	}
@@ -451,10 +452,10 @@ func TestSave_CoveragePopulated(t *testing.T) {
 		t.Errorf("Gaps mismatch (-want +got):\n%s", diff)
 	}
 
-	// The requirement ID must not appear in gaps.
-	for _, g := range ts.Coverage.Gaps {
-		if g == reqID {
-			t.Errorf("covered requirement %q must not appear in gaps", reqID)
+	// The parent requirement ID must not appear anywhere — only criterion IDs.
+	for _, id := range append(ts.Coverage.RequirementsCovered, ts.Coverage.Gaps...) {
+		if id == reqID {
+			t.Errorf("parent requirement ID %q must not appear in coverage; only criterion IDs", reqID)
 		}
 	}
 }
@@ -597,8 +598,9 @@ func TestSave_CoverageAllFields(t *testing.T) {
 		t.Fatalf("failed to unmarshal test_spec.json: %v", err)
 	}
 
-	// NS-REQ-2.1: each field has exactly the right IDs, nothing mixed up.
-	if diff := cmp.Diff([]string{"99-REQ-1"}, ts.Coverage.RequirementsCovered); diff != "" {
+	// Each field has exactly the right IDs, nothing mixed up.
+	// RequirementsCovered must contain the criterion ID, not the parent req ID.
+	if diff := cmp.Diff([]string{"99-REQ-1.1"}, ts.Coverage.RequirementsCovered); diff != "" {
 		t.Errorf("RequirementsCovered mismatch (-want +got):\n%s", diff)
 	}
 	if diff := cmp.Diff([]string{"99-PROP-1"}, ts.Coverage.PropertiesCovered); diff != "" {
@@ -707,16 +709,23 @@ func TestSave_CoverageNoTestCases(t *testing.T) {
 		t.Fatalf("failed to unmarshal test_spec.json: %v", jsonErr)
 	}
 
-	// NS-REQ-3.1: coverage.gaps contains the requirement ID.
+	// NS-REQ-3.1: coverage.gaps contains the criterion ID (not the parent req ID).
 	found := false
 	for _, g := range ts.Coverage.Gaps {
-		if g == "99-REQ-1" {
+		if g == "99-REQ-1.1" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected gaps to contain %q, got %v", "99-REQ-1", ts.Coverage.Gaps)
+		t.Errorf("expected gaps to contain %q, got %v", "99-REQ-1.1", ts.Coverage.Gaps)
+	}
+
+	// Parent requirement ID must not appear in gaps.
+	for _, g := range ts.Coverage.Gaps {
+		if g == "99-REQ-1" {
+			t.Errorf("parent requirement ID %q must not appear in gaps; only criterion IDs", "99-REQ-1")
+		}
 	}
 
 	// requirements_covered, properties_covered, paths_covered must be empty.

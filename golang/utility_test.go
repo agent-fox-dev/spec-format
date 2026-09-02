@@ -255,13 +255,25 @@ func TestComputeCoverage(t *testing.T) {
 
 	report := ts.ComputeCoverage(req)
 
-	// 01-REQ-1 and 01-PROP-1 should be covered
-	assertInSlice(t, report.Covered, "01-REQ-1", "covered requirements")
+	// 01-REQ-1.1 (criterion) and 01-PROP-1 should be covered
+	assertInSlice(t, report.Covered, "01-REQ-1.1", "covered criteria")
 	assertInSlice(t, report.Covered, "01-PROP-1", "covered properties")
 
-	// 01-REQ-2 and 01-PATH-1 should be uncovered
-	assertInSlice(t, report.Uncovered, "01-REQ-2", "uncovered requirements")
+	// 01-REQ-2.1 (criterion) and 01-PATH-1 should be uncovered
+	assertInSlice(t, report.Uncovered, "01-REQ-2.1", "uncovered criteria")
 	assertInSlice(t, report.Uncovered, "01-PATH-1", "uncovered paths")
+
+	// Parent requirement IDs must not appear — only criterion IDs do
+	for _, id := range report.Covered {
+		if id == "01-REQ-1" || id == "01-REQ-2" {
+			t.Errorf("parent requirement ID %q must not appear in Covered; only criterion IDs", id)
+		}
+	}
+	for _, id := range report.Uncovered {
+		if id == "01-REQ-1" || id == "01-REQ-2" {
+			t.Errorf("parent requirement ID %q must not appear in Uncovered; only criterion IDs", id)
+		}
+	}
 }
 
 // TestComputeCoverage_EmptyRequirements verifies that ComputeCoverage with
@@ -351,7 +363,7 @@ func TestComputeCoverage_EmptyTestSpec(t *testing.T) {
 	if len(report.Uncovered) == 0 {
 		t.Error("expected non-empty uncovered list when TestSpec has no entries")
 	}
-	assertInSlice(t, report.Uncovered, "01-REQ-1", "uncovered requirement")
+	assertInSlice(t, report.Uncovered, "01-REQ-1.1", "uncovered criterion")
 }
 
 // TestCreateSpec verifies that CreateSpec returns a Spec with status "draft",
