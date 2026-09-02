@@ -938,6 +938,166 @@ func TestSpec07_AICall_MissingTextContentEmptyBlocks(t *testing.T) {
 // IsRetryable unit tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// TS-NS-2: APIError.RetryAfter field
+// ---------------------------------------------------------------------------
+
+// durationPtr is a helper that returns a pointer to the given duration.
+func durationPtr(d time.Duration) *time.Duration { return &d }
+
+// TestNS_APIError_RetryAfterField verifies that APIError carries a RetryAfter
+// field and that Error() still returns Msg unchanged.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS_APIError_RetryAfterField(t *testing.T) {
+	ra := durationPtr(5 * time.Second)
+	apiErr := &APIError{StatusCode: 429, Msg: "rate limited", RetryAfter: ra}
+
+	if apiErr.RetryAfter == nil {
+		t.Fatal("RetryAfter = nil; want non-nil")
+	}
+	if *apiErr.RetryAfter != 5*time.Second {
+		t.Errorf("*RetryAfter = %v; want %v", *apiErr.RetryAfter, 5*time.Second)
+	}
+	if apiErr.Error() != "rate limited" {
+		t.Errorf("Error() = %q; want %q", apiErr.Error(), "rate limited")
+	}
+}
+
+// TestNS_APIError_RetryAfterNil verifies that a nil RetryAfter is valid and
+// that APIError without Retry-After behaves as before.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestNS_APIError_RetryAfterNil(t *testing.T) {
+	apiErr := &APIError{StatusCode: 429, Msg: "rate limited"}
+	if apiErr.RetryAfter != nil {
+		t.Errorf("RetryAfter = %v; want nil", apiErr.RetryAfter)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-3: AICall uses RetryAfter when present on 429
+// ---------------------------------------------------------------------------
+
+// TestNS_AICall_RetryAfter_UsesHeaderDelay verifies that when a 429 APIError
+// has a non-nil RetryAfter, AICall uses that duration for the sleep instead
+// of RetryDelays[attempt-1].
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS_AICall_RetryAfter_UsesHeaderDelay(t *testing.T) {
+	ra := durationPtr(7 * time.Second)
+	rateLimitErr := &APIError{StatusCode: 429, Msg: "rate limited", RetryAfter: ra}
+	mock := newMockDoer(
+		mockResult{err: rateLimitErr},
+		mockResult{resp: &MessageResponse{
+			Content: []ContentBlock{{Type: "text", Text: "success"}},
+		}},
+	)
+
+	delays := &delayCapturer{}
+	ctx := context.Background()
+	opts := AICallOptions{
+		ModelTier: "SIMPLE",
+		Messages:  []Message{{Role: "user", Content: "test"}},
+		Doer:      mock,
+		SleepFunc: delays.sleep,
+	}
+
+	text, _, err := AICall(ctx, opts)
+	if err != nil {
+		t.Fatalf("AICall() returned error: %v", err)
+	}
+	if text != "success" {
+		t.Errorf("text = %q; want %q", text, "success")
+	}
+	if len(mock.calls) != 2 {
+		t.Errorf("mock call count = %d; want 2", len(mock.calls))
+	}
+	if len(delays.delays) != 1 {
+		t.Fatalf("len(delays) = %d; want 1", len(delays.delays))
+	}
+	// Must use RetryAfter (7s), NOT RetryDelays[0] (2s).
+	if delays.delays[0] != 7*time.Second {
+		t.Errorf("delay[0] = %v; want %v (RetryAfter)", delays.delays[0], 7*time.Second)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-4: 429 without RetryAfter uses fixed RetryDelays (no regression)
+// ---------------------------------------------------------------------------
+
+// TestNS_AICall_RetryAfter_NilUsesFixedDelay verifies that a 429 APIError
+// with nil RetryAfter causes AICall to use RetryDelays[0] as before.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestNS_AICall_RetryAfter_NilUsesFixedDelay(t *testing.T) {
+	rateLimitErr := &APIError{StatusCode: 429, Msg: "rate limited"} // RetryAfter is nil
+	mock := newMockDoer(
+		mockResult{err: rateLimitErr},
+		mockResult{resp: &MessageResponse{
+			Content: []ContentBlock{{Type: "text", Text: "success"}},
+		}},
+	)
+
+	delays := &delayCapturer{}
+	ctx := context.Background()
+	opts := AICallOptions{
+		ModelTier: "SIMPLE",
+		Messages:  []Message{{Role: "user", Content: "test"}},
+		Doer:      mock,
+		SleepFunc: delays.sleep,
+	}
+
+	text, _, err := AICall(ctx, opts)
+	if err != nil {
+		t.Fatalf("AICall() returned error: %v", err)
+	}
+	if text != "success" {
+		t.Errorf("text = %q; want %q", text, "success")
+	}
+	if len(delays.delays) != 1 {
+		t.Fatalf("len(delays) = %d; want 1", len(delays.delays))
+	}
+	// Must use fixed RetryDelays[0] = 2s, not any header value.
+	if delays.delays[0] != RetryDelays[0] {
+		t.Errorf("delay[0] = %v; want %v (RetryDelays[0])", delays.delays[0], RetryDelays[0])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-5: Non-retryable 401 is not retried
+// ---------------------------------------------------------------------------
+
+// TestNS_AICall_NonRetryable_401 verifies that a 401 APIError causes AICall
+// to fail immediately with no sleep calls.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestNS_AICall_NonRetryable_401(t *testing.T) {
+	authErr := &APIError{StatusCode: 401, Msg: "unauthorized"}
+	mock := newMockDoer(
+		mockResult{err: authErr},
+	)
+
+	delays := &delayCapturer{}
+	ctx := context.Background()
+	opts := AICallOptions{
+		ModelTier: "SIMPLE",
+		Messages:  []Message{{Role: "user", Content: "test"}},
+		Doer:      mock,
+		SleepFunc: delays.sleep,
+	}
+
+	_, _, err := AICall(ctx, opts)
+	if err == nil {
+		t.Fatal("AICall() returned nil error; want error for non-retryable 401")
+	}
+	if len(mock.calls) != 1 {
+		t.Errorf("mock call count = %d; want 1 (no retries)", len(mock.calls))
+	}
+	if len(delays.delays) != 0 {
+		t.Errorf("len(delays) = %d; want 0 (no sleep for non-retryable)", len(delays.delays))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-07-11: IsRetryable
+// ---------------------------------------------------------------------------
+
 // TestSpec07_IsRetryable verifies IsRetryable classification of various
 // error types per 07-REQ-2.3.
 func TestSpec07_IsRetryable(t *testing.T) {

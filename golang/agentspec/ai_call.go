@@ -96,6 +96,10 @@ type Doer interface {
 type APIError struct {
 	StatusCode int
 	Msg        string
+	// RetryAfter, when non-nil, carries the delay parsed from the
+	// Retry-After response header. AICall's retry loop uses this duration
+	// instead of the fixed RetryDelays schedule when present.
+	RetryAfter *time.Duration
 }
 
 func (e *APIError) Error() string { return e.Msg }
@@ -364,7 +368,13 @@ func AICall(ctx context.Context, opts AICallOptions) (string, any, error) {
 
 		// Sleep before retry (not before first attempt).
 		if attempt > 0 {
-			sleepFn(RetryDelays[attempt-1])
+			delay := RetryDelays[attempt-1]
+			// Honor Retry-After header from 429 responses when present.
+			var prevAPIErr *APIError
+			if errors.As(lastErr, &prevAPIErr) && prevAPIErr.RetryAfter != nil {
+				delay = *prevAPIErr.RetryAfter
+			}
+			sleepFn(delay)
 		}
 
 		resp, callErr := doer.CreateMessage(ctx, req)
