@@ -14,6 +14,26 @@ func isZeroAssessment(a Assessment) bool {
 	return a.Quality == "" && a.Summary == "" && len(a.Gaps) == 0 && len(a.Questions) == 0
 }
 
+// messageContentString extracts the string representation of a Message's
+// Content field. Handles both string (existing callers) and []ContentBlock
+// (structured repair messages).
+func messageContentString(msg Message) string {
+	switch v := msg.Content.(type) {
+	case string:
+		return v
+	case []ContentBlock:
+		var parts []string
+		for _, block := range v {
+			if block.Text != "" {
+				parts = append(parts, block.Text)
+			}
+		}
+		return strings.Join(parts, " ")
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Mock infrastructure for SpecAgent tests
 // ---------------------------------------------------------------------------
@@ -1257,7 +1277,7 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 	testSpecOpts := capture.get(1)
 	testSpecPrompt := testSpecOpts.System
 	for _, msg := range testSpecOpts.Messages {
-		testSpecPrompt += " " + msg.Content
+		testSpecPrompt += " " + messageContentString(msg)
 	}
 	// The test_spec prompt should reference requirements content.
 	if !strings.Contains(testSpecPrompt, "REQ-1") && !strings.Contains(testSpecPrompt, "requirements") {
@@ -1268,7 +1288,7 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 	tasksOpts := capture.get(2)
 	tasksPrompt := tasksOpts.System
 	for _, msg := range tasksOpts.Messages {
-		tasksPrompt += " " + msg.Content
+		tasksPrompt += " " + messageContentString(msg)
 	}
 	if !strings.Contains(tasksPrompt, "REQ-1") && !strings.Contains(tasksPrompt, "requirements") {
 		t.Error("tasks prompt does not contain requirements artifact content; want priorArtifacts context")
@@ -1718,4 +1738,383 @@ func TestSpec07_AgentOption_NilCallbackGeneration(t *testing.T) {
 
 	_, _ = agent.GenerateArtifacts(ctx, "PRD", "07", "test",
 		WithOnArtifact(nil))
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1: Repair call messages[0] is original user prompt (NS-REQ-1)
+// TS-NS-2: Repair call messages[1] is assistant tool_use response (NS-REQ-2)
+// TS-NS-3: Repair call messages[2] is tool_result with validation error (NS-REQ-3)
+// ---------------------------------------------------------------------------
+
+// TestNS55_RepairConversation_FirstMessage verifies that when a repair is
+// triggered, the first message in the repair AICall equals the original user
+// prompt that was sent in the initial generation call.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS55_RepairConversation_FirstMessage(t *testing.T) {
+	capture := &aiCallCapture{}
+	callCount := 0
+	var mu sync.Mutex
+
+	invalidContent := map[string]any{"invalid": true}
+	validContent := map[string]any{
+		"spec_id":      "07",
+		"spec_name":    "test",
+		"requirements": []any{},
+	}
+
+	var initialUserPrompt string
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		mu.Lock()
+		c := callCount
+		callCount++
+		mu.Unlock()
+
+		switch c {
+		case 0:
+			// Capture the user prompt from the initial generation call.
+			if len(opts.Messages) > 0 {
+				if s, ok := opts.Messages[0].Content.(string); ok {
+					initialUserPrompt = s
+				}
+			}
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", invalidContent)), nil
+		case 1:
+			// Repair call — return valid content.
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", validContent)), nil
+		default:
+			// Remaining artifacts succeed immediately.
+			artifacts := []string{"requirements", "test_spec", "tasks"}
+			names := []string{"test_spec", "tasks"}
+			idx := c - 2
+			if idx < len(names) {
+				key := names[idx]
+				content := map[string]any{
+					"spec_id":   "07",
+					"spec_name": "test",
+				}
+				switch key {
+				case "test_spec":
+					content["test_cases"] = []any{}
+				case "tasks":
+					content["tasks"] = []any{}
+				}
+				_ = artifacts
+				return "", makeToolCallResponse("end_turn",
+					makeArtifactToolCall(key, content)), nil
+			}
+			return "", nil, fmt.Errorf("unexpected call %d", c)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.GenerateArtifacts(ctx, "PRD text", "07", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() returned error: %v", err)
+	}
+
+	// Call 0 = initial, call 1 = repair.
+	if capture.count() < 2 {
+		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
+	}
+
+	repairOpts := capture.get(1)
+	if len(repairOpts.Messages) == 0 {
+		t.Fatal("repair call Messages is empty; want at least 1 message")
+	}
+
+	// NS-REQ-1: messages[0] must have Role == "user".
+	firstMsg := repairOpts.Messages[0]
+	if firstMsg.Role != "user" {
+		t.Errorf("repair messages[0].Role = %q; want %q", firstMsg.Role, "user")
+	}
+
+	// NS-REQ-1: messages[0].Content must be the original user prompt (a string).
+	firstContent, ok := firstMsg.Content.(string)
+	if !ok {
+		t.Fatalf("repair messages[0].Content type = %T; want string", firstMsg.Content)
+	}
+	if firstContent == "" {
+		t.Error("repair messages[0].Content is empty; want non-empty user prompt")
+	}
+	if initialUserPrompt != "" && firstContent != initialUserPrompt {
+		t.Errorf("repair messages[0].Content != initial user prompt\ngot:  %q\nwant: %q",
+			firstContent, initialUserPrompt)
+	}
+}
+
+// TestNS55_RepairConversation_AssistantMessage verifies that the second
+// message in the repair call carries the assistant's tool_use response from
+// the initial generation.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS55_RepairConversation_AssistantMessage(t *testing.T) {
+	capture := &aiCallCapture{}
+	callCount := 0
+	var mu sync.Mutex
+
+	invalidContent := map[string]any{"invalid": true}
+	initialToolUseBlock := makeArtifactToolCall("requirements", invalidContent)
+	initialToolUseBlock.ID = "toolu_initial_01"
+
+	validContent := map[string]any{
+		"spec_id":      "07",
+		"spec_name":    "test",
+		"requirements": []any{},
+	}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		mu.Lock()
+		c := callCount
+		callCount++
+		mu.Unlock()
+
+		switch c {
+		case 0:
+			return "", makeToolCallResponse("end_turn", initialToolUseBlock), nil
+		case 1:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", validContent)), nil
+		case 2:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", map[string]any{
+					"spec_id": "07", "spec_name": "test", "test_cases": []any{},
+				})), nil
+		case 3:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", map[string]any{
+					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+				})), nil
+		default:
+			return "", nil, fmt.Errorf("unexpected call %d", c)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.GenerateArtifacts(ctx, "PRD text", "07", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() returned error: %v", err)
+	}
+
+	if capture.count() < 2 {
+		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
+	}
+
+	repairOpts := capture.get(1)
+	if len(repairOpts.Messages) < 2 {
+		t.Fatalf("repair call Messages length = %d; want at least 2", len(repairOpts.Messages))
+	}
+
+	// NS-REQ-2: messages[1] must have Role == "assistant".
+	assistantMsg := repairOpts.Messages[1]
+	if assistantMsg.Role != "assistant" {
+		t.Errorf("repair messages[1].Role = %q; want %q", assistantMsg.Role, "assistant")
+	}
+
+	// NS-REQ-2: messages[1].Content must be []ContentBlock from the initial response.
+	blocks, ok := assistantMsg.Content.([]ContentBlock)
+	if !ok {
+		t.Fatalf("repair messages[1].Content type = %T; want []ContentBlock", assistantMsg.Content)
+	}
+	if len(blocks) == 0 {
+		t.Fatal("repair messages[1].Content is empty []ContentBlock; want at least one tool_use block")
+	}
+
+	// Verify the tool_use block is present with the correct name and ID.
+	found := false
+	for _, block := range blocks {
+		if block.Type == "tool_use" && block.Name == "submit_requirements" {
+			found = true
+			if block.ID != "toolu_initial_01" {
+				t.Errorf("tool_use block ID = %q; want %q", block.ID, "toolu_initial_01")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("repair messages[1] does not contain a tool_use block for submit_requirements")
+	}
+}
+
+// TestNS55_RepairConversation_ToolResultMessage verifies that the third
+// message in the repair call is a user message with a tool_result ContentBlock
+// whose text contains the validation error.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS55_RepairConversation_ToolResultMessage(t *testing.T) {
+	capture := &aiCallCapture{}
+	callCount := 0
+	var mu sync.Mutex
+
+	invalidContent := map[string]any{"invalid": true}
+	initialToolUseBlock := makeArtifactToolCall("requirements", invalidContent)
+	initialToolUseBlock.ID = "toolu_for_result_01"
+
+	validContent := map[string]any{
+		"spec_id":      "07",
+		"spec_name":    "test",
+		"requirements": []any{},
+	}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		mu.Lock()
+		c := callCount
+		callCount++
+		mu.Unlock()
+
+		switch c {
+		case 0:
+			return "", makeToolCallResponse("end_turn", initialToolUseBlock), nil
+		case 1:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", validContent)), nil
+		case 2:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", map[string]any{
+					"spec_id": "07", "spec_name": "test", "test_cases": []any{},
+				})), nil
+		case 3:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", map[string]any{
+					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+				})), nil
+		default:
+			return "", nil, fmt.Errorf("unexpected call %d", c)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.GenerateArtifacts(ctx, "PRD text", "07", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() returned error: %v", err)
+	}
+
+	if capture.count() < 2 {
+		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
+	}
+
+	repairOpts := capture.get(1)
+	if len(repairOpts.Messages) < 3 {
+		t.Fatalf("repair call Messages length = %d; want exactly 3 (user, assistant, user/tool_result)",
+			len(repairOpts.Messages))
+	}
+
+	// NS-REQ-3: messages[2] must have Role == "user".
+	toolResultMsg := repairOpts.Messages[2]
+	if toolResultMsg.Role != "user" {
+		t.Errorf("repair messages[2].Role = %q; want %q", toolResultMsg.Role, "user")
+	}
+
+	// NS-REQ-3: messages[2].Content must be []ContentBlock with a tool_result block.
+	blocks, ok := toolResultMsg.Content.([]ContentBlock)
+	if !ok {
+		t.Fatalf("repair messages[2].Content type = %T; want []ContentBlock", toolResultMsg.Content)
+	}
+	if len(blocks) == 0 {
+		t.Fatal("repair messages[2].Content is empty; want tool_result block")
+	}
+
+	// Find the tool_result block.
+	var toolResultBlock *ContentBlock
+	for i := range blocks {
+		if blocks[i].Type == "tool_result" {
+			toolResultBlock = &blocks[i]
+			break
+		}
+	}
+	if toolResultBlock == nil {
+		t.Fatal("repair messages[2] has no tool_result block; want type='tool_result'")
+	}
+
+	// NS-REQ-3: tool_use_id must match the ID from the initial tool_use block.
+	if toolResultBlock.ToolUseID != "toolu_for_result_01" {
+		t.Errorf("tool_result.ToolUseID = %q; want %q",
+			toolResultBlock.ToolUseID, "toolu_for_result_01")
+	}
+
+	// NS-REQ-3: text must contain the validation error message.
+	if toolResultBlock.Text == "" {
+		t.Error("tool_result.Text is empty; want validation error message")
+	}
+	// The validation error for missing required keys should mention "requirements".
+	if !strings.Contains(toolResultBlock.Text, "requirements") {
+		t.Errorf("tool_result.Text = %q; want it to contain validation error mentioning 'requirements'",
+			toolResultBlock.Text)
+	}
+}
+
+// TestNS55_RepairConversation_MessageCount verifies that the repair call has
+// exactly 3 messages in the conversation continuation format.
+// Requirement: NS-REQ-1, NS-REQ-2, NS-REQ-3
+func TestNS55_RepairConversation_MessageCount(t *testing.T) {
+	capture := &aiCallCapture{}
+	callCount := 0
+	var mu sync.Mutex
+
+	invalidContent := map[string]any{"invalid": true}
+	validContent := map[string]any{
+		"spec_id":      "07",
+		"spec_name":    "test",
+		"requirements": []any{},
+	}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		mu.Lock()
+		c := callCount
+		callCount++
+		mu.Unlock()
+
+		switch c {
+		case 0:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", invalidContent)), nil
+		case 1:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("requirements", validContent)), nil
+		case 2:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("test_spec", map[string]any{
+					"spec_id": "07", "spec_name": "test", "test_cases": []any{},
+				})), nil
+		case 3:
+			return "", makeToolCallResponse("end_turn",
+				makeArtifactToolCall("tasks", map[string]any{
+					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+				})), nil
+		default:
+			return "", nil, fmt.Errorf("unexpected call %d", c)
+		}
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.GenerateArtifacts(ctx, "PRD text", "07", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() returned error: %v", err)
+	}
+
+	if capture.count() < 2 {
+		t.Fatalf("AICall count = %d; want at least 2 (initial + repair)", capture.count())
+	}
+
+	repairOpts := capture.get(1)
+	// Expect exactly 3 messages: user (original prompt), assistant (tool_use), user (tool_result).
+	if len(repairOpts.Messages) != 3 {
+		t.Errorf("repair call Messages count = %d; want 3 (user, assistant, user/tool_result)",
+			len(repairOpts.Messages))
+	}
 }

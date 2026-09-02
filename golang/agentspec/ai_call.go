@@ -34,9 +34,11 @@ const (
 )
 
 // Message represents a conversation message.
+// Content may be a plain string for simple messages, or []ContentBlock for
+// structured multi-part messages (e.g. tool_result blocks in repair turns).
 type Message struct {
 	Role    string
-	Content string
+	Content any // string or []ContentBlock
 }
 
 // SystemBlock represents a block within the system prompt,
@@ -54,13 +56,16 @@ type Tool struct {
 	InputSchema any
 }
 
-// ContentBlock represents a single content block in an LLM response.
+// ContentBlock represents a single content block in an LLM response or request.
+// For tool_use blocks: Type="tool_use", ID=<tool use id>, Name=<tool name>, Input=<payload>.
+// For tool_result blocks: Type="tool_result", ToolUseID=<tool use id>, Text=<result text>.
 type ContentBlock struct {
-	Type  string
-	Text  string
-	ID    string
-	Name  string
-	Input any
+	Type      string
+	Text      string
+	ID        string
+	Name      string
+	Input     any
+	ToolUseID string // for tool_result blocks: ID of the corresponding tool_use block
 }
 
 // MessageRequest holds the parameters for a single LLM API call.

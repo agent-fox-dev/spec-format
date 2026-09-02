@@ -105,11 +105,11 @@ func (sa *SpecAgent) AssessPRD(ctx context.Context, prdText, specName string, op
 	// Build AICall options.
 	callOpts := AICallOptions{
 		ModelTier:  sa.modelTier,
-		System:    systemPrompt,
-		Messages:  []Message{{Role: "user", Content: userPrompt}},
-		Tools:     toolDefs,
+		System:     systemPrompt,
+		Messages:   []Message{{Role: "user", Content: userPrompt}},
+		Tools:      toolDefs,
 		ToolChoice: map[string]any{"type": "any"},
-		Context:   "AssessPRD",
+		Context:    "AssessPRD",
 	}
 
 	// Invoke AICall (or test mock).
@@ -183,11 +183,11 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 	// Build AICall options.
 	callOpts := AICallOptions{
 		ModelTier:  sa.modelTier,
-		System:    systemPrompt,
-		Messages:  []Message{{Role: "user", Content: userPrompt}},
-		Tools:     toolDefs,
+		System:     systemPrompt,
+		Messages:   []Message{{Role: "user", Content: userPrompt}},
+		Tools:      toolDefs,
 		ToolChoice: map[string]any{"type": "any"},
-		Context:   "RefinePRD",
+		Context:    "RefinePRD",
 	}
 
 	// Invoke AICall (or test mock).
@@ -247,7 +247,7 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 	assessToolDefs := mapToTools(AssessmentTools())
 	fallbackOpts := AICallOptions{
 		ModelTier: sa.modelTier,
-		System:   systemPrompt,
+		System:    systemPrompt,
 		Messages: []Message{
 			{Role: "user", Content: userPrompt},
 			{Role: "assistant", Content: "I've updated the PRD. Now let me assess the updated version."},
@@ -342,12 +342,12 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 
 		callOpts := AICallOptions{
 			ModelTier:   sa.modelTier,
-			System:     systemPrompt,
-			Messages:   []Message{{Role: "user", Content: userPrompt}},
-			Tools:      toolDefs,
-			ToolChoice: map[string]any{"type": "any"},
+			System:      systemPrompt,
+			Messages:    []Message{{Role: "user", Content: userPrompt}},
+			Tools:       toolDefs,
+			ToolChoice:  map[string]any{"type": "any"},
 			Temperature: &temp,
-			Context:    fmt.Sprintf("GenerateArtifacts:%s", artifactName),
+			Context:     fmt.Sprintf("GenerateArtifacts:%s", artifactName),
 		}
 
 		_, raw, err := callFn(ctx, callOpts)
@@ -379,30 +379,39 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 		content, validErr := validateArtifactContent(toolInput, artifactName)
 
 		// Repair loop: up to maxRepairs attempts if validation fails.
+		// Each repair is sent as a conversation continuation: the original user
+		// prompt, the model's most recent tool_use response, and a tool_result
+		// message containing the validation error. This preserves generation
+		// context and enables prompt-cache reuse on the system prompt prefix.
 		for repair := 0; repair < maxRepairs && validErr != nil; repair++ {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
 
-			repairPrompt, repairErr := RepairUserPrompt(
-				artifactName, toolInput, []string{validErr.Error()}, o.projectDir,
-			)
-			if repairErr != nil {
-				return nil, &AgentError{
-					Detail:        fmt.Sprintf("GenerateArtifacts: failed to build repair prompt for %s: %v", artifactName, repairErr),
-					ErrorCategory: "internal",
-					Cause:         repairErr,
-				}
+			// Locate the tool_use ID in the most recent response so the
+			// tool_result can reference it correctly.
+			toolUseID := findToolUseID(resp, toolName)
+
+			// Build conversation continuation:
+			//   [original user prompt, assistant tool_use response, tool_result with error]
+			repairMessages := []Message{
+				{Role: "user", Content: userPrompt},
+				{Role: "assistant", Content: resp.Content},
+				{Role: "user", Content: []ContentBlock{{
+					Type:      "tool_result",
+					ToolUseID: toolUseID,
+					Text:      validErr.Error(),
+				}}},
 			}
 
 			repairOpts := AICallOptions{
 				ModelTier:   sa.modelTier,
-				System:     systemPrompt,
-				Messages:   []Message{{Role: "user", Content: repairPrompt}},
-				Tools:      toolDefs,
-				ToolChoice: map[string]any{"type": "any"},
+				System:      systemPrompt,
+				Messages:    repairMessages,
+				Tools:       toolDefs,
+				ToolChoice:  map[string]any{"type": "any"},
 				Temperature: &temp,
-				Context:    fmt.Sprintf("GenerateArtifacts:%s:repair:%d", artifactName, repair+1),
+				Context:     fmt.Sprintf("GenerateArtifacts:%s:repair:%d", artifactName, repair+1),
 			}
 
 			_, raw, err = callFn(ctx, repairOpts)
@@ -519,6 +528,20 @@ func checkStopReason(stopReason string) error {
 	default:
 		return nil
 	}
+}
+
+// findToolUseID returns the ID of the first tool_use ContentBlock whose Name
+// matches toolName in resp. Returns an empty string if not found.
+func findToolUseID(resp *MessageResponse, toolName string) string {
+	if resp == nil {
+		return ""
+	}
+	for _, block := range resp.Content {
+		if block.Type == "tool_use" && block.Name == toolName {
+			return block.ID
+		}
+	}
+	return ""
 }
 
 // extractToolCall finds a tool_use content block with the given name in
