@@ -14,16 +14,8 @@ build/
 
 # agent-fox
 .agent-fox/*
-!.agent-fox/config.toml
-!.agent-fox/steering.md
-!.agent-fox/specs/
-!.agent-fox/profiles/
-!.agent-fox/profiles/*
-
-# spec
-.spec/*
-!.spec/config.toml
-!.spec/specs/
+.nightshift/*
+!.nightshift/config.toml
 
 # Claude
 .claude/worktrees/
