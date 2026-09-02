@@ -383,6 +383,58 @@ func TestMoveToArchive_ConflictInArchive(t *testing.T) {
 	}
 }
 
+// TestMoveToArchive_StatPermissionError verifies that MoveToArchive returns a
+// SaveError (wrapping a SpecError) when os.Stat on the destination returns a
+// non-ErrNotExist error (e.g. permission denied on the archive parent directory).
+// The original spec directory must remain untouched (rename was not attempted).
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestMoveToArchive_StatPermissionError(t *testing.T) {
+	defer requireImplemented(t)
+
+	if os.Getuid() == 0 {
+		t.Skip("cannot test permission errors as root")
+	}
+
+	tmpRoot := t.TempDir()
+	specDir := filepath.Join(tmpRoot, "01_myspec")
+
+	if err := os.MkdirAll(specDir, 0o755); err != nil {
+		t.Fatalf("failed to create spec dir: %v", err)
+	}
+	writeSpecFixtures(t, specDir)
+
+	// Create archive/ with mode 0o000 so that Stat on any child path fails
+	// with permission denied rather than ErrNotExist.
+	archiveParent := filepath.Join(tmpRoot, "archive")
+	if err := os.MkdirAll(archiveParent, 0o000); err != nil {
+		t.Fatalf("failed to create archive dir: %v", err)
+	}
+	t.Cleanup(func() {
+		// Restore permissions so TempDir cleanup can remove the directory.
+		_ = os.Chmod(archiveParent, 0o755)
+	})
+
+	err := MoveToArchive(specDir, tmpRoot)
+	if err == nil {
+		t.Fatal("expected SaveError for permission-denied Stat, got nil")
+	}
+
+	var saveErr *SaveError
+	if !errors.As(err, &saveErr) {
+		t.Errorf("errors.As(err, &SaveError{}) = false, want true; err type = %T: %v", err, err)
+	}
+
+	var specErr *SpecError
+	if !errors.As(err, &specErr) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err type = %T: %v", err, err)
+	}
+
+	// The original spec directory must still exist — rename was not attempted.
+	if _, statErr := os.Stat(specDir); os.IsNotExist(statErr) {
+		t.Errorf("original spec dir %s was removed despite error — rename must not have been attempted", specDir)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Intent hash tests (issue #27)
 // ---------------------------------------------------------------------------

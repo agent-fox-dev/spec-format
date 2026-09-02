@@ -1,6 +1,7 @@
 package afspec
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -152,6 +153,11 @@ func MoveToArchive(specDir, root string) error {
 		return &SaveError{
 			Msg: fmt.Sprintf("archive conflict: %s already exists", destDir),
 			Err: &SpecError{Msg: fmt.Sprintf("archive conflict: %s already exists", destDir)},
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return &SaveError{
+			Msg: fmt.Sprintf("cannot check archive destination: %s", err),
+			Err: &SpecError{Msg: fmt.Sprintf("cannot check archive destination: %s", err)},
 		}
 	}
 
