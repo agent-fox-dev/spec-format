@@ -95,6 +95,48 @@ func TestSpecTransition_InvalidTransition(t *testing.T) {
 	}
 }
 
+// TestSpecTransition_ActiveToSuperseded verifies that Transition("superseded")
+// on an active spec returns a LifecycleError without persisting any change.
+// Active specs must be sealed first, then superseded via Supersede().
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestSpecTransition_ActiveToSuperseded(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createDraftSpec(t, tmpDir)
+
+	// Transition to active first.
+	active, err := spec.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Attempt active → superseded — must be rejected.
+	_, err = active.Transition("superseded", tmpDir)
+	if err == nil {
+		t.Fatal("expected LifecycleError for active→superseded, got nil")
+	}
+
+	var lifecycleErr *LifecycleError
+	if !errors.As(err, &lifecycleErr) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err type = %T", err)
+	}
+
+	var specErr *SpecError
+	if !errors.As(err, &specErr) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err type = %T", err)
+	}
+
+	// Reload from disk and confirm status is still "active" (no partial write).
+	saved, err := LoadSpec(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadSpec after failed Transition failed: %v", err)
+	}
+	if saved.Status != "active" {
+		t.Errorf("saved Status = %q after failed active→superseded, want %q", saved.Status, "active")
+	}
+}
+
 // TestSpecTransition_ImmutabilityCheck verifies that Transition does not
 // modify the original spec — it returns a new copy.
 // Test Spec: TS-01-54, Requirement: 01-REQ-28.1
@@ -135,20 +177,20 @@ func TestValidTransition_AllowedTransitions(t *testing.T) {
 	}{
 		// Allowed transitions
 		{"draft", "active", true},
-		{"active", "sealed", true},
-		{"active", "superseded", true},
-		{"sealed", "superseded", true},
 		{"draft", "archived", true},
+		{"active", "sealed", true},
 		{"active", "archived", true},
+		{"sealed", "superseded", true},
 		{"sealed", "archived", true},
 		{"superseded", "archived", true},
 
 		// Disallowed transitions
 		{"draft", "sealed", false},
 		{"draft", "superseded", false},
+		{"active", "superseded", false},
+		{"active", "draft", false},
 		{"sealed", "draft", false},
 		{"sealed", "active", false},
-		{"active", "draft", false},
 		{"superseded", "draft", false},
 		{"superseded", "active", false},
 		{"superseded", "sealed", false},

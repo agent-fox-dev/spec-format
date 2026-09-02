@@ -8,10 +8,13 @@ import (
 )
 
 // validTransitions maps each spec status to the set of statuses it can transition to.
+// Active specs must be sealed before they can be superseded; use Supersede() on a
+// sealed spec to add the required deprecation banner.
 var validTransitions = map[string][]string{
-	"draft":  {"active"},
-	"active": {"sealed", "superseded"},
-	"sealed": {"superseded"},
+	"draft":      {"active", "archived"},
+	"active":     {"sealed", "archived"},
+	"sealed":     {"superseded", "archived"},
+	"superseded": {"archived"},
 }
 
 // ValidTransition checks the transition table and returns true if the
@@ -19,15 +22,14 @@ var validTransitions = map[string][]string{
 // This is a pure function with no side effects.
 //
 // Allowed transitions:
-//   - draft    -> active
-//   - active   -> sealed
-//   - active   -> superseded
-//   - sealed   -> superseded
-//   - any      -> archived
+//   - draft      -> active
+//   - draft      -> archived
+//   - active     -> sealed
+//   - active     -> archived
+//   - sealed     -> superseded
+//   - sealed     -> archived
+//   - superseded -> archived
 func ValidTransition(current, target string) bool {
-	if target == "archived" {
-		return true
-	}
 	allowed, ok := validTransitions[current]
 	if !ok {
 		return false
