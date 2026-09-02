@@ -547,3 +547,113 @@ func TestRenderIndividualScoped_NonexistentGroup(t *testing.T) {
 		t.Error("expected nonexistent group to fall back to full test_spec rendering")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #36: RenderCombined section ordering (Section 11.1)
+// ---------------------------------------------------------------------------
+
+// TestRenderCombined_ArchitectureAfterPRD verifies that when Architecture is
+// present, RenderCombined places it immediately after the PRD section and
+// before Requirements.
+// Requirements: NS-REQ-1, NS-REQ-3 | Test Spec: TS-NS-1, TS-NS-3
+func TestRenderCombined_ArchitectureAfterPRD(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec, err := LoadSpec("./../testdata/valid_spec_with_arch")
+	if err != nil {
+		t.Fatalf("LoadSpec returned unexpected error: %v", err)
+	}
+
+	result := spec.RenderCombined()
+
+	idxPRD := strings.Index(result, "# PRD")
+	idxArch := strings.Index(result, "# Architecture")
+	idxReq := strings.Index(result, "# Requirements")
+	idxTestSpec := strings.Index(result, "# Test Specification")
+	idxTasks := strings.Index(result, "# Tasks")
+
+	if idxPRD < 0 {
+		t.Fatal("expected '# PRD' in combined output")
+	}
+	if idxArch < 0 {
+		t.Fatal("expected '# Architecture' in combined output when architecture is present")
+	}
+	if idxReq < 0 {
+		t.Fatal("expected '# Requirements' in combined output")
+	}
+	if idxTestSpec < 0 {
+		t.Fatal("expected '# Test Specification' in combined output")
+	}
+	if idxTasks < 0 {
+		t.Fatal("expected '# Tasks' in combined output")
+	}
+
+	// NS-REQ-3: PRD < Architecture < Requirements < Test Specification < Tasks
+	if !(idxPRD < idxArch) {
+		t.Errorf("expected '# PRD' (idx %d) before '# Architecture' (idx %d)", idxPRD, idxArch)
+	}
+	if !(idxArch < idxReq) {
+		t.Errorf("expected '# Architecture' (idx %d) before '# Requirements' (idx %d)", idxArch, idxReq)
+	}
+	if !(idxReq < idxTestSpec) {
+		t.Errorf("expected '# Requirements' (idx %d) before '# Test Specification' (idx %d)", idxReq, idxTestSpec)
+	}
+	if !(idxTestSpec < idxTasks) {
+		t.Errorf("expected '# Test Specification' (idx %d) before '# Tasks' (idx %d)", idxTestSpec, idxTasks)
+	}
+}
+
+// TestRenderCombined_NoArchitectureWhenEmpty verifies that when Architecture is
+// empty, RenderCombined omits the Architecture section and all other sections
+// are still present.
+// Requirements: NS-REQ-2 | Test Spec: TS-NS-2
+func TestRenderCombined_NoArchitectureWhenEmpty(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec := &Spec{
+		SpecID:   "01",
+		SpecName: "test",
+		Status:   "draft",
+		PRDBody:  "# Test\n\nSome content.\n",
+		Requirements: &RequirementsV1Json{
+			SchemaVersion: 1,
+			SpecId:        "01",
+			SpecName:      "test",
+			Introduction:  "Test intro",
+			Glossary:      RequirementsV1JsonGlossary{},
+			Requirements:  []Requirement{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SchemaVersion: 1,
+			SpecId:        "01",
+			SpecName:      "test",
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SchemaVersion: 1,
+			SpecId:        "01",
+			SpecName:      "test",
+			TaskGroups:    []TaskGroup{},
+			Dependencies:  []TaskDependency{},
+			TestCommands:  TestCommands{AllTests: "go test", SpecTests: "go test", Linter: "go vet"},
+			Traceability:  []TraceabilityEntry{},
+		},
+		Architecture: "", // no architecture
+	}
+
+	result := spec.RenderCombined()
+
+	if strings.Contains(result, "# Architecture") {
+		t.Error("expected no '# Architecture' section when Architecture is empty")
+	}
+
+	for _, section := range []string{"# PRD", "# Requirements", "# Test Specification", "# Tasks"} {
+		if !strings.Contains(result, section) {
+			t.Errorf("expected %q to be present in combined output even without architecture", section)
+		}
+	}
+}

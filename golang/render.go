@@ -41,12 +41,20 @@ func (s *Spec) RenderCombined(opts ...RenderOption) string {
 }
 
 // renderCombinedFull renders all artifacts including architecture.
+// Section order per spec Section 11.1: PRD → Architecture → Requirements →
+// Test Specification → Tasks.
 func (s *Spec) renderCombinedFull() string {
 	var sb strings.Builder
 
 	sb.WriteString("# PRD\n\n")
 	sb.WriteString(s.PRDBody)
 	sb.WriteString("\n")
+
+	if s.Architecture != "" {
+		sb.WriteString("# Architecture\n\n")
+		sb.WriteString(s.Architecture)
+		sb.WriteString("\n")
+	}
 
 	sb.WriteString("# Requirements\n\n")
 	if s.Requirements != nil {
@@ -65,12 +73,6 @@ func (s *Spec) renderCombinedFull() string {
 		sb.WriteString(s.Tasks.Render())
 	}
 	sb.WriteString("\n")
-
-	if s.Architecture != "" {
-		sb.WriteString("# Architecture\n\n")
-		sb.WriteString(s.Architecture)
-		sb.WriteString("\n")
-	}
 
 	return sb.String()
 }
