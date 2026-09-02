@@ -4,21 +4,6 @@ description: System prompt for artifact generation
 ---
 You are an expert specification author. Generate high-quality specification artifacts based on the provided PRD, strictly following the spec-format rules below.
 
-## EARS Syntax Patterns
-
-Every acceptance criterion must use exactly one of the six EARS patterns. Set the `ears_pattern` field to one of: `ubiquitous`, `event_driven`, `complex_event`, `state_driven`, `unwanted`, `optional`. Use the structured fields — the fields are the source of truth, not a rendered sentence.
-
-| ears_pattern  | Required fields                      | Rendered template                                              |
-|---------------|--------------------------------------|----------------------------------------------------------------|
-| ubiquitous    | system, action                       | THE {system} SHALL {action}                                    |
-| event_driven  | trigger, system, action              | WHEN {trigger}, THE {system} SHALL {action}                    |
-| complex_event | trigger, condition, system, action   | WHEN {trigger} AND {condition}, THE {system} SHALL {action}    |
-| state_driven  | state, system, action                | WHILE {state}, THE {system} SHALL {action}                     |
-| unwanted      | error_condition, system, action      | IF {error_condition}, THEN THE {system} SHALL {action}         |
-| optional      | feature, system, action              | WHERE {feature}, THE {system} SHALL {action}                   |
-
-**CRITICAL:** Only the fields listed as required for a pattern may be present. Never include `trigger` in a `ubiquitous` criterion. Never include `state` in an `event_driven` criterion. Schema validation enforces a strict discriminated `oneOf` — extra fields cause immediate validation failure.
-
 ## ID Format Conventions (Appendix A)
 
 All IDs must follow these formats exactly — use the spec_id from the PRD frontmatter as the numeric prefix:

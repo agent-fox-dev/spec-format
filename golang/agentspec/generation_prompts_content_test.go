@@ -6,13 +6,14 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// TS-NS-1 (issue #29): GenerationSystemPrompt includes all 6 EARS patterns
+// TS-NS-1 (issue #53): GenerationSystemPrompt must NOT contain EARS syntax rules
 // ---------------------------------------------------------------------------
 
 // TestGenPrompts_SystemPrompt_AllEARSPatterns verifies that GenerationSystemPrompt
-// returns content that includes all six EARS pattern names and their rendered
-// template forms.
-// Test Spec: TS-NS-1 (issue #29), Requirement: NS-REQ-1
+// returns content that contains none of the six EARS pattern names.
+// EARS rules belong only in the requirements user prompt, not in the shared
+// system prompt (which is also sent for test_spec and tasks generation).
+// Test Spec: TS-NS-1 (issue #53), Requirement: NS-REQ-1
 func TestGenPrompts_SystemPrompt_AllEARSPatterns(t *testing.T) {
 	emptyTmpDir := t.TempDir()
 
@@ -21,25 +22,62 @@ func TestGenPrompts_SystemPrompt_AllEARSPatterns(t *testing.T) {
 		t.Fatalf("GenerationSystemPrompt() returned error: %v", err)
 	}
 
-	patterns := []struct {
-		name     string
-		template string
-	}{
-		{"ubiquitous", "THE {system} SHALL {action}"},
-		{"event_driven", "WHEN {trigger}, THE {system} SHALL {action}"},
-		{"complex_event", "WHEN {trigger} AND {condition}, THE {system} SHALL {action}"},
-		{"state_driven", "WHILE {state}, THE {system} SHALL {action}"},
-		{"unwanted", "IF {error_condition}, THEN THE {system} SHALL {action}"},
-		{"optional", "WHERE {feature}, THE {system} SHALL {action}"},
+	earsForbidden := []string{
+		"ubiquitous",
+		"event_driven",
+		"complex_event",
+		"state_driven",
+		"unwanted",
+		"optional",
+		"EARS",
+		"ears_pattern",
 	}
 
-	for _, p := range patterns {
-		t.Run(p.name, func(t *testing.T) {
-			if !strings.Contains(prompt, p.name) {
-				t.Errorf("GenerationSystemPrompt() does not contain EARS pattern name %q", p.name)
+	for _, token := range earsForbidden {
+		t.Run(token, func(t *testing.T) {
+			if strings.Contains(prompt, token) {
+				t.Errorf("GenerationSystemPrompt() must not contain EARS token %q (EARS rules belong in the requirements user prompt only)", token)
 			}
-			if !strings.Contains(prompt, p.template) {
-				t.Errorf("GenerationSystemPrompt() does not contain rendered template %q for pattern %q", p.template, p.name)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-4 (issue #53): EARS rules absent from test_spec and tasks prompts
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_NoEARSInTestSpecOrTasksPrompts verifies that neither the system
+// prompt nor the user prompts for test_spec and tasks contain EARS rule content.
+// Test Spec: TS-NS-4 (issue #53), Requirement: NS-REQ-4
+func TestGenPrompts_NoEARSInTestSpecOrTasksPrompts(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	systemPrompt, err := GenerationSystemPrompt(emptyTmpDir)
+	if err != nil {
+		t.Fatalf("GenerationSystemPrompt() returned error: %v", err)
+	}
+
+	for _, artifactName := range []string{"test_spec", "tasks"} {
+		t.Run(artifactName, func(t *testing.T) {
+			userPrompt, err := GenerationUserPrompt(
+				"PRD text",
+				artifactName,
+				"05",
+				emptyTmpDir,
+				nil,
+				nil,
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("GenerationUserPrompt(%s) returned error: %v", artifactName, err)
+			}
+
+			combined := systemPrompt + userPrompt
+
+			for _, token := range []string{"ears_pattern", "ubiquitous"} {
+				if strings.Contains(combined, token) {
+					t.Errorf("combined system+user prompt for %q contains EARS token %q", artifactName, token)
+				}
 			}
 		})
 	}
