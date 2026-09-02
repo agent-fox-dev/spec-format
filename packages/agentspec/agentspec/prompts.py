@@ -12,6 +12,7 @@ Prompt content is loaded from markdown template files under
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -344,7 +345,7 @@ def generation_user_prompt(
     except (FileNotFoundError, ValueError):
         pass
 
-    return load_prompt_template(
+    result = load_prompt_template(
         "generation_user_base",
         project_dir=project_dir,
         artifact_name=artifact_name,
@@ -356,6 +357,9 @@ def generation_user_prompt(
         prior_artifacts_block=prior_artifacts_block,
         additional_instructions=additional_instructions,
     )
+    # Collapse runs of 3+ consecutive newlines (from empty optional blocks)
+    # down to at most two newlines.
+    return re.sub(r"\n{3,}", "\n\n", result)
 
 
 # ── repair ──────────────────────────────────────────────────────────

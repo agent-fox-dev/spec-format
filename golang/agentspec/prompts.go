@@ -354,7 +354,19 @@ func GenerationUserPrompt(prdText, artifactName, specID, projectDir string, prio
 		return "", fmt.Errorf("GenerationUserPrompt: loading artifact template: %w", err)
 	}
 
-	return basePrompt + "\n\n" + artifactPrompt, nil
+	combined := basePrompt + "\n\n" + artifactPrompt
+	return collapseBlankLines(combined), nil
+}
+
+// collapseBlankLines replaces any run of three or more consecutive newlines
+// with exactly two newlines. This removes excess blank lines that arise when
+// empty optional blocks (landscape, interfaces, prior artifacts, language) are
+// substituted into prompt templates.
+func collapseBlankLines(s string) string {
+	for strings.Contains(s, "\n\n\n") {
+		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
+	}
+	return s
 }
 
 // renderPriorArtifact renders a single prior artifact entry as compact Markdown.
