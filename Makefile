@@ -19,11 +19,11 @@ GO_MAIN := ./cmd/spec-cli
 LDFLAGS := -X main.version=$(VERSION)
 
 # Cross-platform static build targets
-build-all: build-darwin-arm64 build-linux-arm64 build-linux-amd64
+build: build-darwin-arm64 build-linux-arm64 build-linux-amd64
 
 build-darwin-arm64:
 	cd $(GOLANG_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY_NAME)-darwin-arm64 $(GO_MAIN)
-	cp $(DIST_DIR)/$(BINARY_NAME)-darwin-arm64 /Users/candlekeep/devel/tools/gspec
+	cp $(DIST_DIR)/$(BINARY_NAME)-darwin-arm64 $(DEVEL)/tools/gspec
 
 build-linux-arm64:
 	cd $(GOLANG_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY_NAME)-linux-arm64 $(GO_MAIN)
