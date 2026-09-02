@@ -374,6 +374,166 @@ func TestRefinementPrompt_IncorporationAndUpgradeGuidance(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// TS-NS-1 (issue #51): test_spec template states 1:1 mapping rule for all 4 types
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserTestSpec_OneMappingPerEntry verifies that the
+// generation_user_test_spec template explicitly states the 1:1 mapping rule
+// for all four test entry types.
+// Test Spec: TS-NS-1 (issue #51), Requirement: NS-REQ-1
+func TestGenPrompts_UserTestSpec_OneMappingPerEntry(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_test_spec", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_test_spec) returned error: %v", err)
+	}
+
+	// The template must state "One ... per" for each of the four test types.
+	mappings := []struct {
+		testType string
+		needle   string
+	}{
+		{"test_case", "test_case"},
+		{"edge_case_test", "edge_case_test"},
+		{"property_test", "property_test"},
+		{"smoke_test", "smoke_test"},
+	}
+
+	for _, m := range mappings {
+		t.Run(m.testType, func(t *testing.T) {
+			if !strings.Contains(content, m.needle) {
+				t.Errorf("test_spec template does not contain %q", m.needle)
+			}
+		})
+	}
+
+	// Count lines matching "One ... per" — must be at least 4.
+	var matchCount int
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, "One ") && strings.Contains(line, " per ") {
+			matchCount++
+		}
+	}
+	if matchCount < 4 {
+		t.Errorf("test_spec template has %d 'One ... per' mapping lines; want at least 4", matchCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-2 (issue #51): test_spec template includes Good/Bad pseudocode example
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserTestSpec_GoodBadExample verifies that the
+// generation_user_test_spec template contains a Good/Bad example block with
+// an assert statement in the good example.
+// Test Spec: TS-NS-2 (issue #51), Requirement: NS-REQ-2
+func TestGenPrompts_UserTestSpec_GoodBadExample(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_test_spec", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_test_spec) returned error: %v", err)
+	}
+
+	// Must contain both "Good" and "Bad" markers.
+	if !strings.Contains(content, "Good") {
+		t.Error("test_spec template does not contain 'Good' example marker")
+	}
+	if !strings.Contains(content, "Bad") {
+		t.Error("test_spec template does not contain 'Bad' example marker")
+	}
+
+	// The good example must contain an assert statement.
+	if !strings.Contains(content, "assert") {
+		t.Error("test_spec template good example does not contain 'assert'")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-3 (issue #51): test_spec template specifies smoke and property test quality rules
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserTestSpec_QualityFieldGuidance verifies that the
+// generation_user_test_spec template mentions all four quality field names
+// for smoke tests and property tests.
+// Test Spec: TS-NS-3 (issue #51), Requirement: NS-REQ-3
+func TestGenPrompts_UserTestSpec_QualityFieldGuidance(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_test_spec", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_test_spec) returned error: %v", err)
+	}
+
+	qualityFields := []string{
+		"real_components",
+		"mockable",
+		"for_any_strategy",
+		"invariant_check",
+	}
+
+	for _, field := range qualityFields {
+		t.Run(field, func(t *testing.T) {
+			if !strings.Contains(content, field) {
+				t.Errorf("test_spec template does not mention quality field %q", field)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-4 (issue #51): test_spec template instructs submitting coverage with empty arrays
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserTestSpec_CoverageInstruction verifies that the
+// generation_user_test_spec template instructs the LLM to submit the coverage
+// object with empty arrays.
+// Test Spec: TS-NS-4 (issue #51), Requirement: NS-REQ-4
+func TestGenPrompts_UserTestSpec_CoverageInstruction(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_test_spec", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_test_spec) returned error: %v", err)
+	}
+
+	if !strings.Contains(content, "requirements_covered") {
+		t.Error("test_spec template does not contain coverage instruction with 'requirements_covered'")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-5 (issue #51): LoadPrompt returns expanded non-trivial content
+// ---------------------------------------------------------------------------
+
+// TestGenPrompts_UserTestSpec_NonTrivialBody verifies that the
+// generation_user_test_spec template returns a non-trivial body that
+// contains the 1:1 coverage rule text and exceeds 200 characters.
+// Test Spec: TS-NS-5 (issue #51), Requirement: NS-REQ-5
+func TestGenPrompts_UserTestSpec_NonTrivialBody(t *testing.T) {
+	emptyTmpDir := t.TempDir()
+
+	content, err := LoadPrompt("generation_user_test_spec", emptyTmpDir)
+	if err != nil {
+		t.Fatalf("LoadPrompt(generation_user_test_spec) returned error: %v", err)
+	}
+
+	if len(content) <= 200 {
+		t.Errorf("test_spec template body is %d characters; want > 200", len(content))
+	}
+
+	// Must contain the 1:1 coverage rule text.
+	if !strings.Contains(content, "One ") {
+		t.Error("test_spec template does not contain 1:1 coverage rule text ('One ...')")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-5 (issue #29): generation_user_requirements specifies pattern field sets
+// ---------------------------------------------------------------------------
+
 // TestGenPrompts_UserRequirements_EARSPatternFieldSpecs verifies that the
 // generation_user_requirements template specifies the required and forbidden
 // fields for each EARS pattern so a compliant model output passes schema
