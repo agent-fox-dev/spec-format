@@ -2,6 +2,8 @@ package afspec
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -417,6 +419,93 @@ func TestCreateSpec_EmptyArguments(t *testing.T) {
 	if spec.SpecName != "" {
 		t.Errorf("SpecName = %q, want empty string", spec.SpecName)
 	}
+}
+
+// TestCreateSpec_SubArtifactFields verifies that CreateSpec populates $schema,
+// spec_id, spec_name, and schema_version on all three sub-artifacts.
+// Test Spec: TS-NS-1, TS-NS-2, Requirements: NS-REQ-1, NS-REQ-2
+func TestCreateSpec_SubArtifactFields(t *testing.T) {
+	spec := CreateSpec("05", "my_spec")
+	if spec == nil {
+		t.Fatal("CreateSpec returned nil")
+	}
+
+	// NS-REQ-1: $schema on each sub-artifact.
+	if spec.Requirements.Schema == nil {
+		t.Fatal("Requirements.Schema is nil, want non-nil")
+	}
+	if *spec.Requirements.Schema != "https://agent-fox.dev/schemas/requirements.v1.json" {
+		t.Errorf("Requirements.Schema = %q, want %q", *spec.Requirements.Schema, "https://agent-fox.dev/schemas/requirements.v1.json")
+	}
+	if spec.TestSpec.Schema == nil {
+		t.Fatal("TestSpec.Schema is nil, want non-nil")
+	}
+	if *spec.TestSpec.Schema != "https://agent-fox.dev/schemas/test_spec.v1.json" {
+		t.Errorf("TestSpec.Schema = %q, want %q", *spec.TestSpec.Schema, "https://agent-fox.dev/schemas/test_spec.v1.json")
+	}
+	if spec.Tasks.Schema == nil {
+		t.Fatal("Tasks.Schema is nil, want non-nil")
+	}
+	if *spec.Tasks.Schema != "https://agent-fox.dev/schemas/tasks.v1.json" {
+		t.Errorf("Tasks.Schema = %q, want %q", *spec.Tasks.Schema, "https://agent-fox.dev/schemas/tasks.v1.json")
+	}
+
+	// NS-REQ-2: spec_id, spec_name, schema_version on each sub-artifact.
+	checkSubArtifact := func(name, gotID, gotName string, gotVersion int) {
+		t.Helper()
+		if gotID != "05" {
+			t.Errorf("%s.SpecId = %q, want %q", name, gotID, "05")
+		}
+		if gotName != "my_spec" {
+			t.Errorf("%s.SpecName = %q, want %q", name, gotName, "my_spec")
+		}
+		if gotVersion != 1 {
+			t.Errorf("%s.SchemaVersion = %d, want 1", name, gotVersion)
+		}
+	}
+	checkSubArtifact("Requirements", spec.Requirements.SpecId, spec.Requirements.SpecName, spec.Requirements.SchemaVersion)
+	checkSubArtifact("TestSpec", spec.TestSpec.SpecId, spec.TestSpec.SpecName, spec.TestSpec.SchemaVersion)
+	checkSubArtifact("Tasks", spec.Tasks.SpecId, spec.Tasks.SpecName, spec.Tasks.SchemaVersion)
+}
+
+// TestCreateSpec_RoundTrip verifies that a spec created by CreateSpec can be
+// saved and reloaded without error, and that identity fields are preserved.
+// Test Spec: TS-NS-3, TS-NS-4, Requirements: NS-REQ-3, NS-REQ-4
+func TestCreateSpec_RoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "05_my_spec")
+	if err := os.MkdirAll(specDir, 0o755); err != nil {
+		t.Fatalf("failed to create spec dir: %v", err)
+	}
+
+	spec := CreateSpec("05", "my_spec")
+	spec.PRDBody = "# my_spec\n"
+
+	// NS-REQ-3: Save then LoadSpec must succeed without error.
+	if err := spec.Save(specDir); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	loaded, err := LoadSpec(specDir)
+	if err != nil {
+		t.Fatalf("LoadSpec failed: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("LoadSpec returned nil spec")
+	}
+
+	// NS-REQ-4: identity fields must survive the round-trip.
+	checkLoaded := func(name, gotID, gotName string) {
+		t.Helper()
+		if gotID != "05" {
+			t.Errorf("%s.SpecId = %q after round-trip, want %q", name, gotID, "05")
+		}
+		if gotName != "my_spec" {
+			t.Errorf("%s.SpecName = %q after round-trip, want %q", name, gotName, "my_spec")
+		}
+	}
+	checkLoaded("Requirements", loaded.Requirements.SpecId, loaded.Requirements.SpecName)
+	checkLoaded("TestSpec", loaded.TestSpec.SpecId, loaded.TestSpec.SpecName)
+	checkLoaded("Tasks", loaded.Tasks.SpecId, loaded.Tasks.SpecName)
 }
 
 // assertInSlice is a test helper that checks if a string is present in a slice.
