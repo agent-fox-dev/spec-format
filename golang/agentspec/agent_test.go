@@ -1215,17 +1215,17 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 	requirementsContent := map[string]any{
 		"spec_id":      "07",
 		"spec_name":    "test",
-		"requirements": []any{map[string]any{"id": "REQ-1", "text": "Must do X"}},
+		"requirements": []any{map[string]any{"id": "07-REQ-1", "text": "Must do X"}},
 	}
 	testSpecContent := map[string]any{
 		"spec_id":    "07",
 		"spec_name":  "test",
-		"test_cases": []any{map[string]any{"id": "TC-1", "requirement": "REQ-1"}},
+		"test_cases": []any{map[string]any{"id": "TC-1", "requirement": "07-REQ-1"}},
 	}
 	tasksContent := map[string]any{
 		"spec_id":   "07",
 		"spec_name": "test",
-		"tasks":     []any{map[string]any{"id": "T-1", "description": "Implement REQ-1"}},
+		"tasks":     []any{map[string]any{"id": "T-1", "description": "Implement 07-REQ-1"}},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -2626,5 +2626,223 @@ func TestNS57_ContextCancellationDuringParallelPhase(t *testing.T) {
 	}
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v; want context.Canceled", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-1/TS-NS-1: validateArtifactContent rejects EARS constraint violations
+// ---------------------------------------------------------------------------
+
+// TestNS48_ValidateArtifactContent_EarsConstraintViolation verifies that
+// validateArtifactContent returns a non-nil error when a requirements artifact
+// contains a criterion with ears_pattern "event_driven" but the required
+// "trigger" field is absent.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS48_ValidateArtifactContent_EarsConstraintViolation(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "48",
+		"spec_name": "test",
+		"requirements": []any{
+			map[string]any{
+				"id": "48-REQ-1",
+				"acceptance_criteria": []any{
+					map[string]any{
+						"id":           "48-REQ-1.1",
+						"ears_pattern": "event_driven",
+						// "trigger" intentionally omitted — EARS violation
+					},
+				},
+			},
+		},
+	}
+
+	_, err := validateArtifactContent(content, "requirements")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want EARS constraint error")
+	}
+	errStr := err.Error()
+	if !strings.Contains(errStr, "ears_constraint") && !strings.Contains(errStr, "trigger") {
+		t.Errorf("error %q does not contain 'ears_constraint' or 'trigger'", errStr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-2/TS-NS-2: validateArtifactContent rejects malformed requirement IDs
+// ---------------------------------------------------------------------------
+
+// TestNS48_ValidateArtifactContent_MalformedID verifies that
+// validateArtifactContent returns a non-nil error when a requirements artifact
+// contains a requirement whose "id" field does not match the required pattern
+// (e.g., "BAD-ID" instead of "XX-REQ-N").
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS48_ValidateArtifactContent_MalformedID(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "48",
+		"spec_name": "test",
+		"requirements": []any{
+			map[string]any{
+				"id": "BAD-ID",
+			},
+		},
+	}
+
+	_, err := validateArtifactContent(content, "requirements")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want ID format error")
+	}
+	errStr := err.Error()
+	if !strings.Contains(errStr, "BAD-ID") && !strings.Contains(errStr, "id_format") {
+		t.Errorf("error %q does not mention 'BAD-ID' or 'id_format'", errStr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-3/TS-NS-3: Repair prompt contains specific ValidationEntry errors
+// ---------------------------------------------------------------------------
+
+// TestNS48_RepairPrompt_ContainsValidationEntryErrors verifies that when
+// validateArtifactContent fails, the tool_result message sent to the LLM in
+// the repair loop contains the specific validation error text (check name and
+// path) from the library — not just a generic "missing required keys" message.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS48_RepairPrompt_ContainsValidationEntryErrors(t *testing.T) {
+	t.Parallel()
+
+	// invalidContent always fails: event_driven criterion missing 'trigger'.
+	invalidContent := map[string]any{
+		"spec_id":   "48",
+		"spec_name": "test",
+		"requirements": []any{
+			map[string]any{
+				"id": "48-REQ-1",
+				"acceptance_criteria": []any{
+					map[string]any{
+						"id":           "48-REQ-1.1",
+						"ears_pattern": "event_driven",
+						// "trigger" omitted intentionally
+					},
+				},
+			},
+		},
+	}
+
+	var capturedRepairText string
+
+	callCount := 0
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		callCount++
+		if callCount > 1 {
+			// Capture the tool_result Text from the repair call's messages.
+			for _, msg := range opts.Messages {
+				blocks, ok := msg.Content.([]ContentBlock)
+				if !ok {
+					continue
+				}
+				for _, block := range blocks {
+					if block.Type == "tool_result" && block.Text != "" {
+						capturedRepairText = block.Text
+					}
+				}
+			}
+		}
+		resp := makeToolCallResponse("end_turn",
+			makeArtifactToolCall("requirements", invalidContent))
+		return "", resp, nil
+	}
+
+	sa := NewSpecAgent("STANDARD")
+	sa.aiCallFunc = mockFn
+
+	_, _ = sa.GenerateArtifacts(context.Background(), "PRD", "48", "test")
+
+	if capturedRepairText == "" {
+		t.Fatal("no tool_result text captured from repair call; repair loop may not have run")
+	}
+	if !strings.Contains(capturedRepairText, "ears_constraint") && !strings.Contains(capturedRepairText, "trigger") {
+		t.Errorf("repair tool_result text %q does not contain 'ears_constraint' or 'trigger'; want library ValidationEntry errors", capturedRepairText)
+	}
+	if strings.Contains(capturedRepairText, "missing required keys") {
+		t.Errorf("repair tool_result text %q contains generic 'missing required keys' text; want specific ValidationEntry errors", capturedRepairText)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-4/TS-NS-4: Valid artifacts are accepted without triggering repair
+// ---------------------------------------------------------------------------
+
+// TestNS48_ValidateArtifactContent_ValidArtifactPassesWithoutError verifies
+// that validateArtifactContent returns (non-nil map, nil error) for a fully
+// valid requirements artifact so that the repair loop is not triggered.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestNS48_ValidateArtifactContent_ValidArtifactPassesWithoutError(t *testing.T) {
+	t.Parallel()
+
+	// A valid requirements artifact: correct top-level keys, empty requirements
+	// slice (no criteria to fail EARS/ID checks).
+	content := map[string]any{
+		"spec_id":      "48",
+		"spec_name":    "test",
+		"requirements": []any{},
+	}
+
+	m, err := validateArtifactContent(content, "requirements")
+	if err != nil {
+		t.Fatalf("validateArtifactContent() returned unexpected error: %v", err)
+	}
+	if m == nil {
+		t.Error("validateArtifactContent() returned nil map; want non-nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-5/TS-NS-5: Repair loop exhaustion returns AgentError with validation category
+// ---------------------------------------------------------------------------
+
+// TestNS48_RepairLoop_Exhaustion_ReturnsValidationAgentError verifies that
+// when an artifact consistently fails full validation across all repair
+// attempts, the caller receives an *AgentError with ErrorCategory ==
+// "validation" and the error message identifies the artifact name.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestNS48_RepairLoop_Exhaustion_ReturnsValidationAgentError(t *testing.T) {
+	t.Parallel()
+
+	// Always return a requirements artifact with a malformed ID — validation
+	// never passes, exhausting the repair loop.
+	alwaysInvalid := map[string]any{
+		"spec_id":   "48",
+		"spec_name": "test",
+		"requirements": []any{
+			map[string]any{"id": "BAD-ID"},
+		},
+	}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		resp := makeToolCallResponse("end_turn",
+			makeArtifactToolCall("requirements", alwaysInvalid))
+		return "", resp, nil
+	}
+
+	sa := NewSpecAgent("STANDARD")
+	sa.aiCallFunc = mockFn
+
+	_, err := sa.GenerateArtifacts(context.Background(), "PRD", "48", "test")
+	if err == nil {
+		t.Fatal("GenerateArtifacts() returned nil error; want validation error after repair exhaustion")
+	}
+
+	var agentErr *AgentError
+	if !errors.As(err, &agentErr) {
+		t.Fatalf("error type = %T; want *AgentError", err)
+	}
+	if agentErr.ErrorCategory != "validation" {
+		t.Errorf("AgentError.ErrorCategory = %q; want %q", agentErr.ErrorCategory, "validation")
+	}
+	errMsg := err.Error()
+	if !strings.Contains(strings.ToLower(errMsg), "requirements") {
+		t.Errorf("error message %q does not mention 'requirements'", errMsg)
 	}
 }

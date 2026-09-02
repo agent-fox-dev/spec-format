@@ -125,7 +125,7 @@ func mkArtifactResponse(name string) *MessageResponse {
 	switch name {
 	case "requirements":
 		content["requirements"] = []any{
-			map[string]any{"id": "REQ-1", "text": "The system SHALL do X"},
+			map[string]any{"id": "07-REQ-1", "text": "The system SHALL do X"},
 		}
 	case "test_spec":
 		content["test_cases"] = []any{

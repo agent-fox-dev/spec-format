@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	afspec "github.com/agent-fox-dev/spec-format"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -683,8 +684,14 @@ func wrapCallError(err error) error {
 }
 
 // validateArtifactContent checks that the tool input is a valid
-// map[string]any with expected artifact fields. Returns the content map
-// and nil on success, or nil and an error describing validation failures.
+// map[string]any with expected artifact fields, then runs the afspec
+// library's full validation checks. Returns the content map and nil on
+// success, or nil and an error describing validation failures.
+//
+// Validation runs in two phases:
+//  1. Required top-level key presence check (fast structural check).
+//  2. For requirements: EARS pattern field constraints and ID format checks
+//     from the afspec library, returning specific ValidationEntry messages.
 func validateArtifactContent(input any, artifactName string) (map[string]any, error) {
 	if input == nil {
 		return nil, fmt.Errorf("nil content for artifact %s", artifactName)
@@ -716,6 +723,32 @@ func validateArtifactContent(input any, artifactName string) (map[string]any, er
 		return nil, fmt.Errorf("artifact %s missing required keys: %s", artifactName, strings.Join(missing, ", "))
 	}
 
+	// Run library validation for requirements artifacts: EARS pattern field
+	// constraints and requirement ID format checks.
+	if artifactName == "requirements" {
+		if entries := afspec.ValidateRequirementsMap(m); len(entries) > 0 {
+			return nil, formatValidationEntries(artifactName, entries)
+		}
+	}
+
 	return m, nil
+}
+
+// formatValidationEntries converts a slice of ValidationEntry from the afspec
+// library into a single error suitable for the repair loop's tool_result
+// message. Each entry's check name, path, and message are included to give
+// the LLM specific, actionable feedback about what needs to be fixed.
+func formatValidationEntries(artifactName string, entries []afspec.ValidationEntry) error {
+	var parts []string
+	for _, e := range entries {
+		part := fmt.Sprintf("[%s]", e.Check)
+		if e.Path != "" {
+			part += fmt.Sprintf(" at %s", e.Path)
+		}
+		part += fmt.Sprintf(": %s", e.Message)
+		parts = append(parts, part)
+	}
+	return fmt.Errorf("artifact %s has %d validation error(s):\n%s",
+		artifactName, len(entries), strings.Join(parts, "\n"))
 }
 

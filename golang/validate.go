@@ -336,6 +336,126 @@ func criterionFieldValue(c *Criterion, field string) *string {
 	}
 }
 
+// ValidateRequirementsMap performs targeted validation on a requirements
+// artifact represented as a raw map[string]any. It checks EARS pattern field
+// constraints and requirement ID format patterns without requiring every
+// JSON schema field to be present. This is used by the AI generation pipeline
+// to validate AI-produced content that may lack optional schema fields.
+//
+// Checks performed:
+//   - Requirement ID format: must match NN-REQ-N[.N|.EN] (id_format check)
+//   - Requirement ID prefix consistency with spec_id (id_format check)
+//   - EARS pattern field constraints on acceptance_criteria and edge_cases
+//     (ears_constraint check)
+//
+// Returns a slice of ValidationEntry describing any violations. An empty
+// slice means the content passed all checks.
+func ValidateRequirementsMap(content map[string]any) []ValidationEntry {
+	var entries []ValidationEntry
+
+	specID, _ := content["spec_id"].(string)
+	reqs, _ := content["requirements"].([]any)
+
+	for reqIdx, rawReq := range reqs {
+		req, ok := rawReq.(map[string]any)
+		if !ok {
+			continue
+		}
+		reqID, _ := req["id"].(string)
+
+		// Check requirement ID format.
+		if reqID != "" && !requirementIDPattern.MatchString(reqID) {
+			entries = append(entries, ValidationEntry{
+				Category: "integrity",
+				Check:    "id_format",
+				Message:  fmt.Sprintf("requirement ID %q does not match expected format NN-REQ-N[.N|.EN]", reqID),
+				Artifact: "requirements.json",
+				EntityID: reqID,
+				Path:     fmt.Sprintf("requirements[%d].id", reqIdx),
+			})
+		}
+
+		// Check spec_id prefix consistency.
+		if reqID != "" && specID != "" {
+			if prefix := extractReqPrefix(reqID); prefix != "" && prefix != specID {
+				entries = append(entries, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("requirement ID '%s' has spec_id prefix '%s' but artifact spec_id is '%s'", reqID, prefix, specID),
+					Artifact: "requirements.json",
+					EntityID: reqID,
+					Path:     fmt.Sprintf("requirements[%d].id", reqIdx),
+				})
+			}
+		}
+
+		// Check EARS constraints for acceptance_criteria and edge_cases.
+		for _, groupName := range []string{"acceptance_criteria", "edge_cases"} {
+			criteria, _ := req[groupName].([]any)
+			for cIdx, rawC := range criteria {
+				c, ok := rawC.(map[string]any)
+				if !ok {
+					continue
+				}
+				cID, _ := c["id"].(string)
+				patternStr, _ := c["ears_pattern"].(string)
+				pattern := CriterionEarsPattern(patternStr)
+
+				required, ok := earsRequiredFields[pattern]
+				if !ok {
+					entries = append(entries, ValidationEntry{
+						Category: "schema",
+						Check:    "ears_constraint",
+						Message:  fmt.Sprintf("Criterion %s: invalid ears_pattern value %q", cID, patternStr),
+						Artifact: "requirements.json",
+						Path:     fmt.Sprintf("requirements[%d].%s[%d].ears_pattern", reqIdx, groupName, cIdx),
+					})
+					continue
+				}
+
+				// Build set of required field names for quick lookup.
+				requiredSet := make(map[string]bool, len(required))
+				for _, f := range required {
+					requiredSet[f] = true
+				}
+
+				// Check required fields are present (non-nil).
+				for _, field := range required {
+					val, exists := c[field]
+					if !exists || val == nil {
+						entries = append(entries, ValidationEntry{
+							Category: "schema",
+							Check:    "ears_constraint",
+							Message:  fmt.Sprintf("Criterion %s: pattern %q requires field '%s' but it is missing", cID, patternStr, field),
+							Artifact: "requirements.json",
+							Path:     fmt.Sprintf("requirements[%d].%s[%d].%s", reqIdx, groupName, cIdx, field),
+						})
+					}
+				}
+
+				// Check forbidden fields are absent (nil or not present).
+				for _, field := range allPatternFields {
+					if requiredSet[field] {
+						continue
+					}
+					val, exists := c[field]
+					if exists && val != nil {
+						entries = append(entries, ValidationEntry{
+							Category: "schema",
+							Check:    "ears_constraint",
+							Message:  fmt.Sprintf("Criterion %s: pattern %q must not have field '%s' but it is set", cID, patternStr, field),
+							Artifact: "requirements.json",
+							Path:     fmt.Sprintf("requirements[%d].%s[%d].%s", reqIdx, groupName, cIdx, field),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return entries
+}
+
 // validateEarsConstraints checks that each criterion's pattern-specific
 // fields match the required set for its ears_pattern. For each criterion:
 //   - Required fields must be non-nil
