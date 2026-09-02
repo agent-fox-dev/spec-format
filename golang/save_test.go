@@ -1,9 +1,11 @@
 package afspec
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -52,15 +54,14 @@ func TestSave_RoundTrip(t *testing.T) {
 		})
 	}
 
-	// Verify no temp files remain
+	// Verify no temp files remain (temp files are named "<artifact>.tmp.<random>")
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to read tmpDir: %v", err)
 	}
 	for _, entry := range entries {
-		name := entry.Name()
-		if filepath.Ext(name) == ".tmp" {
-			t.Errorf("temp file %s was not cleaned up", name)
+		if strings.Contains(entry.Name(), ".tmp.") {
+			t.Errorf("temp file %q was not cleaned up after successful save", entry.Name())
 		}
 	}
 }
@@ -208,5 +209,114 @@ func TestSave_ErrorTypes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSave_TwoPhase_WriteFailure verifies that when temp-file creation fails
+// (write phase), no on-disk artifact is modified and no temp files remain
+// (NS-REQ-2, NS-REQ-3).
+//
+// The test makes the target directory read-only so that os.CreateTemp fails
+// immediately, exercising the "write phase fails → no renames performed"
+// invariant.
+func TestSave_TwoPhase_WriteFailure(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("cannot test read-only directory restrictions as root")
+	}
+
+	defer requireImplemented(t)
+
+	spec, err := LoadSpec("./../testdata/valid_spec")
+	if err != nil {
+		t.Fatalf("LoadSpec failed: %v", err)
+	}
+
+	fixtureDir := "./../testdata/valid_spec"
+	artifactNames := []string{"prd.md", "requirements.json", "test_spec.json", "tasks.json"}
+
+	// Populate a writable temp dir with the fixture files and record originals.
+	tmpDir := t.TempDir()
+	origContents := make(map[string][]byte, len(artifactNames))
+	for _, name := range artifactNames {
+		data, err := os.ReadFile(filepath.Join(fixtureDir, name))
+		if err != nil {
+			t.Fatalf("failed to read fixture %s: %v", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(tmpDir, name), data, 0644); err != nil {
+			t.Fatalf("failed to copy fixture %s: %v", name, err)
+		}
+		origContents[name] = data
+	}
+
+	// Make the directory read-only: os.CreateTemp will fail, so the write
+	// phase cannot start and no rename will occur.
+	if err := os.Chmod(tmpDir, 0555); err != nil {
+		t.Fatalf("chmod 0555 failed: %v", err)
+	}
+	// Restore write permission so t.TempDir cleanup can remove the directory.
+	t.Cleanup(func() { os.Chmod(tmpDir, 0755) }) //nolint:errcheck
+
+	saveErr := spec.saveToDisk(tmpDir)
+	if saveErr == nil {
+		t.Fatal("expected saveToDisk to return an error for a read-only directory, got nil")
+	}
+
+	var se *SaveError
+	if !errors.As(saveErr, &se) {
+		t.Errorf("expected *SaveError, got %T: %v", saveErr, saveErr)
+	}
+
+	// Restore permissions for inspection.
+	if err := os.Chmod(tmpDir, 0755); err != nil {
+		t.Fatalf("failed to restore dir permissions: %v", err)
+	}
+
+	// NS-REQ-3: no orphaned temp files.
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp.") {
+			t.Errorf("orphaned temp file %q found after write failure", entry.Name())
+		}
+	}
+
+	// NS-REQ-2: every original artifact file must be byte-for-byte unchanged.
+	for name, original := range origContents {
+		actual, err := os.ReadFile(filepath.Join(tmpDir, name))
+		if err != nil {
+			t.Fatalf("cannot read %s after failed save: %v", name, err)
+		}
+		if !bytes.Equal(original, actual) {
+			t.Errorf("artifact %s was modified by a failed save", name)
+		}
+	}
+}
+
+// TestSave_TwoPhase_NoOrphanedTempsOnSuccess confirms that no *.tmp.* files
+// remain after a fully successful two-phase save (NS-REQ-3 success path).
+// This supplements TestSave_RoundTrip with an explicit naming-pattern check.
+func TestSave_TwoPhase_NoOrphanedTempsOnSuccess(t *testing.T) {
+	defer requireImplemented(t)
+
+	spec, err := LoadSpec("./../testdata/valid_spec")
+	if err != nil {
+		t.Fatalf("LoadSpec failed: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := spec.Save(tmpDir); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp.") {
+			t.Errorf("orphaned temp file %q found after successful save", entry.Name())
+		}
 	}
 }

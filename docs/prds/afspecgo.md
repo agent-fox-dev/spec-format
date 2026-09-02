@@ -27,7 +27,7 @@ This project creates an idiomatic Go library (`afspec`) that provides the same p
 ### I/O (load, save, marshal)
 
 - `LoadSpec(dir)` loads all artifacts (`prd.md`, `requirements.json`, `test_spec.json`, `tasks.json`, optional `architecture.md`) from a spec directory and returns a `Spec` struct. Returns a `LoadError` on missing required files or malformed content. Standalone function (constructs the struct).
-- `spec.Save(dir)` atomically writes all artifacts to disk using write-to-temp-then-rename, with lifecycle guards (sealed specs cannot be saved). Returns `SaveError` or `LifecycleError`.
+- `spec.Save(dir)` writes all artifacts to disk using a two-phase strategy: all temp files are written and fsynced first (Phase 1), then all temp files are renamed to their final names (Phase 2). If any write in Phase 1 fails, all temp files are removed and no artifact file is modified. Lifecycle guards prevent saving sealed, superseded, or archived specs. Returns `SaveError` or `LifecycleError`.
 - `MarshalJSON(v)` produces deterministic JSON serialization (2-space indent, sorted keys) matching Python's output byte-for-byte. Standalone function.
 - PRD loading must parse YAML frontmatter (delimited by `---`) and extract the markdown body separately. Edge-case behavior (missing closing delimiter, malformed YAML) must match the Python implementation.
 
