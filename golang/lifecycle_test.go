@@ -384,6 +384,187 @@ func TestMoveToArchive_ConflictInArchive(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Intent hash tests (issue #27)
+// ---------------------------------------------------------------------------
+
+// TestTransition_DraftToActive_SetsIntentHash verifies NS-REQ-1 / TS-NS-1:
+// after draft→active, the returned Spec has a non-nil, non-empty IntentHash,
+// and the persisted prd.md contains that same hash.
+func TestTransition_DraftToActive_SetsIntentHash(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createDraftSpec(t, tmpDir)
+
+	updated, err := spec.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition returned unexpected error: %v", err)
+	}
+
+	if updated.IntentHash == nil {
+		t.Fatal("updated.IntentHash is nil, want non-nil")
+	}
+	if *updated.IntentHash == "" {
+		t.Fatal("updated.IntentHash is empty, want non-empty")
+	}
+
+	// Verify the persisted spec also has the hash.
+	saved, err := LoadSpec(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadSpec after Transition failed: %v", err)
+	}
+	if saved.IntentHash == nil {
+		t.Fatal("saved spec IntentHash is nil after loading")
+	}
+	if *saved.IntentHash != *updated.IntentHash {
+		t.Errorf("saved IntentHash %q != returned IntentHash %q", *saved.IntentHash, *updated.IntentHash)
+	}
+}
+
+// TestComputeIntentHash_Deterministic verifies NS-REQ-2 / TS-NS-2:
+// two successive calls with identical input return identical hex-digest strings.
+func TestComputeIntentHash_Deterministic(t *testing.T) {
+	defer requireImplemented(t)
+
+	body := `# Spec
+
+## Intent
+
+Build a system that does something useful.
+
+## Goals
+
+- Goal 1
+`
+	h1, err := ComputeIntentHash(body)
+	if err != nil {
+		t.Fatalf("first ComputeIntentHash returned error: %v", err)
+	}
+	h2, err := ComputeIntentHash(body)
+	if err != nil {
+		t.Fatalf("second ComputeIntentHash returned error: %v", err)
+	}
+	if h1 != h2 {
+		t.Errorf("ComputeIntentHash is not deterministic: %q != %q", h1, h2)
+	}
+	// SHA-256 produces a 64-character lowercase hex string.
+	if len(h1) != 64 {
+		t.Errorf("hash length = %d, want 64", len(h1))
+	}
+	for _, c := range h1 {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("hash contains non-hex character %q: %s", c, h1)
+			break
+		}
+	}
+}
+
+// TestComputeIntentHash_DifferentAfterMutation verifies NS-REQ-3 / TS-NS-3:
+// after activating a spec, mutating the ## Intent section produces a hash
+// that differs from the stored one.
+func TestComputeIntentHash_DifferentAfterMutation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createDraftSpec(t, tmpDir)
+
+	active, err := spec.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+	stored := *active.IntentHash
+
+	// Mutate the ## Intent section.
+	mutated := strings.ReplaceAll(active.PRDBody,
+		"Build a test feature that validates the spec library works correctly.",
+		"Build a COMPLETELY DIFFERENT thing.")
+
+	newHash, err := ComputeIntentHash(mutated)
+	if err != nil {
+		t.Fatalf("ComputeIntentHash on mutated body failed: %v", err)
+	}
+	if newHash == stored {
+		t.Errorf("hash did not change after mutating ## Intent section: both are %q", stored)
+	}
+}
+
+// TestSave_ActiveSpec_IntentDrift verifies NS-REQ-4 / TS-NS-4:
+// Save() on an active spec whose PRD body's ## Intent section has drifted
+// from the stored IntentHash returns an IntentError.
+func TestSave_ActiveSpec_IntentDrift(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createDraftSpec(t, tmpDir)
+
+	active, err := spec.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Mutate the ## Intent section.
+	active.PRDBody = strings.ReplaceAll(active.PRDBody,
+		"Build a test feature that validates the spec library works correctly.",
+		"Build a COMPLETELY DIFFERENT thing.")
+
+	err = active.Save(tmpDir)
+	if err == nil {
+		t.Fatal("Save() returned nil error for intent drift, want IntentError")
+	}
+
+	var intentErr *IntentError
+	if !errors.As(err, &intentErr) {
+		t.Errorf("errors.As(err, &IntentError{}) = false, want true; err = %T: %v", err, err)
+	}
+
+	var specErr *SpecError
+	if !errors.As(err, &specErr) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err = %T: %v", err, err)
+	}
+}
+
+// TestTransition_DraftToActive_NoIntentSection verifies NS-REQ-5 / TS-NS-5:
+// transitioning a spec whose prd.md body lacks a ## Intent section from
+// draft to active returns an IntentError and does not persist the active state.
+func TestTransition_DraftToActive_NoIntentSection(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+
+	// Write fixtures without a ## Intent section.
+	writeSpecFixturesNoIntent(t, tmpDir)
+
+	spec, err := LoadSpec(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadSpec failed: %v", err)
+	}
+
+	_, err = spec.Transition("active", tmpDir)
+	if err == nil {
+		t.Fatal("Transition returned nil error for spec without ## Intent, want IntentError")
+	}
+
+	var intentErr *IntentError
+	if !errors.As(err, &intentErr) {
+		t.Errorf("errors.As(err, &IntentError{}) = false, want true; err = %T: %v", err, err)
+	}
+
+	var specErr *SpecError
+	if !errors.As(err, &specErr) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err = %T: %v", err, err)
+	}
+
+	// Status should still be draft on disk.
+	saved, err := LoadSpec(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadSpec after failed Transition failed: %v", err)
+	}
+	if saved.Status != "draft" {
+		t.Errorf("saved Status = %q after failed Transition, want %q", saved.Status, "draft")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
@@ -664,6 +845,131 @@ Build a test feature that validates the spec library works correctly.
       "test_path": null
     }
   ]
+}`
+
+	files := map[string]string{
+		"prd.md":            prd,
+		"requirements.json": reqJSON,
+		"test_spec.json":    testSpecJSON,
+		"tasks.json":        tasksJSON,
+	}
+
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("failed to write %s: %v", name, err)
+		}
+	}
+}
+
+// writeSpecFixturesNoIntent writes minimal valid spec fixtures to a directory
+// but without a ## Intent section in prd.md. Used to test that Transition
+// rejects activation when ## Intent is absent.
+func writeSpecFixturesNoIntent(t *testing.T, dir string) {
+	t.Helper()
+
+	prd := `---
+spec_id: "01"
+spec_name: "test_feature"
+title: "Test Feature"
+status: "draft"
+created_at: "2026-01-01T00:00:00Z"
+updated_at: "2026-01-01T00:00:00Z"
+owner: "test-author"
+source: "https://github.com/test/repo/issues/1"
+supersedes: []
+tags: ["test"]
+intent_hash: null
+schema_version: 1
+---
+# Test Feature
+
+## Goals
+
+- Validate loading and saving of specs.
+- Ensure cross-file integrity checks work.
+
+## Non-goals
+
+- Production deployment.
+`
+
+	reqJSON := `{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v1.json",
+  "spec_id": "01",
+  "spec_name": "test_feature",
+  "schema_version": 1,
+  "introduction": "The test feature validates the spec library.",
+  "glossary": {
+    "spec": "A four-artifact package representing one feature.",
+    "system": "The afspec library."
+  },
+  "requirements": [
+    {
+      "id": "01-REQ-1",
+      "title": "Data Model",
+      "user_story": {
+        "role": "developer",
+        "goal": "have typed models for spec artifacts",
+        "benefit": "type safety when working with specs"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-1.1",
+          "ears_pattern": "event_driven",
+          "trigger": "a spec is loaded from disk",
+          "system": "the system",
+          "action": "return a populated Spec instance",
+          "return_contract": "a Spec instance"
+        }
+      ],
+      "edge_cases": [
+        {
+          "id": "01-REQ-1.E1",
+          "ears_pattern": "unwanted",
+          "error_condition": "the spec directory is missing a required file",
+          "system": "the system",
+          "action": "raise a LoadError identifying the missing file",
+          "return_contract": "raises LoadError with message listing the missing file path"
+        }
+      ]
+    }
+  ],
+  "correctness_properties": [],
+  "execution_paths": [],
+  "error_handling": []
+}`
+
+	testSpecJSON := `{
+  "$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+  "spec_id": "01",
+  "spec_name": "test_feature",
+  "schema_version": 1,
+  "test_cases": [],
+  "property_tests": [],
+  "edge_case_tests": [],
+  "smoke_tests": [],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}`
+
+	tasksJSON := `{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
+  "spec_id": "01",
+  "spec_name": "test_feature",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "pytest -q tests/",
+    "all_tests": "pytest -q",
+    "linter": "ruff check"
+  },
+  "dependencies": [],
+  "task_groups": [],
+  "traceability": []
 }`
 
 	files := map[string]string{

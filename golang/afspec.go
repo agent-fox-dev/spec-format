@@ -154,11 +154,31 @@ func loadJSONArtifact(path string, target interface{}) error {
 // Each artifact is written to a temporary file first, then renamed
 // to its final name. Returns a LifecycleError if the spec is sealed,
 // superseded, or archived.
+//
+// For active specs with a stored IntentHash, Save recomputes the hash from
+// the current PRD body and returns an IntentError if the ## Intent section
+// has changed since activation (intent drift detection).
 func (s *Spec) Save(dir string) error {
 	if s.Status == "sealed" || s.Status == "superseded" || s.Status == "archived" {
 		return &LifecycleError{
 			Msg: fmt.Sprintf("cannot save spec in %s state", s.Status),
 			Err: &SpecError{Msg: fmt.Sprintf("cannot save spec in %s state", s.Status)},
+		}
+	}
+
+	// For active specs with a stored intent hash, detect drift by recomputing
+	// the hash from the current PRD body and comparing against the stored value.
+	if s.Status == "active" && s.IntentHash != nil {
+		current, err := ComputeIntentHash(s.PRDBody)
+		if err != nil {
+			return err
+		}
+		if current != *s.IntentHash {
+			msg := "intent drift detected: ## Intent section has changed since activation"
+			return &IntentError{
+				Msg: msg,
+				Err: &SpecError{Msg: msg},
+			}
 		}
 	}
 

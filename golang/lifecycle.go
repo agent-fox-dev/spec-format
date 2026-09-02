@@ -43,7 +43,13 @@ func ValidTransition(current, target string) bool {
 // persists the updated spec to disk, and returns a new Spec copy with
 // the updated status. The receiver is not modified.
 //
+// When transitioning from draft to active, ComputeIntentHash is called on
+// the PRD body. If the body lacks a ## Intent section, an IntentError is
+// returned and the spec is not persisted.
+//
 // Returns a LifecycleError if the transition is not allowed.
+// Returns an IntentError if transitioning to active and the PRD body has no
+// ## Intent section.
 // Returns a SaveError if disk persistence fails.
 func (s *Spec) Transition(target, dir string) (*Spec, error) {
 	if !ValidTransition(s.Status, target) {
@@ -57,6 +63,16 @@ func (s *Spec) Transition(target, dir string) (*Spec, error) {
 	// The receiver is not modified — Transition returns a new Spec.
 	newSpec := *s
 	newSpec.Status = target
+
+	// When activating a draft spec, compute and store the intent hash.
+	// Reject the transition if the PRD body lacks a ## Intent section.
+	if s.Status == "draft" && target == "active" {
+		hash, err := ComputeIntentHash(s.PRDBody)
+		if err != nil {
+			return nil, err
+		}
+		newSpec.IntentHash = &hash
+	}
 
 	// Persist via saveToDisk which bypasses the public Save lifecycle guard,
 	// since Transition legitimately writes sealed/superseded/archived specs.
