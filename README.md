@@ -47,7 +47,7 @@ formats, validation rules, subtask state machine, and rendering — is at
 JSON Schemas for all artifacts are available in `specification/schemas/`
 (`prd-frontmatter.v1.json`, `requirements.v1.json`, `test_spec.v1.json`,
 `tasks.v1.json`). These schemas can be used for external validation or code
-generation. Both the Go and Python packages bundle them.
+generation. The Go package bundles them.
 
 ## Creating a Spec Package
 
@@ -84,16 +84,6 @@ Install the spec CLI via the install script:
 curl -fsSL https://raw.githubusercontent.com/agent-fox-dev/spec-format/refs/heads/main/install.sh | sh
 ```
 
-### Python packages
-
-```bash
-# CLI only
-pip install "spec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.6#subdirectory=packages/spec"
-
-# Library only (no AI, no CLI)
-pip install "afspec @ git+https://github.com/agent-fox-dev/spec-format.git@v1.3.6#subdirectory=packages/afspec"
-```
-
 ### Go library
 
 ```bash
@@ -102,7 +92,7 @@ go get github.com/agent-fox-dev/spec-format@v1.3.6
 
 ## Development
 
-This is a uv workspace (Python 3.12+) with a Go module. See [Development Guide](docs/development.md) for setup, testing, and contributing.
+See [Development Guide](docs/development.md) for setup, testing, and contributing.
 
 ```bash
 make check          # full quality suite: lint + all tests
@@ -111,7 +101,7 @@ make check          # full quality suite: lint + all tests
 ## Documentation
 
 - [Spec Format Reference](specification/spec-format.md) — field-level schemas, EARS patterns, validation rules, and rendering
-- [CLI Reference](docs/cli.md) — commands, flags, and usage
+- [CLI Reference](docs/cli.md) — commands, flags, agent/skill workflow, and usage
 - [Configuration](docs/configuration.md) — LLM provider setup, model selection, and config files
-- [afspec API (Python)](packages/afspec/README.md) — Python afspec library API for loading and manipulating specs
-- [afspec API (Golang)](golang/README.md) — Golang afspec library API for loading and manipulating specs
+- [Go Library API](golang/README.md) — afspec Go library API for loading and manipulating specs
+- [Development Guide](docs/development.md) — setup, testing, and contributing

@@ -1,8 +1,8 @@
 # Configuration
 
-The `spec` and `agentspec` packages use the Anthropic Claude API for LLM-powered
-spec generation. This document covers how to set your API credentials, choose a
-model, switch between LLM providers, and manage configuration files.
+The spec CLI uses the Anthropic Claude API for LLM-powered spec generation.
+This document covers how to set your API credentials, choose a model, switch
+between LLM providers, and manage configuration files.
 
 ## Quick Start
 
@@ -53,6 +53,7 @@ model = "ADVANCED"
 
 The `model` field accepts either a tier name (`SIMPLE`, `STANDARD`, `ADVANCED`)
 or a model ID (`claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`).
+Tier names are matched case-insensitively.
 
 ## LLM Providers
 
@@ -65,11 +66,10 @@ environment variable:
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-No additional libraries or configuration are needed.
+No additional configuration is needed.
 
 ### Google Vertex AI
 
-The Vertex AI SDK dependencies are included with `agentspec` automatically.
 To use Claude through Google Cloud Vertex AI:
 
 1. Set the environment variable to enable Vertex:
@@ -90,7 +90,7 @@ To use Claude through Google Cloud Vertex AI:
    auto-detected from your credentials.
 
 When Vertex AI is enabled, `ANTHROPIC_API_KEY` is not needed -- authentication
-is handled through `google-auth`.
+is handled through Google Cloud Application Default Credentials.
 
 Note: The `[provider]` section in the TOML config file accepts
 `vertex_project` and `vertex_region` fields, but these are not currently
@@ -99,7 +99,6 @@ variable and Application Default Credentials instead.
 
 ### AWS Bedrock
 
-The Bedrock SDK dependencies are included with `agentspec` automatically.
 To use Claude through AWS Bedrock:
 
 1. Set the environment variable to enable Bedrock:
@@ -112,14 +111,14 @@ To use Claude through AWS Bedrock:
    variables, `~/.aws/credentials`, IAM role, etc.).
 
 When Bedrock is enabled, `ANTHROPIC_API_KEY` is not needed -- authentication
-is handled through `boto3` and your AWS credentials.
+is handled through your AWS credentials.
 
 ### Provider precedence
 
 If multiple provider environment variables are set, the first match wins:
 
-1. `CLAUDE_CODE_USE_VERTEX=1` -- use Vertex AI
-2. `CLAUDE_CODE_USE_BEDROCK=1` -- use Bedrock
+1. `CLAUDE_CODE_USE_VERTEX` set (any non-empty value) -- use Vertex AI
+2. `CLAUDE_CODE_USE_BEDROCK` set (any non-empty value) -- use Bedrock
 3. Neither set -- use the direct Anthropic API
 
 ## Configuration Files
@@ -134,7 +133,7 @@ The tool reads TOML configuration from two locations, checked in order:
 | `~/.specs/config.toml` | Global (user-wide) |
 
 The first file found is used. Project-local settings take precedence over
-global settings.
+global settings. Symlinked config files are rejected for security.
 
 #### Example config file
 
@@ -149,7 +148,7 @@ vertex_region = "us-east5"
 ```
 
 The `[model]` section controls which Claude model is used. The `[provider]`
-section controls authentication and cloud provider settings.
+section stores authentication and cloud provider settings.
 
 #### Available `[model]` fields
 
@@ -181,14 +180,34 @@ that provides a value wins:
 3. **Hardcoded default** -- `model = "STANDARD"`, which resolves to
    `claude-sonnet-4-6`.
 
+## Prompt Caching
+
+The AI layer supports prompt caching with configurable policies to reduce
+latency and cost for repeated system prompts. Three policies are available:
+
+| Policy | Behavior |
+|--------|----------|
+| `none` | Caching disabled; no `cache_control` metadata is injected |
+| `default` | Injects ephemeral `cache_control` when the system prompt exceeds the token threshold (this is the default) |
+| `extended` | Same as `default` but with a 1-hour TTL on cached content |
+
+Cache injection is conditional on the estimated token count of the system
+prompt exceeding a model-specific threshold:
+
+- **Sonnet models**: 2048 tokens
+- **Haiku and Opus models**: 4096 tokens
+
+If a provider rejects `cache_control` metadata (e.g., a 400 error mentioning
+`cache_control`), the AI layer automatically retries the request without
+caching.
+
 ## Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
 | `ANTHROPIC_API_KEY` | API key for direct Anthropic API access |
 | `AF_SPEC_MODEL` | Override model tier (`SIMPLE`, `STANDARD`, `ADVANCED`) or model ID |
-| `CLAUDE_CODE_USE_VERTEX` | Set to `1` to route requests through Google Vertex AI |
+| `CLAUDE_CODE_USE_VERTEX` | Set to any non-empty value to route requests through Google Vertex AI |
 | `CLOUD_ML_REGION` | Google Cloud region for Vertex AI (required when Vertex is enabled) |
-| `CLAUDE_CODE_USE_BEDROCK` | Set to `1` to route requests through AWS Bedrock |
+| `CLAUDE_CODE_USE_BEDROCK` | Set to any non-empty value to route requests through AWS Bedrock |
 | `AF_AGENT` | Set to `1` for agent mode (suppresses banner, routes errors to JSON on stdout) |
-
