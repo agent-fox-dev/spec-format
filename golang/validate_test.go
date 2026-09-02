@@ -5759,7 +5759,7 @@ func TestValidateCrossFile_FullyCoveredSpec(t *testing.T) {
 					Description:         "covers edge case",
 					Preconditions:       []string{},
 					Expected:            "pass",
-					AssertionPseudocode: strPtr("assert true"),
+					AssertionPseudocode: "assert true",
 				},
 			},
 			SmokeTests: []SmokeTest{},
@@ -6362,10 +6362,13 @@ func buildSpecWithAlphaPrefix() *Spec {
 			},
 			EdgeCaseTests: []EdgeCaseTest{
 				{
-					Id:            "TS-abc-E1",
-					RequirementId: "abc-REQ-1.E1",
-					Kind:          "unit",
-					Description:   "Malformed ID raises error",
+					Id:                  "TS-abc-E1",
+					RequirementId:       "abc-REQ-1.E1",
+					Kind:                "unit",
+					Description:         "Malformed ID raises error",
+					Preconditions:       []string{},
+					Expected:            "raises ValidationError",
+					AssertionPseudocode: "assert error is ValidationError",
 				},
 			},
 			SmokeTests: []SmokeTest{

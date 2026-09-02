@@ -25,13 +25,13 @@ type Coverage struct {
 type EdgeCaseTest struct {
 	// AssertionPseudocode corresponds to the JSON schema field
 	// "assertion_pseudocode".
-	AssertionPseudocode *string `json:"assertion_pseudocode,omitempty,omitzero" yaml:"assertion_pseudocode,omitempty" mapstructure:"assertion_pseudocode,omitempty"`
+	AssertionPseudocode string `json:"assertion_pseudocode" yaml:"assertion_pseudocode" mapstructure:"assertion_pseudocode"`
 
 	// Description corresponds to the JSON schema field "description".
 	Description string `json:"description" yaml:"description" mapstructure:"description"`
 
 	// Expected corresponds to the JSON schema field "expected".
-	Expected interface{} `json:"expected,omitempty,omitzero" yaml:"expected,omitempty" mapstructure:"expected,omitempty"`
+	Expected interface{} `json:"expected" yaml:"expected" mapstructure:"expected"`
 
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
@@ -40,13 +40,43 @@ type EdgeCaseTest struct {
 	Input interface{} `json:"input,omitempty,omitzero" yaml:"input,omitempty" mapstructure:"input,omitempty"`
 
 	// Kind corresponds to the JSON schema field "kind".
-	Kind string `json:"kind" yaml:"kind" mapstructure:"kind"`
+	Kind EdgeCaseTestKind `json:"kind" yaml:"kind" mapstructure:"kind"`
 
 	// Preconditions corresponds to the JSON schema field "preconditions".
-	Preconditions []string `json:"preconditions,omitempty,omitzero" yaml:"preconditions,omitempty" mapstructure:"preconditions,omitempty"`
+	Preconditions []string `json:"preconditions" yaml:"preconditions" mapstructure:"preconditions"`
 
 	// RequirementId corresponds to the JSON schema field "requirement_id".
 	RequirementId string `json:"requirement_id" yaml:"requirement_id" mapstructure:"requirement_id"`
+}
+
+type EdgeCaseTestKind string
+
+const EdgeCaseTestKindIntegration EdgeCaseTestKind = "integration"
+const EdgeCaseTestKindUnit EdgeCaseTestKind = "unit"
+
+var enumValues_EdgeCaseTestKind = []interface{}{
+	"unit",
+	"integration",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *EdgeCaseTestKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_EdgeCaseTestKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_EdgeCaseTestKind, v)
+	}
+	*j = EdgeCaseTestKind(v)
+	return nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -55,14 +85,23 @@ func (j *EdgeCaseTest) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &raw); err != nil {
 		return err
 	}
+	if _, ok := raw["assertion_pseudocode"]; raw != nil && !ok {
+		return fmt.Errorf("field assertion_pseudocode in EdgeCaseTest: required")
+	}
 	if _, ok := raw["description"]; raw != nil && !ok {
 		return fmt.Errorf("field description in EdgeCaseTest: required")
+	}
+	if _, ok := raw["expected"]; raw != nil && !ok {
+		return fmt.Errorf("field expected in EdgeCaseTest: required")
 	}
 	if _, ok := raw["id"]; raw != nil && !ok {
 		return fmt.Errorf("field id in EdgeCaseTest: required")
 	}
 	if _, ok := raw["kind"]; raw != nil && !ok {
 		return fmt.Errorf("field kind in EdgeCaseTest: required")
+	}
+	if _, ok := raw["preconditions"]; raw != nil && !ok {
+		return fmt.Errorf("field preconditions in EdgeCaseTest: required")
 	}
 	if _, ok := raw["requirement_id"]; raw != nil && !ok {
 		return fmt.Errorf("field requirement_id in EdgeCaseTest: required")
@@ -74,9 +113,6 @@ func (j *EdgeCaseTest) UnmarshalJSON(value []byte) error {
 	}
 	if utf8.RuneCountInString(string(plain.Id)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "id", 1)
-	}
-	if utf8.RuneCountInString(string(plain.Kind)) < 1 {
-		return fmt.Errorf("field %s length: must be >= %d", "kind", 1)
 	}
 	if utf8.RuneCountInString(string(plain.RequirementId)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "requirement_id", 1)

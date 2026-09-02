@@ -49,10 +49,13 @@ func makePropertyTest(id string) PropertyTest {
 
 func makeEdgeCaseTest(id string) EdgeCaseTest {
 	return EdgeCaseTest{
-		Id:            id,
-		Description:   "edge case " + id,
-		Kind:          "boundary",
-		RequirementId: "05-REQ-1",
+		Id:                  id,
+		Description:         "edge case " + id,
+		Kind:                EdgeCaseTestKindUnit,
+		RequirementId:       "05-REQ-1",
+		Preconditions:       []string{},
+		Expected:            "expected",
+		AssertionPseudocode: "assert true",
 	}
 }
 
