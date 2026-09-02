@@ -2,16 +2,28 @@ package spec
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/agent-fox-dev/spec-format/agentspec"
 	"github.com/spf13/cobra"
 )
 
 // artifactFiles lists the spec artifact file basenames.
 var artifactFiles = []string{"requirements.json", "test_spec.json", "tasks.json"}
+
+// generateFunc is the function used to generate spec artifacts from an
+// accepted PRD. It can be replaced in tests with a mock that avoids real
+// AI calls.
+var generateFunc = agentspec.GenerateSpec
+
+// artifactKeyToFile maps agentspec artifact keys to on-disk filenames.
+var artifactKeyToFile = map[string]string{
+	"requirements": "requirements.json",
+	"test_spec":    "test_spec.json",
+	"tasks":        "tasks.json",
+}
 
 // newGenerateCmd creates the "spec generate" subcommand which generates
 // specification artifacts from an accepted PRD.
@@ -90,10 +102,10 @@ func newGenerateCmd() *cobra.Command {
 	return cmd
 }
 
-// acceptPRD transitions the session from ASSESSING or REFINING to accepted.
+// acceptPRD transitions the session from ASSESSING or REFINING to prd_accepted.
 // The session map is modified in-place.
 func acceptPRD(session map[string]any) error {
-	session["state"] = "accepted"
+	session["state"] = "prd_accepted"
 	return nil
 }
 
@@ -118,10 +130,10 @@ func cleanupPartialArtifacts(specPath string) {
 	}
 }
 
-// generateArtifacts produces specification artifacts from the accepted PRD.
-// In a full implementation this would call session.Generate(ctx) via the
-// AI layer. Returns a list of generated artifact file paths.
-func generateArtifacts(ctx context.Context, specPath string, session map[string]any) ([]string, error) {
+// generateArtifacts calls the agentspec AI pipeline to produce specification
+// artifacts from the accepted PRD. Returns a list of generated artifact
+// filenames. When SPEC_TEST_BLOCK_AI=1, blocks until context cancellation.
+func generateArtifacts(ctx context.Context, specPath string, _ map[string]any) ([]string, error) {
 	// Test hook: block until context cancellation to simulate a long-running
 	// AI call. Activated by SPEC_TEST_BLOCK_AI=1 environment variable.
 	if os.Getenv("SPEC_TEST_BLOCK_AI") == "1" {
@@ -135,64 +147,25 @@ func generateArtifacts(ctx context.Context, specPath string, session map[string]
 	default:
 	}
 
-	// Check for AI error condition (test hook).
-	if trigger, _ := session["ai_error_trigger"].(bool); trigger {
-		return nil, fmt.Errorf("AI layer error: model returned an error")
-	}
-
-	// Read the PRD to produce artifacts.
-	prdPath := filepath.Join(specPath, "prd.md")
-	prdContent, err := os.ReadFile(prdPath)
+	result, err := generateFunc(ctx, specPath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read PRD: %w", err)
+		return nil, err
 	}
 
-	// Generate artifact content. In a full implementation this would
-	// delegate to the agentspec AI layer. Here we produce deterministic
-	// stub content based on the PRD.
-	prdText := string(prdContent)
-
-	requirementsContent := map[string]any{
-		"requirements": []map[string]any{
-			{
-				"id":   "REQ-GEN-1",
-				"text": fmt.Sprintf("Generated from PRD (%d bytes)", len(prdText)),
-			},
-		},
-	}
-
-	testSpecContent := map[string]any{
-		"tests": []map[string]any{
-			{
-				"id":   "TS-GEN-1",
-				"name": "Generated test spec",
-			},
-		},
-	}
-
-	tasksContent := map[string]any{
-		"tasks": []map[string]any{
-			{
-				"id":   "T-GEN-1",
-				"name": "Generated task",
-			},
-		},
-	}
-
-	// Write artifact files.
-	artifacts := make([]string, 0, len(artifactFiles))
-	artifactContents := []any{requirementsContent, testSpecContent, tasksContent}
-
-	for i, artifact := range artifactFiles {
-		data, err := json.MarshalIndent(artifactContents[i], "", "  ")
-		if err != nil {
-			return nil, fmt.Errorf("cannot marshal %s: %w", artifact, err)
+	// Map agentspec artifact keys (e.g. "requirements") to filenames
+	// (e.g. "requirements.json") for CLI output.
+	artifacts := make([]string, 0, len(result.Artifacts))
+	for _, name := range result.Artifacts {
+		if fileName, ok := artifactKeyToFile[name]; ok {
+			artifacts = append(artifacts, fileName)
+		} else {
+			artifacts = append(artifacts, name)
 		}
-		p := filepath.Join(specPath, artifact)
-		if err := os.WriteFile(p, data, 0644); err != nil {
-			return nil, fmt.Errorf("cannot write %s: %w", artifact, err)
-		}
-		artifacts = append(artifacts, artifact)
+	}
+
+	// Fallback: if the result contained no artifacts, return the standard set.
+	if len(artifacts) == 0 {
+		artifacts = append(artifacts, artifactFiles...)
 	}
 
 	return artifacts, nil

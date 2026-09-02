@@ -2,11 +2,43 @@ package spec
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/agent-fox-dev/spec-format/agentspec"
 )
+
+// --- Test helpers ---
+
+// setupMockGenerate injects a mock generateFunc for the duration of the
+// test. The mock writes minimal valid artifact files and returns success.
+func setupMockGenerate(t *testing.T) {
+	t.Helper()
+	orig := generateFunc
+	generateFunc = func(ctx context.Context, specPath string) (agentspec.GenerateResult, error) {
+		reqContent := `{"spec_id":"TST-001","spec_name":"test_spec","requirements":[{"id":"REQ-TST-1","text":"Test requirement"}]}`
+		tsContent := `{"spec_id":"TST-001","spec_name":"test_spec","test_cases":[{"id":"TC-TST-1","name":"Test case"}]}`
+		tasksContent := `{"spec_id":"TST-001","spec_name":"test_spec","tasks":[{"id":"T-TST-1","title":"Test task"}]}`
+		if err := os.WriteFile(filepath.Join(specPath, "requirements.json"), []byte(reqContent), 0644); err != nil {
+			return agentspec.GenerateResult{}, err
+		}
+		if err := os.WriteFile(filepath.Join(specPath, "test_spec.json"), []byte(tsContent), 0644); err != nil {
+			return agentspec.GenerateResult{}, err
+		}
+		if err := os.WriteFile(filepath.Join(specPath, "tasks.json"), []byte(tasksContent), 0644); err != nil {
+			return agentspec.GenerateResult{}, err
+		}
+		return agentspec.GenerateResult{
+			Artifacts: []string{"requirements", "test_spec", "tasks"},
+		}, nil
+	}
+	t.Cleanup(func() { generateFunc = orig })
+}
 
 // --- TS-08-23: Verify that spec generate auto-accepts the PRD via AcceptPRD
 //     before running Generate when session state is ASSESSING or REFINING ---
@@ -42,6 +74,9 @@ func TestTS08_23_GenerateAutoAcceptsAssessing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte("# Test PRD\nContent"), 0644); err != nil {
 		t.Fatal(err)
 	}
+
+	// Inject mock to avoid real AI call.
+	setupMockGenerate(t)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -125,6 +160,9 @@ func TestTS08_23_GenerateAutoAcceptsRefining(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Inject mock to avoid real AI call.
+	setupMockGenerate(t)
+
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
 	cmd.SetOut(stdoutBuf)
@@ -185,9 +223,9 @@ func TestTS08_24_GenerateAcceptedState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a session in accepted state.
+	// Create a session in prd_accepted state (the valid agentspec state).
 	sessionData := map[string]any{
-		"state":               "accepted",
+		"state":               "prd_accepted",
 		"mode":                "standard",
 		"prd_path":            "prd.md",
 		"assessment_history":  []any{},
@@ -202,6 +240,9 @@ func TestTS08_24_GenerateAcceptedState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte("# Test PRD\nContent"), 0644); err != nil {
 		t.Fatal(err)
 	}
+
+	// Inject mock to avoid real AI call.
+	setupMockGenerate(t)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -263,9 +304,9 @@ func TestTS08_25_GenerateForceDeletesArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a session in accepted state.
+	// Create a session in prd_accepted state (the valid agentspec state).
 	sessionData := map[string]any{
-		"state":               "accepted",
+		"state":               "prd_accepted",
 		"mode":                "standard",
 		"prd_path":            "prd.md",
 		"assessment_history":  []any{},
@@ -288,6 +329,9 @@ func TestTS08_25_GenerateForceDeletesArtifacts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	// Inject mock to avoid real AI call.
+	setupMockGenerate(t)
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -325,8 +369,6 @@ func TestTS08_25_GenerateForceDeletesArtifacts(t *testing.T) {
 			t.Error("requirements.json still has old content after --force; want fresh content")
 		}
 	}
-	// Note: if the file doesn't exist after generate, that's also acceptable for test
-	// stub purposes — the implementation will create it.
 }
 
 // --- 08-REQ-9.E2: Generate returns an error from the AI layer ---
@@ -343,16 +385,14 @@ func TestTS08_23_GenerateAILayerError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a session in accepted state but with invalid config to trigger
-	// an AI layer error during generation.
+	// Create a session in prd_accepted state.
 	sessionData := map[string]any{
-		"state":               "accepted",
+		"state":               "prd_accepted",
 		"mode":                "standard",
 		"prd_path":            "prd.md",
 		"assessment_history":  []any{},
 		"qa_exchanges":        []any{},
 		"generated_artifacts": []any{},
-		"ai_error_trigger":    true, // sentinel for testing
 	}
 	sessionJSON, _ := json.Marshal(sessionData)
 	if err := os.WriteFile(filepath.Join(specPath, "_session.json"), sessionJSON, 0644); err != nil {
@@ -363,26 +403,29 @@ func TestTS08_23_GenerateAILayerError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The command should propagate the AI error and exit 1.
-	// For now, the stub returns "not implemented" which is also an error,
-	// so this test verifies error handling behavior.
+	// Inject a mock that returns an AI layer error.
+	orig := generateFunc
+	generateFunc = func(ctx context.Context, sp string) (agentspec.GenerateResult, error) {
+		return agentspec.GenerateResult{}, fmt.Errorf("AI layer error: model returned an error")
+	}
+	t.Cleanup(func() { generateFunc = orig })
+
 	cmd := newRootCmd()
 	cmd.SetOut(new(bytes.Buffer))
 	cmd.SetErr(new(bytes.Buffer))
 	cmd.SetArgs([]string{"--spec-dir", specDir, "generate", "08_my_spec"})
 
 	err := cmd.Execute()
-	// The implementation should return an error when AI fails.
-	// The stub currently always errors, so the real test is that the
-	// implementation propagates AI errors properly.
+	// The AI layer error should be propagated and the command should fail.
 	if err == nil {
-		// When implementation exists, an AI error should surface.
-		// If this passes, verify no partial artifacts remain.
-		for _, artifact := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
-			artifactPath := filepath.Join(specPath, artifact)
-			if _, statErr := os.Stat(artifactPath); !os.IsNotExist(statErr) {
-				t.Errorf("partial artifact %s exists after AI error; want cleaned up", artifact)
-			}
+		t.Error("Execute() returned nil; want error when AI fails")
+	}
+
+	// Verify no partial artifacts remain after AI error.
+	for _, artifact := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
+		artifactPath := filepath.Join(specPath, artifact)
+		if _, statErr := os.Stat(artifactPath); !os.IsNotExist(statErr) {
+			t.Errorf("partial artifact %s exists after AI error; want cleaned up", artifact)
 		}
 	}
 }
@@ -406,7 +449,7 @@ func TestTS08_25_GenerateForcePermissionError(t *testing.T) {
 	}
 
 	sessionData := map[string]any{
-		"state":               "accepted",
+		"state":               "prd_accepted",
 		"mode":                "standard",
 		"prd_path":            "prd.md",
 		"assessment_history":  []any{},
@@ -481,5 +524,199 @@ func TestTS08_23_GenerateNonexistentSpec(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("Execute() with non-existent spec returned nil; want error")
+	}
+}
+
+// --- TS-NS-1: spec generate calls agentspec.GenerateSpec() instead of
+//     emitting hardcoded stub artifacts ---
+
+// TestTSNS1_GenerateUsesAIPipeline verifies that generated artifact files
+// contain AI-generated content with real IDs — no REQ-GEN-1, TS-GEN-1,
+// or T-GEN-1 placeholder values.
+// Covers: NS-REQ-1, TS-NS-1
+func TestTSNS1_GenerateUsesAIPipeline(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "47_ai_pipeline_spec")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionData := map[string]any{
+		"state":               "prd_accepted",
+		"mode":                "standard",
+		"prd_path":            "prd.md",
+		"assessment_history":  []any{},
+		"qa_exchanges":        []any{},
+		"generated_artifacts": []any{},
+	}
+	sessionJSON, _ := json.Marshal(sessionData)
+	if err := os.WriteFile(filepath.Join(specPath, "_session.json"), sessionJSON, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte("# AI Pipeline Test PRD\nContent"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inject a mock that writes real (non-stub) artifact content.
+	orig := generateFunc
+	generateFunc = func(ctx context.Context, sp string) (agentspec.GenerateResult, error) {
+		reqContent := `{"spec_id":"47","spec_name":"ai_pipeline_spec","requirements":[{"id":"REQ-47-1","text":"The system shall do X"}]}`
+		tsContent := `{"spec_id":"47","spec_name":"ai_pipeline_spec","test_cases":[{"id":"TC-47-1","name":"Verify X"}]}`
+		tasksContent := `{"spec_id":"47","spec_name":"ai_pipeline_spec","tasks":[{"id":"T-47-1","title":"Implement X"}]}`
+		_ = os.WriteFile(filepath.Join(sp, "requirements.json"), []byte(reqContent), 0644)
+		_ = os.WriteFile(filepath.Join(sp, "test_spec.json"), []byte(tsContent), 0644)
+		_ = os.WriteFile(filepath.Join(sp, "tasks.json"), []byte(tasksContent), 0644)
+		return agentspec.GenerateResult{Artifacts: []string{"requirements", "test_spec", "tasks"}}, nil
+	}
+	t.Cleanup(func() { generateFunc = orig })
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "generate", "47_ai_pipeline_spec"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	// Verify artifact files do not contain stub IDs.
+	stubIDs := []string{"REQ-GEN-1", "TS-GEN-1", "T-GEN-1"}
+	for _, artifact := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
+		data, err := os.ReadFile(filepath.Join(specPath, artifact))
+		if err != nil {
+			t.Fatalf("cannot read %s: %v", artifact, err)
+		}
+		content := string(data)
+		for _, stubID := range stubIDs {
+			if strings.Contains(content, stubID) {
+				t.Errorf("%s contains stub ID %q; want AI-generated content", artifact, stubID)
+			}
+		}
+	}
+}
+
+// --- TS-NS-2: acceptPRD() writes state "prd_accepted" so that
+//     agentspec.ResumeSession() can load the session without error ---
+
+// TestTSNS2_GenerateAutoAcceptsWritesPRDAcceptedState verifies that after
+// auto-accepting the PRD, _session.json contains state "prd_accepted"
+// (not "accepted"), and agentspec.ResumeSession() can load it without error.
+// Covers: NS-REQ-2, TS-NS-2
+func TestTSNS2_GenerateAutoAcceptsWritesPRDAcceptedState(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "47_accept_state_spec")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start in ASSESSING state — generate should auto-accept to prd_accepted.
+	sessionData := map[string]any{
+		"state":               "assessing",
+		"mode":                "standard",
+		"prd_path":            "prd.md",
+		"assessment_history":  []any{},
+		"qa_exchanges":        []any{},
+		"generated_artifacts": []any{},
+	}
+	sessionJSON, _ := json.Marshal(sessionData)
+	if err := os.WriteFile(filepath.Join(specPath, "_session.json"), sessionJSON, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte("# PRD\nContent"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inject mock to avoid real AI call.
+	setupMockGenerate(t)
+
+	cmd := newRootCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "generate", "47_accept_state_spec"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	// Read _session.json and check state is "prd_accepted".
+	data, err := os.ReadFile(filepath.Join(specPath, "_session.json"))
+	if err != nil {
+		t.Fatalf("failed to read _session.json: %v", err)
+	}
+	var session map[string]any
+	if err := json.Unmarshal(data, &session); err != nil {
+		t.Fatalf("_session.json is not valid JSON: %v", err)
+	}
+	state, _ := session["state"].(string)
+	if state != "prd_accepted" {
+		t.Errorf("session.state = %q after generate; want %q", state, "prd_accepted")
+	}
+
+	// Verify agentspec.ResumeSession can load the session without error.
+	// Note: the mock wrote valid artifact files, so the session should have
+	// generated_artifacts set, but ResumeSession only needs a valid state.
+	_, resumeErr := agentspec.ResumeSession(specPath)
+	if resumeErr != nil {
+		t.Errorf("agentspec.ResumeSession() returned error: %v; want nil", resumeErr)
+	}
+}
+
+// --- TS-NS-5 (generate): Missing API key produces clear error ---
+
+// TestTSNS5_GenerateMissingAPIKeyError verifies that when ANTHROPIC_API_KEY
+// is absent and no alternative provider is set, spec generate exits with
+// non-zero status and an error message containing "ANTHROPIC_API_KEY".
+// Covers: NS-REQ-5, TS-NS-5
+func TestTSNS5_GenerateMissingAPIKeyError(t *testing.T) {
+	// Unset all provider env vars.
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_CODE_USE_VERTEX", "")
+	t.Setenv("CLAUDE_CODE_USE_BEDROCK", "")
+
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "47_no_key_spec")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionData := map[string]any{
+		"state":               "prd_accepted",
+		"mode":                "standard",
+		"prd_path":            "prd.md",
+		"assessment_history":  []any{},
+		"qa_exchanges":        []any{},
+		"generated_artifacts": []any{},
+	}
+	sessionJSON, _ := json.Marshal(sessionData)
+	if err := os.WriteFile(filepath.Join(specPath, "_session.json"), sessionJSON, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte("# PRD\nContent"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Do NOT inject a mock — use the real generateFunc so the API key check fires.
+	cmd := newRootCmd()
+	var stderrBuf bytes.Buffer
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(&stderrBuf)
+	cmd.SetArgs([]string{"--spec-dir", specDir, "generate", "47_no_key_spec"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() returned nil; want error for missing API key")
+	}
+
+	// The error message should contain "ANTHROPIC_API_KEY".
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "ANTHROPIC_API_KEY") {
+		t.Errorf("error message = %q; want it to contain %q", errMsg, "ANTHROPIC_API_KEY")
 	}
 }

@@ -7,10 +7,18 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/agent-fox-dev/spec-format/agentspec"
 	"github.com/spf13/cobra"
 )
+
+// assessFunc is the function used to assess a PRD for quality. It can be
+// replaced in tests with a mock that avoids real AI calls.
+var assessFunc = agentspec.AssessSpec
+
+// refineFunc is the function used to refine a PRD with user answers. It can
+// be replaced in tests with a mock that avoids real AI calls.
+var refineFunc = agentspec.RefineSpec
 
 // newRefineCmd creates the "spec refine" subcommand which iteratively
 // refines a PRD through AI-driven Q&A.
@@ -64,7 +72,7 @@ func newRefineCmd() *cobra.Command {
 
 				spinner := NewStatusSpinner("Refining PRD...", cmd.ErrOrStderr(), quiet, false)
 				spinner.Start()
-				result, refineErr := refineWithAnswers(ctx, answersData)
+				result, refineErr := refineWithAnswers(ctx, specPath, answersData)
 				spinner.Stop()
 				if refineErr != nil {
 					return refineErr
@@ -148,46 +156,24 @@ func sessionNeedsAssessment(state string) bool {
 	return state == "init" || state == "assessing"
 }
 
-// assessPRD performs a PRD quality assessment. In a full implementation
-// this would call the AI model via session.Assess(ctx). Returns the
-// assessment result without mutating session state.
-func assessPRD(ctx context.Context, specPath string) (map[string]any, error) {
+// assessPRD performs a PRD quality assessment by calling the agentspec AI
+// pipeline. Returns the Assessment result. When SPEC_TEST_BLOCK_AI=1,
+// blocks until context cancellation.
+func assessPRD(ctx context.Context, specPath string) (agentspec.Assessment, error) {
 	// Test hook: block until context cancellation to simulate a long-running
 	// AI call. Activated by SPEC_TEST_BLOCK_AI=1 environment variable.
 	if os.Getenv("SPEC_TEST_BLOCK_AI") == "1" {
 		<-ctx.Done()
-		return nil, ctx.Err()
+		return agentspec.Assessment{}, ctx.Err()
 	}
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return agentspec.Assessment{}, ctx.Err()
 	default:
 	}
 
-	// Read the PRD content.
-	prdPath := filepath.Join(specPath, "prd.md")
-	prdContent, err := os.ReadFile(prdPath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read PRD: %w", err)
-	}
-
-	// Produce a basic assessment. In a full implementation this would
-	// delegate to the agentspec AI layer.
-	prdText := string(prdContent)
-	quality := "fair"
-	if len(strings.Split(prdText, "\n")) > 20 {
-		quality = "good"
-	}
-
-	assessment := map[string]any{
-		"quality":   quality,
-		"summary":   "PRD assessment complete",
-		"gaps":      []string{},
-		"questions": []any{},
-	}
-
-	return assessment, nil
+	return assessFunc(ctx, specPath)
 }
 
 // getPendingQuestions extracts unanswered questions from the session's
@@ -277,20 +263,29 @@ func readAnswersInput(cmd *cobra.Command, answersArg string) (map[string]any, er
 	return parsed, nil
 }
 
-// refineWithAnswers runs a refinement pass using the provided answers.
-// In a full implementation this would call session.Refine(ctx, answers)
-// via the AI layer. Returns the refinement result.
-func refineWithAnswers(ctx context.Context, answers map[string]any) (map[string]any, error) {
+// answersToStringMap converts a map[string]any to map[string]string for the
+// agentspec AI pipeline. Non-string values are formatted with fmt.Sprintf.
+func answersToStringMap(in map[string]any) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		} else {
+			out[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	return out
+}
+
+// refineWithAnswers runs a refinement pass using the provided answers by
+// calling the agentspec AI pipeline. Updates prd.md on disk and returns
+// the new Assessment.
+func refineWithAnswers(ctx context.Context, specPath string, answers map[string]any) (agentspec.Assessment, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return agentspec.Assessment{}, ctx.Err()
 	default:
 	}
 
-	result := map[string]any{
-		"status":  "refined",
-		"answers": answers,
-	}
-
-	return result, nil
+	return refineFunc(ctx, specPath, answersToStringMap(answers))
 }

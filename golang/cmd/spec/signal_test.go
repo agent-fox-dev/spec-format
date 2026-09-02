@@ -150,7 +150,7 @@ func TestTS08_43_GenerateExitsOnSIGINT(t *testing.T) {
 	}
 
 	sessionData := map[string]any{
-		"state":               "accepted",
+		"state":               "prd_accepted",
 		"mode":                "standard",
 		"prd_path":            "prd.md",
 		"assessment_history":  []any{},
@@ -166,7 +166,7 @@ func TestTS08_43_GenerateExitsOnSIGINT(t *testing.T) {
 	}
 
 	// Start the generate command with SPEC_TEST_BLOCK_AI=1 so the
-	// stub AI operation blocks until context cancellation, giving
+	// AI operation blocks until context cancellation, giving
 	// the signal time to arrive and be handled.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "generate", "08_signal_spec")
 	proc.Dir = tmpDir
@@ -335,7 +335,7 @@ func TestTS08_42_DoubleSignalForceExit(t *testing.T) {
 	}
 
 	sessionData := map[string]any{
-		"state":               "accepted",
+		"state":               "prd_accepted",
 		"mode":                "standard",
 		"prd_path":            "prd.md",
 		"assessment_history":  []any{},
@@ -351,7 +351,7 @@ func TestTS08_42_DoubleSignalForceExit(t *testing.T) {
 	}
 
 	// Start the generate command with SPEC_TEST_BLOCK_AI=1 so the
-	// stub blocks, giving signals time to arrive.
+	// AI operation blocks, giving signals time to arrive.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "generate", "08_signal_spec")
 	proc.Dir = tmpDir
 	proc.Env = append(os.Environ(), "SPEC_TEST_BLOCK_AI=1")
