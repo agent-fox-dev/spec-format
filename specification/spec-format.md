@@ -998,6 +998,33 @@ integrity checks. Rules:
 7. `spec_id` and `spec_name` must be consistent across all four required files.
 8. No two entries in the `tasks.json` traceability array may share the
    same `(requirement_id, test_spec_id)` pair.
+9. Every entry in a subtask's `requirement_refs` array in `tasks.json` must
+   resolve to a known ID in `requirements.json` — either a requirement ID
+   (e.g. `05-REQ-1`), an acceptance criterion ID (e.g. `05-REQ-1.1`), or an
+   edge-case ID (e.g. `05-REQ-1.E1`). An unresolvable reference is an error.
+   **Artifacts:** `tasks.json` → `requirements.json`.
+10. Every acceptance criterion or edge case in `requirements.json` whose
+    `ears_pattern` is `"unwanted"` must supply a non-empty `return_contract`.
+    A missing or empty `return_contract` on an `unwanted` criterion is an error.
+    **Artifact:** `requirements.json`.
+
+**`wiring_verification` semantic checks:**
+
+The validator enforces three content requirements on the final
+`wiring_verification` task group in `tasks.json`. Each failure is an error.
+
+- **(A) Test-spec refs present** — at least one subtask must have a non-empty
+  `test_spec_refs` array. A `wiring_verification` group with no test-spec
+  references is rejected.
+- **(B) Smoke test ref required** — at least one `test_spec_refs` entry across
+  all subtasks must match the smoke-test ID pattern `TS-*-SMOKE-*`. A group
+  that references only non-smoke tests is rejected.
+- **(C) Stub/dead-code mention required** — at least one subtask's `title`,
+  `details` entries, or the group's `verification.checks` entries must contain
+  the word `stub` or `dead` (case-insensitive). This ensures the stub/dead-code
+  audit step (§8.4) is explicitly represented in the task plan.
+
+**Artifact:** `tasks.json`.
 
 **Glossary cross-check (rule 6) details:**
 
