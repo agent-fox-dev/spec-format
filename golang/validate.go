@@ -581,10 +581,10 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 
 	// --- Cross-file rule 1: Traceability requirement_id resolution ---
 	// Each traceability entry's requirement_id must resolve to a known
-	// criterion (acceptance_criteria or edge_case) ID.
+	// requirement, criterion (acceptance_criteria), or edge_case ID.
 	if s.Tasks != nil {
 		for _, te := range s.Tasks.Traceability {
-			if te.RequirementId != "" && !criterionIDs[te.RequirementId] {
+			if te.RequirementId != "" && !reqIDs[te.RequirementId] {
 				errors = append(errors, ValidationEntry{
 					Category:      "integrity",
 					Check:         "cross_file_1",

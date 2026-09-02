@@ -5648,8 +5648,8 @@ func TestValidateCrossFile_FullyCoveredSpec(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestCrossFile1_TraceabilityDanglingRef verifies that a traceability entry
-// referencing a non-existent criterion/edge_case ID produces a cross_file_1
-// error, and that a valid criterion ID does not.
+// referencing a non-existent ID produces a cross_file_1 error, and that
+// valid requirement, criterion, or edge_case IDs do not.
 // Test Spec: TS-NS-1, TS-NS-3
 // Requirements: NS-REQ-1, NS-REQ-3
 func TestCrossFile1_TraceabilityDanglingRef(t *testing.T) {
@@ -5673,11 +5673,9 @@ func TestCrossFile1_TraceabilityDanglingRef(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:         "top-level requirement ID (not a criterion) produces cross_file_1 error",
-			reqID:        "04-REQ-1",
-			wantError:    true,
-			wantCheck:    "cross_file_1",
-			wantArtifact: "tasks.json",
+			name:      "top-level requirement ID produces no cross_file_1 error",
+			reqID:     "04-REQ-1",
+			wantError: false,
 		},
 	}
 
