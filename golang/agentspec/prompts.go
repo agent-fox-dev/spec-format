@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -215,13 +216,19 @@ func formatAssessmentBlock(a Assessment) string {
 }
 
 // formatQABlock formats question-answer pairs into a human-readable block.
+// Keys are sorted lexicographically to produce deterministic output.
 func formatQABlock(answers map[string]string) string {
 	if len(answers) == 0 {
 		return "No questions and answers provided."
 	}
+	keys := make([]string, 0, len(answers))
+	for q := range answers {
+		keys = append(keys, q)
+	}
+	sort.Strings(keys)
 	var sb strings.Builder
-	for q, a := range answers {
-		sb.WriteString(fmt.Sprintf("Q: %s\nA: %s\n\n", q, a))
+	for _, q := range keys {
+		sb.WriteString(fmt.Sprintf("Q: %s\nA: %s\n\n", q, answers[q]))
 	}
 	return sb.String()
 }

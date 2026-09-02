@@ -359,3 +359,91 @@ func TestSpec07_LoadPromptTemplate_InvalidNamePropagatesError(t *testing.T) {
 		t.Errorf("LoadPromptTemplate() = %q; want empty string on error", content)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TS-NS-1..4: formatQABlock deterministic ordering (issue #34)
+// ---------------------------------------------------------------------------
+
+// TestNS_FormatQABlock_DeterministicOutput verifies that formatQABlock produces
+// identical output across many calls with the same multi-key map, and that
+// pairs are ordered lexicographically by question key.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS_FormatQABlock_DeterministicOutput(t *testing.T) {
+	answers := map[string]string{
+		"beta":  "b",
+		"alpha": "a",
+	}
+	first := formatQABlock(answers)
+	for i := 0; i < 100; i++ {
+		got := formatQABlock(answers)
+		if got != first {
+			t.Fatalf("call %d: formatQABlock() = %q; want %q (non-deterministic output)", i+1, got, first)
+		}
+	}
+	// alpha must appear before beta.
+	alphaIdx := strings.Index(first, "Q: alpha")
+	betaIdx := strings.Index(first, "Q: beta")
+	if alphaIdx < 0 {
+		t.Error("output does not contain 'Q: alpha'")
+	}
+	if betaIdx < 0 {
+		t.Error("output does not contain 'Q: beta'")
+	}
+	if alphaIdx >= betaIdx {
+		t.Errorf("'Q: alpha' (pos %d) must appear before 'Q: beta' (pos %d)", alphaIdx, betaIdx)
+	}
+}
+
+// TestNS_FormatQABlock_LexicographicOrder verifies three-key ordering.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS_FormatQABlock_LexicographicOrder(t *testing.T) {
+	answers := map[string]string{
+		"zebra": "z",
+		"apple": "a",
+		"mango": "m",
+	}
+	out := formatQABlock(answers)
+	appleIdx := strings.Index(out, "Q: apple")
+	mangoIdx := strings.Index(out, "Q: mango")
+	zebraIdx := strings.Index(out, "Q: zebra")
+	if appleIdx < 0 || mangoIdx < 0 || zebraIdx < 0 {
+		t.Fatalf("output missing expected keys: %q", out)
+	}
+	if !(appleIdx < mangoIdx && mangoIdx < zebraIdx) {
+		t.Errorf("expected apple < mango < zebra; got positions apple=%d mango=%d zebra=%d", appleIdx, mangoIdx, zebraIdx)
+	}
+}
+
+// TestNS_FormatQABlock_EmptyMap verifies that an empty map returns the sentinel string.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS_FormatQABlock_EmptyMap(t *testing.T) {
+	got := formatQABlock(map[string]string{})
+	want := "No questions and answers provided."
+	if got != want {
+		t.Errorf("formatQABlock({}) = %q; want %q", got, want)
+	}
+}
+
+// TestNS_RefinementUserPrompt_Deterministic verifies that RefinementUserPrompt
+// returns identical output on repeated calls with the same multi-key answers map.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestNS_RefinementUserPrompt_Deterministic(t *testing.T) {
+	answers := map[string]string{
+		"beta":  "b",
+		"alpha": "a",
+	}
+	assessment := Assessment{}
+	emptyTmpDir := t.TempDir()
+
+	first, err := RefinementUserPrompt("PRD text", answers, assessment, emptyTmpDir, nil)
+	if err != nil {
+		t.Fatalf("RefinementUserPrompt() returned error: %v", err)
+	}
+	second, err := RefinementUserPrompt("PRD text", answers, assessment, emptyTmpDir, nil)
+	if err != nil {
+		t.Fatalf("RefinementUserPrompt() second call returned error: %v", err)
+	}
+	if first != second {
+		t.Errorf("RefinementUserPrompt() is non-deterministic: first call and second call differ")
+	}
+}
