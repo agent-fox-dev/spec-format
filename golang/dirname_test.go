@@ -21,6 +21,9 @@ func TestIsSpecDirName_ValidNames(t *testing.T) {
 		{"10_foo_bar_baz", true},
 		{"42_simple", true},
 		{"01_a", true},
+		{"001_foo", true},
+		{"100_my_spec", true},
+		{"999_edge_case", true},
 	}
 
 	for _, tt := range tests {
@@ -51,7 +54,6 @@ func TestIsSpecDirName_InvalidNames(t *testing.T) {
 		{"01_", false},        // no name after underscore
 		{"01", false},         // no underscore or name
 		{"01_Foo", false},     // uppercase letters
-		{"001_foo", false},    // three-digit prefix
 		{"01_foo-bar", false}, // hyphen in name
 		{"01_foo bar", false}, // space in name
 		{"_01_foo", false},    // leading underscore
@@ -96,6 +98,8 @@ func TestParseSpecDirName_ValidName(t *testing.T) {
 		{"99_another_spec", "99", "another_spec"},
 		{"10_foo_bar_baz", "10", "foo_bar_baz"},
 		{"42_simple", "42", "simple"},
+		{"100_my_spec", "100", "my_spec"},
+		{"001_foo", "001", "foo"},
 	}
 
 	for _, tt := range tests {
