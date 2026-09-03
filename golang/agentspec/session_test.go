@@ -709,3 +709,172 @@ func TestSpecDir_ReturnsSetPath(t *testing.T) {
 		t.Errorf("SpecDir() = %q; want %q", got, specDir)
 	}
 }
+
+// --- loadSiblingLandscape tests (Issue #82) ---
+
+// writeSiblingPRD is a test helper that creates a spec directory under
+// parentDir named dirName and writes a minimal prd.md with the given
+// spec_id, spec_name, and status in the YAML frontmatter.
+func writeSiblingPRD(t *testing.T, parentDir, dirName, specID, specName, status string) {
+	t.Helper()
+	dir := filepath.Join(parentDir, dirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("failed to create sibling dir %s: %v", dir, err)
+	}
+	content := "---\n" +
+		"spec_id: \"" + specID + "\"\n" +
+		"spec_name: \"" + specName + "\"\n" +
+		"title: \"Test\"\n" +
+		"status: \"" + status + "\"\n" +
+		"created_at: \"2026-01-01T00:00:00Z\"\n" +
+		"updated_at: \"2026-01-01T00:00:00Z\"\n" +
+		"owner: \"tester\"\n" +
+		"source: \"https://example.com\"\n" +
+		"supersedes: []\n" +
+		"tags: []\n" +
+		"intent_hash: null\n" +
+		"schema_version: 1\n" +
+		"---\n# Test\n"
+	if err := os.WriteFile(filepath.Join(dir, "prd.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write prd.md in %s: %v", dir, err)
+	}
+}
+
+// TestLoadSiblingLandscape_DraftStatus verifies that a sibling with
+// status: draft in its prd.md frontmatter is reported with "draft" in
+// the landscape, not "active".
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestLoadSiblingLandscape_DraftStatus(t *testing.T) {
+	parent := t.TempDir()
+
+	// Create current spec dir (excluded from results).
+	currentDir := filepath.Join(parent, "01_current")
+	if err := os.MkdirAll(currentDir, 0o755); err != nil {
+		t.Fatalf("failed to create current dir: %v", err)
+	}
+
+	// Create a sibling with status: draft.
+	writeSiblingPRD(t, parent, "02_sibling", "02", "sibling", "draft")
+
+	session := &SpecSession{specDir: currentDir}
+	landscape := session.loadSiblingLandscape()
+
+	if len(landscape) != 1 {
+		t.Fatalf("loadSiblingLandscape() returned %d entries; want 1", len(landscape))
+	}
+	if got := landscape[0]["status"]; got != "draft" {
+		t.Errorf("landscape[0][\"status\"] = %q; want %q", got, "draft")
+	}
+}
+
+// TestLoadSiblingLandscape_SealedStatus verifies that a sibling with
+// status: sealed in its prd.md frontmatter is reported with "sealed" in
+// the landscape.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestLoadSiblingLandscape_SealedStatus(t *testing.T) {
+	parent := t.TempDir()
+
+	currentDir := filepath.Join(parent, "01_current")
+	if err := os.MkdirAll(currentDir, 0o755); err != nil {
+		t.Fatalf("failed to create current dir: %v", err)
+	}
+
+	writeSiblingPRD(t, parent, "02_sibling", "02", "sibling", "sealed")
+
+	session := &SpecSession{specDir: currentDir}
+	landscape := session.loadSiblingLandscape()
+
+	if len(landscape) != 1 {
+		t.Fatalf("loadSiblingLandscape() returned %d entries; want 1", len(landscape))
+	}
+	if got := landscape[0]["status"]; got != "sealed" {
+		t.Errorf("landscape[0][\"status\"] = %q; want %q", got, "sealed")
+	}
+}
+
+// TestLoadSiblingLandscape_ActiveStatus verifies that a sibling with
+// status: active in its prd.md frontmatter is reported with "active" in
+// the landscape.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestLoadSiblingLandscape_ActiveStatus(t *testing.T) {
+	parent := t.TempDir()
+
+	currentDir := filepath.Join(parent, "01_current")
+	if err := os.MkdirAll(currentDir, 0o755); err != nil {
+		t.Fatalf("failed to create current dir: %v", err)
+	}
+
+	writeSiblingPRD(t, parent, "02_sibling", "02", "sibling", "active")
+
+	session := &SpecSession{specDir: currentDir}
+	landscape := session.loadSiblingLandscape()
+
+	if len(landscape) != 1 {
+		t.Fatalf("loadSiblingLandscape() returned %d entries; want 1", len(landscape))
+	}
+	if got := landscape[0]["status"]; got != "active" {
+		t.Errorf("landscape[0][\"status\"] = %q; want %q", got, "active")
+	}
+}
+
+// TestLoadSiblingLandscape_ExcludesCurrentSpec verifies that the current
+// spec's directory is not included in the returned landscape.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestLoadSiblingLandscape_ExcludesCurrentSpec(t *testing.T) {
+	parent := t.TempDir()
+
+	// Current spec dir: 01_foo
+	writeSiblingPRD(t, parent, "01_foo", "01", "foo", "active")
+	currentDir := filepath.Join(parent, "01_foo")
+
+	// Sibling: 02_bar
+	writeSiblingPRD(t, parent, "02_bar", "02", "bar", "active")
+
+	session := &SpecSession{specDir: currentDir}
+	landscape := session.loadSiblingLandscape()
+
+	// Only 02_bar should appear; 01_foo (current) must not.
+	if len(landscape) != 1 {
+		t.Fatalf("loadSiblingLandscape() returned %d entries; want 1", len(landscape))
+	}
+	for _, entry := range landscape {
+		if entry["spec_id"] == "01" {
+			t.Errorf("landscape contains current spec entry (spec_id %q); it must be excluded", "01")
+		}
+	}
+	if got := landscape[0]["spec_id"]; got != "02" {
+		t.Errorf("landscape[0][\"spec_id\"] = %q; want %q", got, "02")
+	}
+}
+
+// TestLoadSiblingLandscape_SkipsMissingPRD verifies that a sibling
+// directory whose prd.md is missing is silently skipped while valid
+// siblings are still returned.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestLoadSiblingLandscape_SkipsMissingPRD(t *testing.T) {
+	parent := t.TempDir()
+
+	currentDir := filepath.Join(parent, "01_current")
+	if err := os.MkdirAll(currentDir, 0o755); err != nil {
+		t.Fatalf("failed to create current dir: %v", err)
+	}
+
+	// Valid sibling.
+	writeSiblingPRD(t, parent, "02_good", "02", "good", "active")
+
+	// Sibling directory with no prd.md.
+	badDir := filepath.Join(parent, "03_bad")
+	if err := os.MkdirAll(badDir, 0o755); err != nil {
+		t.Fatalf("failed to create bad sibling dir: %v", err)
+	}
+
+	session := &SpecSession{specDir: currentDir}
+	landscape := session.loadSiblingLandscape()
+
+	if len(landscape) != 1 {
+		t.Fatalf("loadSiblingLandscape() returned %d entries; want 1 (only the valid sibling)", len(landscape))
+	}
+	if got := landscape[0]["spec_id"]; got != "02" {
+		t.Errorf("landscape[0][\"spec_id\"] = %q; want %q", got, "02")
+	}
+}

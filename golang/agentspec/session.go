@@ -722,40 +722,35 @@ func (s *SpecSession) persistError(err error) {
 }
 
 // loadSiblingLandscape attempts to load spec landscape entries from
-// sibling spec directories (same parent directory). Returns an empty
-// slice on any error — landscape loading is best-effort.
+// sibling spec directories (same parent directory). Each entry's status
+// is read from the sibling's prd.md frontmatter. Returns nil on any
+// directory-read error — landscape loading is best-effort; individual
+// siblings with missing or malformed prd.md are silently skipped.
 func (s *SpecSession) loadSiblingLandscape() []map[string]any {
 	parentDir := filepath.Dir(s.specDir)
 	currentName := filepath.Base(s.specDir)
 
-	entries, err := os.ReadDir(parentDir)
-	if err != nil {
+	// Derive the current spec's ID from its directory name (best-effort)
+	// so LoadSpecLandscape can exclude it from results.
+	currentSpecID, _, _ := afspec.ParseSpecDirName(currentName)
+
+	// LoadSpecLandscape scans parentDir, reads each sibling's prd.md
+	// frontmatter to obtain the actual status, and excludes the current
+	// spec. Errors from missing or malformed PRDs are silently ignored.
+	metas, _ := afspec.LoadSpecLandscape(parentDir, false, currentSpecID)
+
+	if len(metas) == 0 {
 		return nil
 	}
 
-	var landscape []map[string]any
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if name == currentName || name == "archive" {
-			continue
-		}
-		if !afspec.IsSpecDirName(name) {
-			continue
-		}
-		prefix, specName, err := afspec.ParseSpecDirName(name)
-		if err != nil {
-			continue
-		}
+	landscape := make([]map[string]any, 0, len(metas))
+	for _, m := range metas {
 		landscape = append(landscape, map[string]any{
-			"spec_id": prefix,
-			"title":   specName,
-			"status":  "active",
+			"spec_id": m.SpecID,
+			"title":   m.SpecName,
+			"status":  m.Status,
 		})
 	}
-
 	return landscape
 }
 
