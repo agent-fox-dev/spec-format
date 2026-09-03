@@ -132,7 +132,9 @@ func mkArtifactResponse(name string) *MessageResponse {
 			map[string]any{"id": "TS-07-1", "name": "test X"},
 		}
 	case "tasks":
-		content["task_groups"] = []any{}
+		content["task_groups"] = []any{
+			map[string]any{"id": 1, "name": "implement X"},
+		}
 	}
 
 	return &MessageResponse{

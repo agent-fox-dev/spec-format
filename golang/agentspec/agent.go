@@ -723,9 +723,7 @@ func validateArtifactContent(input any, artifactName string) (map[string]any, er
 		return nil, fmt.Errorf("artifact %s missing required keys: %s", artifactName, strings.Join(missing, ", "))
 	}
 
-	// Run library validation for each artifact type: EARS pattern field
-	// constraints and ID format checks for requirements; ID format and kind
-	// enum checks for test_spec; subtask and verification ID format for tasks.
+	// Run library validation for structural integrity beyond key presence.
 	switch artifactName {
 	case "requirements":
 		if entries := afspec.ValidateRequirementsMap(m); len(entries) > 0 {

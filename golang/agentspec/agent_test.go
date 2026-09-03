@@ -985,8 +985,8 @@ func TestSpec07_GenerateArtifacts_HappyPath(t *testing.T) {
 		"test_cases": []any{},
 	}
 	tasksContent := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
+		"spec_id":     "07",
+		"spec_name":   "test",
 		"task_groups": []any{},
 	}
 
@@ -1095,8 +1095,8 @@ func TestSpec07_GenerateArtifacts_RepairLoop_Success(t *testing.T) {
 		"test_cases": []any{},
 	}
 	validTasks := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
+		"spec_id":     "07",
+		"spec_name":   "test",
 		"task_groups": []any{},
 	}
 
@@ -1225,9 +1225,9 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 		"test_cases": []any{map[string]any{"id": "TS-07-1", "requirement": "07-REQ-1"}},
 	}
 	tasksContent := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
-		"task_groups": []any{},
+		"spec_id":     "07",
+		"spec_name":   "test",
+		"task_groups": []any{map[string]any{"id": 1, "description": "Implement 07-REQ-1"}},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1401,8 +1401,8 @@ func TestSpec07_GenerateArtifacts_MalformedPayload(t *testing.T) {
 		"test_cases": []any{},
 	}
 	validTasks := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
+		"spec_id":     "07",
+		"spec_name":   "test",
 		"task_groups": []any{},
 	}
 
@@ -2344,7 +2344,7 @@ func TestNS57_AllArtifactsPresent(t *testing.T) {
 		"spec_id": "57", "spec_name": "test", "test_cases": []any{"tc1"},
 	}
 	wantTasks := map[string]any{
-		"spec_id": "57", "spec_name": "test", "task_groups": []any{},
+		"spec_id": "57", "spec_name": "test", "task_groups": []any{"task1"},
 	}
 
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
@@ -2850,22 +2850,20 @@ func TestNS48_RepairLoop_Exhaustion_ReturnsValidationAgentError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TS-NS-1 (issue #62): validateArtifactContent for tasks checks "task_groups"
+// NS-REQ-1/TS-NS-1: validateArtifactContent checks "task_groups" not "tasks"
 // ---------------------------------------------------------------------------
 
 // TestNS62_ValidateArtifactContent_TasksMissingTaskGroups verifies that
-// validateArtifactContent for a tasks artifact rejects a map that has
-// spec_id and spec_name but lacks the "task_groups" key.
+// validateArtifactContent for the "tasks" artifact rejects a map that has
+// "spec_id" and "spec_name" but is missing the "task_groups" key.
 // Test Spec: TS-NS-1, Requirement: NS-REQ-1
 func TestNS62_ValidateArtifactContent_TasksMissingTaskGroups(t *testing.T) {
 	t.Parallel()
 
-	// This artifact has spec_id and spec_name but not task_groups —
-	// it used to pass incorrectly because the old check looked for "tasks".
 	content := map[string]any{
-		"spec_id":   "01",
+		"spec_id":   "62",
 		"spec_name": "foo",
-		// "task_groups" intentionally absent
+		// "task_groups" intentionally absent — should be rejected
 	}
 
 	_, err := validateArtifactContent(content, "tasks")
@@ -2878,29 +2876,29 @@ func TestNS62_ValidateArtifactContent_TasksMissingTaskGroups(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TS-NS-2 (issue #62): ValidateTestSpecMap rejects invalid test case ID format
+// NS-REQ-2/TS-NS-2: ValidateTestSpecMap rejects invalid test case ID format
 // ---------------------------------------------------------------------------
 
 // TestNS62_ValidateArtifactContent_TestSpecBadID verifies that
-// validateArtifactContent for a test_spec artifact returns an error when a
-// test case has an ID that does not match the expected TS-NN-N format.
+// validateArtifactContent for the "test_spec" artifact rejects a map whose
+// test_cases contain an entry with an ID that does not match ^TS-\w+-\d+$.
 // Test Spec: TS-NS-2, Requirement: NS-REQ-2
 func TestNS62_ValidateArtifactContent_TestSpecBadID(t *testing.T) {
 	t.Parallel()
 
 	content := map[string]any{
-		"spec_id":   "01",
+		"spec_id":   "62",
 		"spec_name": "foo",
 		"test_cases": []any{
 			map[string]any{
-				"id": "BAD-TC",
+				"id": "BAD-TC", // does not match ^TS-\w+-\d+$
 			},
 		},
 	}
 
 	_, err := validateArtifactContent(content, "test_spec")
 	if err == nil {
-		t.Fatal("validateArtifactContent() returned nil error; want error for bad test case ID")
+		t.Fatal("validateArtifactContent() returned nil error; want ID format error")
 	}
 	errStr := err.Error()
 	if !strings.Contains(errStr, "id_format") && !strings.Contains(errStr, "BAD-TC") {
@@ -2909,30 +2907,29 @@ func TestNS62_ValidateArtifactContent_TestSpecBadID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TS-NS-3 (issue #62): ValidateTestSpecMap rejects invalid kind value
+// NS-REQ-3/TS-NS-3: ValidateTestSpecMap rejects invalid kind enum value
 // ---------------------------------------------------------------------------
 
 // TestNS62_ValidateTestSpecMap_BadKind verifies that ValidateTestSpecMap
-// returns a non-empty ValidationEntry slice when a test case has an invalid
-// kind value.
+// returns a non-empty slice when a test case has an invalid "kind" value.
 // Test Spec: TS-NS-3, Requirement: NS-REQ-3
 func TestNS62_ValidateTestSpecMap_BadKind(t *testing.T) {
 	t.Parallel()
 
 	content := map[string]any{
-		"spec_id":   "01",
+		"spec_id":   "62",
 		"spec_name": "foo",
 		"test_cases": []any{
 			map[string]any{
-				"id":   "TS-01-1",
-				"kind": "bad_kind",
+				"id":   "TS-62-1",
+				"kind": "bad_kind", // not a valid enum value
 			},
 		},
 	}
 
 	entries := afspec.ValidateTestSpecMap(content)
 	if len(entries) == 0 {
-		t.Fatal("ValidateTestSpecMap() returned empty slice; want at least one ValidationEntry for invalid kind")
+		t.Fatal("ValidateTestSpecMap() returned empty slice; want at least one entry for bad kind")
 	}
 	found := false
 	for _, e := range entries {
@@ -2942,30 +2939,30 @@ func TestNS62_ValidateTestSpecMap_BadKind(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("ValidateTestSpecMap() entries %v do not reference 'kind' or 'bad_kind'", entries)
+		t.Errorf("no entry mentions 'kind' or 'bad_kind'; entries: %v", entries)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// TS-NS-4 (issue #62): ValidateTasksMap rejects malformed subtask IDs
+// NS-REQ-4/TS-NS-4: ValidateTasksMap rejects malformed subtask IDs
 // ---------------------------------------------------------------------------
 
 // TestNS62_ValidateArtifactContent_TasksBadSubtaskID verifies that
-// validateArtifactContent for a tasks artifact returns an error when a
-// subtask has an ID that does not match the {group}.{N} format.
+// validateArtifactContent for the "tasks" artifact rejects a map whose
+// task_groups contain a subtask with an ID that does not match {group}.{N}.
 // Test Spec: TS-NS-4, Requirement: NS-REQ-4
 func TestNS62_ValidateArtifactContent_TasksBadSubtaskID(t *testing.T) {
 	t.Parallel()
 
 	content := map[string]any{
-		"spec_id":   "01",
+		"spec_id":   "62",
 		"spec_name": "foo",
 		"task_groups": []any{
 			map[string]any{
 				"id": 1,
 				"subtasks": []any{
 					map[string]any{
-						"id": "BAD.SUB.ID",
+						"id": "BAD.SUB.ID", // does not match ^\d+\.\d+$
 					},
 				},
 			},
@@ -2974,9 +2971,9 @@ func TestNS62_ValidateArtifactContent_TasksBadSubtaskID(t *testing.T) {
 
 	_, err := validateArtifactContent(content, "tasks")
 	if err == nil {
-		t.Fatal("validateArtifactContent() returned nil error; want error for malformed subtask ID")
+		t.Fatal("validateArtifactContent() returned nil error; want subtask ID format error")
 	}
 	if !strings.Contains(err.Error(), "BAD.SUB.ID") && !strings.Contains(err.Error(), "id_format") {
-		t.Errorf("error %q does not reference the malformed ID or 'id_format'", err.Error())
+		t.Errorf("error %q does not mention the malformed ID or 'id_format'", err.Error())
 	}
 }
