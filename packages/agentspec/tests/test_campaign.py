@@ -8,12 +8,14 @@ TS-02-SMOKE-1, TS-02-SMOKE-2 (integration smoke tests).
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 import yaml
+from afspec.models import Requirements, Tasks, TestSpec
 from agentspec.campaign import Campaign
 from agentspec.errors import CampaignError
 from agentspec.session import SessionState
@@ -454,3 +456,117 @@ class TestCampaignSmokeTests:
         assert len(specs) == 2
         assert specs[0].name == "01_alpha"
         assert specs[1].name == "02_beta"
+
+
+# ---------------------------------------------------------------------------
+# JSON artifact scaffolding tests: Issue #91
+# ---------------------------------------------------------------------------
+
+
+class TestNewSpecJsonArtifacts:
+    """Tests verifying new_spec() creates all required JSON artifacts — Issue #91.
+
+    Test Spec Entries: TS-NS-1 through TS-NS-5.
+    """
+
+    def test_ts_ns_1_all_four_files_exist(self, tmp_path: Path) -> None:
+        """TS-NS-1: new_spec creates all four required spec files.
+
+        Requirement: NS-REQ-1
+        After new_spec returns, prd.md, _session.json, requirements.json,
+        test_spec.json, and tasks.json all exist in the spec directory.
+        """
+        camp = Campaign.create(tmp_path / "camp", "Test", "Desc")
+        camp.new_spec("my_spec", "PRD content")
+
+        spec_dir = tmp_path / "camp" / "01_my_spec"
+        assert (spec_dir / "prd.md").exists()
+        assert (spec_dir / "_session.json").exists()
+        assert (spec_dir / "requirements.json").exists()
+        assert (spec_dir / "test_spec.json").exists()
+        assert (spec_dir / "tasks.json").exists()
+
+    def test_ts_ns_2_json_artifacts_valid_with_correct_fields(
+        self, tmp_path: Path
+    ) -> None:
+        """TS-NS-2: Scaffolded JSON artifacts contain correct spec_id, spec_name, schema_version.
+
+        Requirement: NS-REQ-2
+        Each JSON artifact parses successfully and contains the expected
+        spec_id, spec_name, and schema_version values.
+        """
+        camp = Campaign.create(tmp_path / "camp", "Test", "Desc")
+        camp.new_spec("my_spec", "PRD content")
+
+        spec_dir = tmp_path / "camp" / "01_my_spec"
+        for filename in ("requirements.json", "test_spec.json", "tasks.json"):
+            data = json.loads((spec_dir / filename).read_text())
+            assert data["spec_id"] == "01", f"{filename}: spec_id mismatch"
+            assert data["spec_name"] == "my_spec", f"{filename}: spec_name mismatch"
+            assert data["schema_version"] == 1, f"{filename}: schema_version mismatch"
+
+    def test_ts_ns_3_json_artifacts_pass_schema_validation(
+        self, tmp_path: Path
+    ) -> None:
+        """TS-NS-3: Scaffolded JSON artifacts pass afspec schema validation.
+
+        Requirement: NS-REQ-3
+        model_validate_json() on each artifact succeeds without raising.
+        """
+        camp = Campaign.create(tmp_path / "camp", "Test", "Desc")
+        camp.new_spec("my_spec", "PRD content")
+
+        spec_dir = tmp_path / "camp" / "01_my_spec"
+
+        # Each model_validate_json call must not raise
+        req = Requirements.model_validate_json(
+            (spec_dir / "requirements.json").read_text()
+        )
+        assert req.spec_id == "01"
+
+        ts = TestSpec.model_validate_json((spec_dir / "test_spec.json").read_text())
+        assert ts.spec_id == "01"
+
+        tasks = Tasks.model_validate_json((spec_dir / "tasks.json").read_text())
+        assert tasks.spec_id == "01"
+
+    def test_ts_ns_4_existing_prd_and_session_unaffected(self, tmp_path: Path) -> None:
+        """TS-NS-4: Existing prd.md and _session.json behavior is unaffected.
+
+        Requirement: NS-REQ-4
+        The prd.md frontmatter and returned session state remain correct.
+        """
+        camp = Campaign.create(tmp_path / "camp", "Test", "Desc")
+        session = camp.new_spec("my_spec", "# My PRD\n\nContent here")
+
+        spec_dir = tmp_path / "camp" / "01_my_spec"
+
+        # prd.md correctness
+        prd_text = (spec_dir / "prd.md").read_text()
+        assert prd_text.startswith("---")
+        parts = prd_text.split("---", 2)
+        frontmatter = yaml.safe_load(parts[1])
+        assert frontmatter["spec_id"] == "01"
+        assert frontmatter["spec_name"] == "my_spec"
+        assert frontmatter["schema_version"] == 1
+        assert "Content here" in prd_text
+
+        # session correctness
+        assert session.state == SessionState.INIT
+
+    def test_ts_ns_5_spec_id_from_sequential_prefix(self, tmp_path: Path) -> None:
+        """TS-NS-5: JSON artifact spec_id is derived from the sequential directory prefix.
+
+        Requirement: NS-REQ-5
+        The second spec's JSON artifacts carry spec_id '02' and spec_name
+        matching the argument.
+        """
+        camp = Campaign.create(tmp_path / "camp", "Test", "Desc")
+        camp.new_spec("alpha", "PRD A")
+        camp.new_spec("beta", "PRD B")
+
+        spec_dir = tmp_path / "camp" / "02_beta"
+        for filename in ("requirements.json", "test_spec.json", "tasks.json"):
+            data = json.loads((spec_dir / filename).read_text())
+            assert data["spec_id"] == "02", f"{filename}: expected spec_id '02'"
+            assert data["spec_name"] == "beta", f"{filename}: expected spec_name 'beta'"

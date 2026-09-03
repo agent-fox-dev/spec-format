@@ -399,10 +399,14 @@ class TestSessionEdgeCases:
 
         Requirement: 02-REQ-6.E1
         """
-        # Session with only prd.md — missing requirements.json, test_spec.json, tasks.json
         camp_dir = tmp_path / "missing_artifacts"
         camp = Campaign.create(camp_dir, "Test", "Desc")
         session = camp.new_spec("incomplete", "PRD content")
+
+        # new_spec() now creates scaffold JSON artifacts; delete them to
+        # simulate the "no AI-generated artifacts yet" state for this test.
+        for artifact in ("requirements.json", "test_spec.json", "tasks.json"):
+            (session.spec_dir / artifact).unlink(missing_ok=True)
 
         with pytest.raises(SessionError) as exc_info:
             session.validate()
@@ -571,7 +575,12 @@ class TestSessionProperties:
         camp = Campaign.open(camp_dir)
         session = camp.new_spec(f"s{subset_bits}", "PRD content")
 
-        # prd.md is always created by new_spec, add the rest from subset
+        # new_spec() now creates scaffold JSON artifacts; remove them so
+        # this test has full control over which artifacts are present.
+        for artifact in ("requirements.json", "test_spec.json", "tasks.json"):
+            (session.spec_dir / artifact).unlink(missing_ok=True)
+
+        # Add only the artifacts in the requested subset
         for artifact in subset:
             if artifact != "prd.md":
                 (session.spec_dir / artifact).write_text(

@@ -451,9 +451,17 @@ class SpecSession:
             "generate", required_states=("prd_accepted", "generating")
         )
 
+        # Track whether we are resuming a partial generation or starting fresh
+        was_generating = self._state == SessionState.GENERATING
+
         # Transition to GENERATING immediately for partial-failure
         # support (03-REQ-6.E1)
-        if self._state != SessionState.GENERATING:
+        if not was_generating:
+            # Starting fresh: remove scaffold placeholder JSON artifacts so
+            # the resume-detection logic only considers AI-generated files
+            # (issue #91).
+            for _name in ("requirements", "test_spec", "tasks"):
+                (_path := self._spec_dir / f"{_name}.json").unlink(missing_ok=True)
             self._state = SessionState.GENERATING
             self._persist()
 
@@ -479,17 +487,20 @@ class SpecSession:
 
         agent = _create_agent()
 
-        # Detect existing artifacts for resume (03-REQ-6.E2)
+        # Detect existing artifacts for resume (03-REQ-6.E2).
+        # Only check on resume (was_generating=True) — on a fresh generation
+        # the placeholders were already deleted above.
         artifact_models: dict[str, Any] = {
             "requirements": Requirements,
             "test_spec": TestSpec,
             "tasks": Tasks,
         }
         existing: dict[str, Any] = {}
-        for name, model_cls in artifact_models.items():
-            path = self._spec_dir / f"{name}.json"
-            if path.exists():
-                existing[name] = model_cls.model_validate_json(path.read_text())
+        if was_generating:
+            for name, model_cls in artifact_models.items():
+                path = self._spec_dir / f"{name}.json"
+                if path.exists():
+                    existing[name] = model_cls.model_validate_json(path.read_text())
 
         def _write_artifact(name: str, model: Any) -> None:
             """Write a single artifact to disk incrementally."""
