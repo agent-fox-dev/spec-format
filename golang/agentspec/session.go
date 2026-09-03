@@ -862,8 +862,14 @@ func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) {
 	// Transition to StateGenerated.
 	s.Current = StateGenerated
 
-	// Run Validate (validation errors are non-fatal).
-	validation, _ := s.Validate()
+	// Run Validate to check cross-file integrity of generated artifacts.
+	validation, validateErr := s.Validate()
+	if validateErr != nil {
+		// Validate() itself failed (e.g., could not read artifacts); record
+		// the error in the validation result so callers can surface it.
+		validation.Valid = false
+		validation.IntegrityErrors = append(validation.IntegrityErrors, validateErr.Error())
+	}
 
 	// Collect warnings from validation result.
 	var warnings []string

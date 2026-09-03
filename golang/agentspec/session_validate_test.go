@@ -1,6 +1,8 @@
 package agentspec
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -658,5 +660,81 @@ schema_version: 1
 	}
 	if len(resultMap) != 0 {
 		t.Errorf("Render(false) returned map with %d entries; want empty map", len(resultMap))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-2: Generate() returns Validation.Valid == false when post-generation
+// validation finds integrity or schema errors.
+// Test Spec: TS-NS-2, Requirements: NS-REQ-1, NS-REQ-2
+// ---------------------------------------------------------------------------
+
+// TestTSNS2_GenerateValidationValidFalseOnErrors verifies that when all
+// three artifact files are already present but contain validation errors,
+// Generate() skips the AI call, runs Validate(), and returns a GenerateResult
+// where Validation.Valid == false and Warnings is non-empty.
+// Test Spec: TS-NS-2, Requirements: NS-REQ-1, NS-REQ-2
+func TestTSNS2_GenerateValidationValidFalseOnErrors(t *testing.T) {
+	specDir := t.TempDir()
+
+	// Write prd.md — Generate() reads this file but does not parse YAML.
+	if err := os.WriteFile(filepath.Join(specDir, "prd.md"), []byte("# Test PRD\n"), 0o644); err != nil {
+		t.Fatalf("failed to write prd.md: %v", err)
+	}
+
+	// Write requirements.json and tasks.json as minimal valid JSON so that
+	// os.Stat() finds all three artifacts and skips the AI call.
+	reqJSON := `{"spec_id":"66","spec_name":"test","schema_version":1,"introduction":"","glossary":{},"requirements":[],"correctness_properties":[],"execution_paths":[],"error_handling":[],"external_apis":[]}`
+	if err := os.WriteFile(filepath.Join(specDir, "requirements.json"), []byte(reqJSON), 0o644); err != nil {
+		t.Fatalf("failed to write requirements.json: %v", err)
+	}
+	tasksJSON := `{"spec_id":"66","spec_name":"test","schema_version":1,"dependencies":[],"test_commands":{"all_tests":"go test ./...","spec_tests":"go test ./...","linter":"go vet ./..."},"task_groups":[{"id":1,"kind":"tests","title":"Tests","subtasks":[],"verification":{"id":"1.V","checks":["pass"]}},{"id":2,"kind":"wiring_verification","title":"Wiring","subtasks":[],"verification":{"id":"2.V","checks":["pass"]}}],"traceability":[]}`
+	if err := os.WriteFile(filepath.Join(specDir, "tasks.json"), []byte(tasksJSON), 0o644); err != nil {
+		t.Fatalf("failed to write tasks.json: %v", err)
+	}
+
+	// Write test_spec.json as invalid JSON to trigger a schema error in the
+	// fallback validator, causing Validation.Valid == false.
+	if err := os.WriteFile(filepath.Join(specDir, "test_spec.json"), []byte("{invalid json}"), 0o644); err != nil {
+		t.Fatalf("failed to write test_spec.json: %v", err)
+	}
+
+	// Build a session directly (agent is nil; not called since all artifacts exist).
+	session := &SpecSession{
+		specDir:            specDir,
+		Current:            StatePRDAccepted,
+		PRDPath:            "prd.md",
+		AssessmentHistory:  []Assessment{},
+		QAExchanges:        []QAExchange{},
+		GeneratedArtifacts: []string{},
+	}
+	data, err := json.Marshal(session)
+	if err != nil {
+		t.Fatalf("marshal session: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(specDir, "_session.json"), data, 0o644); err != nil {
+		t.Fatalf("write _session.json: %v", err)
+	}
+
+	ctx := context.Background()
+	result, genErr := session.Generate(ctx)
+	if genErr != nil {
+		t.Fatalf("Generate() returned unexpected error: %v", genErr)
+	}
+
+	// NS-REQ-2: Validation.Valid must be false when errors exist.
+	if result.Validation.Valid {
+		t.Error("GenerateResult.Validation.Valid = true; want false (test_spec.json has invalid JSON)")
+	}
+
+	// NS-REQ-1/2: Errors must be captured in SchemaErrors or IntegrityErrors.
+	totalErrors := len(result.Validation.SchemaErrors) + len(result.Validation.IntegrityErrors)
+	if totalErrors == 0 {
+		t.Error("expected at least one SchemaError or IntegrityError; got none")
+	}
+
+	// NS-REQ-3: Warnings slice must be non-empty so the CLI can surface them.
+	if len(result.Warnings) == 0 {
+		t.Error("GenerateResult.Warnings is empty; want at least one validation warning")
 	}
 }

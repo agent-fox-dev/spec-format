@@ -165,12 +165,22 @@ func TestTS08_43_GenerateExitsOnSIGINT(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Use a ready file so the test waits for the binary to reach the
+	// blocking AI stub before sending SIGINT. This avoids the timing race
+	// where a cold-start binary hasn't yet called signal.Notify when the
+	// signal arrives, causing the process to die with the default handler
+	// (exit -1) instead of the graceful exit-1 path.
+	readyFile := filepath.Join(tmpDir, "generate_ready")
+
 	// Start the generate command with SPEC_TEST_BLOCK_AI=1 so the
 	// AI operation blocks until context cancellation, giving
 	// the signal time to arrive and be handled.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "generate", "08_signal_spec")
 	proc.Dir = tmpDir
-	proc.Env = append(os.Environ(), "SPEC_TEST_BLOCK_AI=1")
+	proc.Env = append(os.Environ(),
+		"SPEC_TEST_BLOCK_AI=1",
+		"SPEC_TEST_READY_FILE="+readyFile,
+	)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	proc.Stdout = &stdoutBuf
@@ -180,10 +190,17 @@ func TestTS08_43_GenerateExitsOnSIGINT(t *testing.T) {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
-	// Send SIGINT after 200ms to ensure the process has started
-	// and entered the blocking AI call.
+	// Wait until the binary signals readiness (it writes the ready file
+	// just before blocking on ctx.Done()), then send SIGINT. Poll with
+	// a short interval; give up after the overall test timeout.
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(readyFile); err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		if proc.Process != nil {
 			proc.Process.Signal(syscall.SIGINT)
 		}
@@ -258,11 +275,21 @@ func TestTS08_43_RefineExitsOnSIGTERM(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Use a ready file so the test waits for the binary to reach the
+	// blocking AI stub before sending SIGTERM. This avoids the timing race
+	// where a cold-start binary hasn't yet called signal.Notify when the
+	// signal arrives, causing the process to die with the default handler
+	// (exit -1) instead of the graceful exit-1 path.
+	readyFile := filepath.Join(tmpDir, "refine_ready")
+
 	// Start the refine command with SPEC_TEST_BLOCK_AI=1 so the
 	// stub AI operation blocks until context cancellation.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "refine", "08_signal_spec")
 	proc.Dir = tmpDir
-	proc.Env = append(os.Environ(), "SPEC_TEST_BLOCK_AI=1")
+	proc.Env = append(os.Environ(),
+		"SPEC_TEST_BLOCK_AI=1",
+		"SPEC_TEST_READY_FILE="+readyFile,
+	)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	proc.Stdout = &stdoutBuf
@@ -272,10 +299,17 @@ func TestTS08_43_RefineExitsOnSIGTERM(t *testing.T) {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
-	// Send SIGTERM after 200ms to ensure the process has started
-	// and entered the blocking AI call.
+	// Wait until the binary signals readiness (it writes the ready file
+	// just before blocking on ctx.Done()), then send SIGTERM. Poll with
+	// a short interval; give up after the overall test timeout.
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(readyFile); err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		if proc.Process != nil {
 			proc.Process.Signal(syscall.SIGTERM)
 		}
@@ -350,19 +384,31 @@ func TestTS08_42_DoubleSignalForceExit(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Use a ready file to avoid timing races on cold binary startup.
+	readyFile := filepath.Join(tmpDir, "double_signal_ready")
+
 	// Start the generate command with SPEC_TEST_BLOCK_AI=1 so the
 	// AI operation blocks, giving signals time to arrive.
 	proc := exec.Command(binaryPath, "--spec-dir", specDir, "generate", "08_signal_spec")
 	proc.Dir = tmpDir
-	proc.Env = append(os.Environ(), "SPEC_TEST_BLOCK_AI=1")
+	proc.Env = append(os.Environ(),
+		"SPEC_TEST_BLOCK_AI=1",
+		"SPEC_TEST_READY_FILE="+readyFile,
+	)
 
 	if err := proc.Start(); err != nil {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
-	// Send two SIGINTs in quick succession.
+	// Wait for readiness, then send two SIGINTs in quick succession.
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(readyFile); err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		if proc.Process != nil {
 			proc.Process.Signal(syscall.SIGINT)
 			time.Sleep(50 * time.Millisecond)
@@ -474,4 +520,3 @@ func TestTS08_43_SpinnerQuietMode(t *testing.T) {
 		t.Errorf("spinner in quiet mode produced output %q; want empty", output)
 	}
 }
-
