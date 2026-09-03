@@ -8,11 +8,11 @@ import (
 )
 
 // validTransitions maps each spec status to the set of statuses it can transition to.
-// Active specs must be sealed before they can be superseded; use Supersede() on a
-// sealed spec to add the required deprecation banner.
+// Active specs must be sealed before they can be archived or superseded; use
+// Supersede() on a sealed spec to add the required deprecation banner.
 var validTransitions = map[string][]string{
 	"draft":      {"active", "archived"},
-	"active":     {"sealed", "archived"},
+	"active":     {"sealed"},
 	"sealed":     {"superseded", "archived"},
 	"superseded": {"archived"},
 }
@@ -25,7 +25,6 @@ var validTransitions = map[string][]string{
 //   - draft      -> active
 //   - draft      -> archived
 //   - active     -> sealed
-//   - active     -> archived
 //   - sealed     -> superseded
 //   - sealed     -> archived
 //   - superseded -> archived

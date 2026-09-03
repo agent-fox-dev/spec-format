@@ -137,6 +137,48 @@ func TestSpecTransition_ActiveToSuperseded(t *testing.T) {
 	}
 }
 
+// TestSpecTransition_ActiveToArchived verifies that Transition("archived") on
+// an active spec returns a LifecycleError. Active specs must be sealed first;
+// direct archiving from active is not permitted by the spec (Section 9.2).
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestSpecTransition_ActiveToArchived(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createDraftSpec(t, tmpDir)
+
+	// Transition to active first.
+	active, err := spec.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Attempt active → archived — must be rejected.
+	_, err = active.Transition("archived", tmpDir)
+	if err == nil {
+		t.Fatal("expected LifecycleError for active→archived, got nil")
+	}
+
+	var lifecycleErr *LifecycleError
+	if !errors.As(err, &lifecycleErr) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err type = %T", err)
+	}
+
+	var specErr *SpecError
+	if !errors.As(err, &specErr) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err type = %T", err)
+	}
+
+	// Reload from disk and confirm status is still "active" (no partial write).
+	saved, err := LoadSpec(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadSpec after failed Transition failed: %v", err)
+	}
+	if saved.Status != "active" {
+		t.Errorf("saved Status = %q after failed active→archived, want %q", saved.Status, "active")
+	}
+}
+
 // TestSpecTransition_ImmutabilityCheck verifies that Transition does not
 // modify the original spec — it returns a new copy.
 // Test Spec: TS-01-54, Requirement: 01-REQ-28.1
@@ -179,7 +221,6 @@ func TestValidTransition_AllowedTransitions(t *testing.T) {
 		{"draft", "active", true},
 		{"draft", "archived", true},
 		{"active", "sealed", true},
-		{"active", "archived", true},
 		{"sealed", "superseded", true},
 		{"sealed", "archived", true},
 		{"superseded", "archived", true},
@@ -187,6 +228,7 @@ func TestValidTransition_AllowedTransitions(t *testing.T) {
 		// Disallowed transitions
 		{"draft", "sealed", false},
 		{"draft", "superseded", false},
+		{"active", "archived", false},
 		{"active", "superseded", false},
 		{"active", "draft", false},
 		{"sealed", "draft", false},
