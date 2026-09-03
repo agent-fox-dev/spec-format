@@ -38,6 +38,12 @@ type Spec struct {
 	// PRD Markdown body (everything after the closing --- delimiter)
 	PRDBody string
 
+	// Dir is the directory path from which this spec was loaded. It is
+	// set by LoadSpec and used by ValidateCrossFile to check that the
+	// folder name's numeric prefix and snake_case suffix match SpecID
+	// and SpecName. Empty when the spec was not loaded from disk.
+	Dir string
+
 	// JSON artifacts
 	Requirements *RequirementsV1Json
 	TestSpec     *TestSpecV1Json
@@ -137,6 +143,7 @@ func LoadSpec(dir string) (*Spec, error) {
 		TestSpec:      &ts,
 		Tasks:         &tasks,
 		Architecture:  architecture,
+		Dir:           dir,
 	}
 
 	// Capture immutable snapshot for active specs so Save can detect mutations

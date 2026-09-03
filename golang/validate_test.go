@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -7552,5 +7553,236 @@ func TestValidateCrossFile_SubtaskIDFormat(t *testing.T) {
 				t.Error("result.Valid = true, want false when id_format errors present")
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1 / TS-NS-2 / TS-NS-3 / TS-NS-4 / TS-NS-5: Folder-name validation
+// ---------------------------------------------------------------------------
+
+// writeFolderNameSpecDir creates a complete, cross-file-consistent spec dir at
+// dirPath. prdSpecID and prdSpecName go into prd.md; all JSON artifacts also
+// use prdSpecID/prdSpecName so that no cross-file-7 error is emitted — the
+// only errors we expect are from the folder-name check.
+func writeFolderNameSpecDir(t *testing.T, dirPath, prdSpecID, prdSpecName string) {
+	t.Helper()
+	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", dirPath, err)
+	}
+
+	prd := fmt.Sprintf("---\nspec_id: %q\nspec_name: %q\ntitle: %q\n"+
+		"status: \"draft\"\ncreated_at: \"2026-01-01T00:00:00Z\"\n"+
+		"updated_at: \"2026-01-01T00:00:00Z\"\nowner: \"test\"\n"+
+		"source: \"test\"\nsupersedes: []\nintent_hash: null\nschema_version: 1\n---\n# Test\n",
+		prdSpecID, prdSpecName, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "prd.md"), []byte(prd), 0o644); err != nil {
+		t.Fatalf("WriteFile prd.md: %v", err)
+	}
+
+	req := fmt.Sprintf(
+		`{"$schema":"https://agent-fox.dev/schemas/requirements.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,"introduction":"Test",`+
+			`"glossary":{},"requirements":[],"correctness_properties":[],`+
+			`"execution_paths":[],"error_handling":[]}`,
+		prdSpecID, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "requirements.json"), []byte(req), 0o644); err != nil {
+		t.Fatalf("WriteFile requirements.json: %v", err)
+	}
+
+	ts := fmt.Sprintf(
+		`{"$schema":"https://agent-fox.dev/schemas/test_spec.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+			`"test_cases":[],"property_tests":[],"edge_case_tests":[],`+
+			`"smoke_tests":[],"coverage":{}}`,
+		prdSpecID, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "test_spec.json"), []byte(ts), 0o644); err != nil {
+		t.Fatalf("WriteFile test_spec.json: %v", err)
+	}
+
+	tasks := fmt.Sprintf(
+		`{"$schema":"https://agent-fox.dev/schemas/tasks.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+			`"test_commands":{"spec_tests":"go test","all_tests":"go test","linter":"go vet"},`+
+			`"dependencies":[],"task_groups":[`+
+			`{"id":1,"kind":"tests","title":"Tests","subtasks":[`+
+			`{"id":"1.1","title":"Run tests","details":["Run all tests"],`+
+			`"test_spec_refs":[],"requirement_refs":[],"state":"pending","optional":false}`+
+			`],"verification":{"id":"1.V","checks":["verify"]}}],"traceability":[]}`,
+		prdSpecID, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "tasks.json"), []byte(tasks), 0o644); err != nil {
+		t.Fatalf("WriteFile tasks.json: %v", err)
+	}
+}
+
+// countFolderNameErrors returns the ValidationEntry values whose Check field
+// is "folder_name".
+func countFolderNameErrors(entries []ValidationEntry) []ValidationEntry {
+	var out []ValidationEntry
+	for _, e := range entries {
+		if e.Check == "folder_name" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// TS-NS-1: spec_id in prd.md frontmatter does not match the numeric folder prefix.
+// Requirement: NS-REQ-1.1
+func TestValidateCrossFile_FolderName_SpecIDMismatch(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Spec lives in 05_my_feature but prd.md declares spec_id "99".
+	writeFolderNameSpecDir(t, dirPath, "99", "my_feature")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) == 0 {
+		t.Fatal("expected at least one folder_name error for spec_id mismatch, got none")
+	}
+
+	// The error must reference both the folder prefix and the frontmatter spec_id.
+	found := false
+	for _, e := range folderErrs {
+		if strings.Contains(e.Message, "99") && strings.Contains(e.Message, "05") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("folder_name error should reference both '99' (spec_id) and '05' (folder prefix); errors: %v", folderErrs)
+	}
+}
+
+// TS-NS-2: spec_name in prd.md frontmatter does not match the folder name suffix.
+// Requirement: NS-REQ-2.1
+func TestValidateCrossFile_FolderName_SpecNameMismatch(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Spec lives in 05_my_feature but prd.md declares spec_name "other_thing".
+	writeFolderNameSpecDir(t, dirPath, "05", "other_thing")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) == 0 {
+		t.Fatal("expected at least one folder_name error for spec_name mismatch, got none")
+	}
+
+	// The error must reference both the folder suffix and the frontmatter spec_name.
+	found := false
+	for _, e := range folderErrs {
+		if strings.Contains(e.Message, "other_thing") && strings.Contains(e.Message, "my_feature") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("folder_name error should reference both 'other_thing' (spec_name) and 'my_feature' (folder suffix); errors: %v", folderErrs)
+	}
+}
+
+// TS-NS-3: A spec whose frontmatter spec_id and spec_name exactly match the folder
+// prefix and suffix passes without folder-name errors.
+// Requirement: NS-REQ-3.1
+func TestValidateCrossFile_FolderName_MatchingSpec(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Spec lives in 05_my_feature and prd.md matches: spec_id "05", spec_name "my_feature".
+	writeFolderNameSpecDir(t, dirPath, "05", "my_feature")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) != 0 {
+		t.Errorf("expected zero folder_name errors for matching spec, got: %v", folderErrs)
+	}
+}
+
+// TS-NS-4: Folder-name validation is skipped when the directory name does not
+// match the NN_snake_case pattern.
+// Requirement: NS-REQ-4.1
+func TestValidateCrossFile_FolderName_NonSpecDirectory(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	// "scratch" does not match the NN_snake_case pattern.
+	dirPath := filepath.Join(base, "scratch")
+	// Deliberately use mismatched values so that any folder-name check would fire.
+	writeFolderNameSpecDir(t, dirPath, "99", "wrong_name")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) != 0 {
+		t.Errorf("expected zero folder_name errors for non-spec directory, got: %v", folderErrs)
+	}
+}
+
+// TS-NS-5: Both spec_id and spec_name mismatches are reported independently.
+// Requirement: NS-REQ-5.1
+func TestValidateCrossFile_FolderName_BothMismatches(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Both spec_id and spec_name are wrong.
+	writeFolderNameSpecDir(t, dirPath, "99", "other_thing")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) != 2 {
+		t.Errorf("expected exactly 2 folder_name errors (one for spec_id, one for spec_name), got %d: %v",
+			len(folderErrs), folderErrs)
+	}
+
+	// One error must reference spec_id, another spec_name.
+	hasSpecIDErr := false
+	hasSpecNameErr := false
+	for _, e := range folderErrs {
+		if strings.Contains(e.Message, "spec_id") {
+			hasSpecIDErr = true
+		}
+		if strings.Contains(e.Message, "spec_name") {
+			hasSpecNameErr = true
+		}
+	}
+	if !hasSpecIDErr {
+		t.Errorf("no folder_name error mentions 'spec_id': %v", folderErrs)
+	}
+	if !hasSpecNameErr {
+		t.Errorf("no folder_name error mentions 'spec_name': %v", folderErrs)
 	}
 }

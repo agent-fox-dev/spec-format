@@ -58,8 +58,11 @@ func setupLoadableSpec(t *testing.T, specDir, specName string, opts *loadableSpe
 		t.Fatal(err)
 	}
 
-	// Extract specID from specName (e.g. "08_spec_a" -> "08")
-	specID := strings.SplitN(specName, "_", 2)[0]
+	// Extract specID and specSuffix from specName (e.g. "08_spec_a" -> "08", "spec_a").
+	// specSuffix is used as spec_name in all artifacts so it matches the folder suffix.
+	nameParts := strings.SplitN(specName, "_", 2)
+	specID := nameParts[0]
+	specSuffix := nameParts[1]
 
 	// prd.md with valid frontmatter
 	prd := fmt.Sprintf(`---
@@ -77,7 +80,7 @@ intent_hash: null
 schema_version: 1
 ---
 # Test Spec %s
-`, specID, specName, specID, specID)
+`, specID, specSuffix, specID, specID)
 	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte(prd), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +151,7 @@ schema_version: 1
     "steps": [{"actor": "user", "action": "do"}, {"actor": "system", "action": "respond"}]
   }],
   "error_handling": []
-}`, specID, specName, glossaryJSON, strings.Join(reqItems, ",\n"), specID)
+}`, specID, specSuffix, glossaryJSON, strings.Join(reqItems, ",\n"), specID)
 
 	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"), []byte(requirements), 0644); err != nil {
 		t.Fatal(err)
@@ -187,7 +190,7 @@ schema_version: 1
     "paths_covered": [],
     "gaps": []
   }
-}`, specID, specName, strings.Join(testCaseItems, ",\n"), specID, specID)
+}`, specID, specSuffix, strings.Join(testCaseItems, ",\n"), specID, specID)
 
 	if err := os.WriteFile(filepath.Join(specPath, "test_spec.json"), []byte(testSpec), 0644); err != nil {
 		t.Fatal(err)
@@ -239,7 +242,7 @@ schema_version: 1
     }
   ],
   "traceability": [%s]
-}`, specID, specName, depsJSON, specID, reqIDs[0], specID, reqIDs[0], strings.Join(traceItems, ",\n"))
+}`, specID, specSuffix, depsJSON, specID, reqIDs[0], specID, reqIDs[0], strings.Join(traceItems, ",\n"))
 
 	if err := os.WriteFile(filepath.Join(specPath, "tasks.json"), []byte(tasks), 0644); err != nil {
 		t.Fatal(err)
@@ -1139,10 +1142,11 @@ func TestTS_NS4_WarningsInWarningCount(t *testing.T) {
 	setupLoadableSpec(t, specDir, "08_vague_spec", nil)
 
 	// Overwrite requirements.json with a criterion containing vague language.
+	// spec_name uses the folder suffix ("vague_spec") to match the prd.md.
 	requirements := `{
   "$schema": "https://agent-fox.dev/schemas/requirements.v1.json",
   "spec_id": "08",
-  "spec_name": "08_vague_spec",
+  "spec_name": "vague_spec",
   "schema_version": 1,
   "introduction": "Test spec.",
   "glossary": {},

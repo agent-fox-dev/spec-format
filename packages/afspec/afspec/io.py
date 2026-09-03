@@ -146,6 +146,9 @@ def load_spec(dir: Union[str, Path]) -> Spec:
         created_at=prd.frontmatter.created_at,
     )
 
+    # Record source directory for folder-name validation.
+    spec._source_dir = dir_path
+
     return spec
 
 

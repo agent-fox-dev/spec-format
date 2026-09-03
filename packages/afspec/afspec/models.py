@@ -9,6 +9,7 @@ valid_transition function for the subtask state machine.
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -432,6 +433,10 @@ class Spec(BaseModel):
     tasks: Tasks = Field(default_factory=Tasks)
     architecture: str | None = None
     _loaded: Optional[_ImmutableSnapshot] = PrivateAttr(default=None)
+    # Directory from which this spec was loaded, used by validate_cross_file
+    # to check that the folder prefix/suffix match spec_id/spec_name.
+    # None when the spec was not loaded from disk.
+    _source_dir: Optional[Path] = PrivateAttr(default=None)
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -1807,6 +1808,35 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					Check:    "cross_file_7",
 					Message:  fmt.Sprintf("spec_name mismatch: prd.md has '%s' but tasks.json has '%s'", prdSpecName, s.Tasks.SpecName),
 					Artifact: "tasks.json",
+				})
+			}
+		}
+	}
+
+	// --- Folder-name rule: spec_id and spec_name must match the folder prefix/suffix ---
+	// When the spec was loaded from a directory whose name follows the
+	// NN_snake_case pattern, the numeric prefix must equal SpecID and the
+	// snake_case suffix must equal SpecName. If the directory name does not
+	// match the pattern (e.g. ad-hoc or non-spec directories), this check
+	// is skipped so that non-spec directories are not rejected.
+	if s.Dir != "" {
+		dirBase := filepath.Base(s.Dir)
+		if IsSpecDirName(dirBase) {
+			folderPrefix, folderSuffix, _ := ParseSpecDirName(dirBase)
+			if folderPrefix != s.SpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "folder_name",
+					Message:  fmt.Sprintf("spec_id '%s' does not match folder prefix '%s' in '%s'", s.SpecID, folderPrefix, dirBase),
+					Artifact: "prd.md",
+				})
+			}
+			if folderSuffix != s.SpecName {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "folder_name",
+					Message:  fmt.Sprintf("spec_name '%s' does not match folder suffix '%s' in '%s'", s.SpecName, folderSuffix, dirBase),
+					Artifact: "prd.md",
 				})
 			}
 		}
