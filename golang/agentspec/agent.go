@@ -231,63 +231,17 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 		}
 	}
 
-	// Try to extract submit_assessment from the same response.
-	assessmentInput, assessErr := extractToolCall(resp, "submit_assessment")
-	if assessErr == nil {
-		// Assessment found in same response — parse it.
-		assessment, parseErr := parseAssessment(assessmentInput)
-		if parseErr != nil {
-			return "", Assessment{}, &AgentError{
-				Detail:        fmt.Sprintf("RefinePRD: failed to parse assessment: %v", parseErr),
-				ErrorCategory: "internal",
-				Cause:         parseErr,
-			}
-		}
-		return updatedPRD, assessment, nil
-	}
-
-	// Assessment not found in first response — make a fallback call
-	// with only the assessment tool to get a re-assessment. Send only
-	// the updated PRD text (not the full original conversation) to
-	// minimise input cost.
-	assessToolDefs := mapToTools(AssessmentTools())
-	fallbackOpts := AICallOptions{
-		ModelTier: sa.modelTier,
-		System:    systemPrompt,
-		Messages: []Message{
-			{Role: "user", Content: fmt.Sprintf("Please assess the following updated PRD:\n\n%s", updatedPRD)},
-		},
-		Tools:      assessToolDefs,
-		ToolChoice: map[string]any{"type": "any"},
-		Context:    "RefinePRD:fallback_assessment",
-	}
-
-	_, raw2, err2 := callFn(ctx, fallbackOpts)
-	if err2 != nil {
-		return "", Assessment{}, wrapCallError(err2)
-	}
-
-	resp2, ok := raw2.(*MessageResponse)
-	if !ok {
-		return "", Assessment{}, &AgentError{
-			Detail:        "RefinePRD: unexpected response type from fallback AICall",
-			ErrorCategory: "internal",
-		}
-	}
-
-	if err := checkStopReason(resp2.StopReason); err != nil {
+	// Extract submit_assessment from the same response — both tools must
+	// appear in a single LLM call; no fallback second call is made.
+	assessmentInput, err := extractToolCall(resp, "submit_assessment")
+	if err != nil {
 		return "", Assessment{}, err
 	}
 
-	assessmentInput2, err2 := extractToolCall(resp2, "submit_assessment")
-	if err2 != nil {
-		return "", Assessment{}, err2
-	}
-
-	assessment, parseErr := parseAssessment(assessmentInput2)
+	assessment, parseErr := parseAssessment(assessmentInput)
 	if parseErr != nil {
 		return "", Assessment{}, &AgentError{
-			Detail:        fmt.Sprintf("RefinePRD: failed to parse fallback assessment: %v", parseErr),
+			Detail:        fmt.Sprintf("RefinePRD: failed to parse assessment: %v", parseErr),
 			ErrorCategory: "internal",
 			Cause:         parseErr,
 		}

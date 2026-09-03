@@ -199,14 +199,9 @@ class SpecAgent:
         prd_update = self._extract_tool_call(response, "submit_prd_update")
         updated_prd_text: str = prd_update["updated_prd"]
 
-        # Extract new assessment (03-REQ-2.E3)
-        # The model may not produce both tool calls in one response
-        # (e.g. if the updated PRD is large). Fall back to a second
-        # API call for the assessment.
-        try:
-            assessment_input = self._extract_tool_call(response, "submit_assessment")
-        except AgentError:
-            assessment_input = await self._request_assessment(updated_prd_text, system)
+        # Extract new assessment from the same response — both tools must
+        # appear in a single LLM call; no fallback second call is made.
+        assessment_input = self._extract_tool_call(response, "submit_assessment")
         new_assessment = self._parse_assessment(assessment_input)
 
         return updated_prd_text, new_assessment
@@ -481,33 +476,6 @@ class SpecAgent:
                 context[name] = full
 
         return context
-
-    async def _request_assessment(
-        self,
-        prd_text: str,
-        system: str | None,
-    ) -> dict[str, Any]:
-        """Make a separate API call to get an assessment of a PRD.
-
-        Used as a fallback when the refinement response did not include
-        the ``submit_assessment`` tool call alongside the PRD update.
-        """
-        logger.debug(
-            "submit_assessment missing from refinement response; making a follow-up API call"
-        )
-        messages: list[dict[str, str]] = [
-            {
-                "role": "user",
-                "content": (
-                    "Assess the following PRD and provide your "
-                    "evaluation using the submit_assessment tool."
-                    f"\n\n{prd_text}"
-                ),
-            },
-        ]
-        tools = assessment_tools()
-        response = await self._call_api(messages, tools, system=system)
-        return self._extract_tool_call(response, "submit_assessment")
 
     async def _call_api(
         self,
