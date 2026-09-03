@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -109,6 +110,31 @@ def test_deterministic_json() -> None:
     alpha_pos = output_a.index('"alpha"')
     zebra_pos = output_a.index('"zebra"')
     assert alpha_pos < zebra_pos, "Keys are not sorted: 'alpha' should precede 'zebra'"
+
+
+# ---------------------------------------------------------------------------
+# TS-NS-1: _atomic_write() calls os.fsync() before rename
+# ---------------------------------------------------------------------------
+
+
+def test_atomic_write_calls_fsync(tmp_path: Path) -> None:
+    """_atomic_write() must call os.fsync() with the fd before renaming."""
+    from afspec.io import _atomic_write
+
+    target = tmp_path / "output.json"
+    fsync_calls: list[int] = []
+
+    real_fsync = os.fsync
+
+    def capturing_fsync(fd: int) -> None:
+        fsync_calls.append(fd)
+        real_fsync(fd)
+
+    with patch("afspec.io.os.fsync", side_effect=capturing_fsync):
+        _atomic_write(target, '{"test": true}')
+
+    assert len(fsync_calls) == 1, f"Expected exactly one fsync call, got {fsync_calls}"
+    assert target.exists(), "Target file must exist after atomic write"
 
 
 # ---------------------------------------------------------------------------
