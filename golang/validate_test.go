@@ -667,10 +667,239 @@ func TestValidateCrossFile_CompletenessGuard_SkipsDownstream(t *testing.T) {
 	}
 }
 
+// TestValidateCrossFile_NilRequirements verifies that ValidateCrossFile returns
+// a completeness error when Requirements is nil, satisfying AC-1.
+// Test Spec: TS-NS-1. Requirement: NS-REQ-1.
+func TestValidateCrossFile_NilRequirements(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements:  nil, // missing
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when Requirements is nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Category != "integrity" {
+		t.Errorf("error Category = %q, want %q", e.Category, "integrity")
+	}
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	if !strings.Contains(e.Message, "requirements") {
+		t.Errorf("error Message %q does not contain %q", e.Message, "requirements")
+	}
+	if strings.Contains(e.Message, "test_spec") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "test_spec")
+	}
+	if strings.Contains(e.Message, "tasks") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "tasks")
+	}
+}
+
+// TestValidateCrossFile_NilTestSpec verifies that ValidateCrossFile returns
+// a completeness error when TestSpec is nil, satisfying AC-2.
+// Test Spec: TS-NS-2. Requirement: NS-REQ-2.
+func TestValidateCrossFile_NilTestSpec(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "01",
+			SpecName:              "test",
+			SchemaVersion:         1,
+			Introduction:          "Test.",
+			Glossary:              RequirementsV1JsonGlossary{},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: nil, // missing
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when TestSpec is nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	if !strings.Contains(e.Message, "test_spec") {
+		t.Errorf("error Message %q does not contain %q", e.Message, "test_spec")
+	}
+	if strings.Contains(e.Message, "requirements") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "requirements")
+	}
+	if strings.Contains(e.Message, "tasks") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "tasks")
+	}
+}
+
+// TestValidateCrossFile_NilTasks verifies that ValidateCrossFile returns
+// a completeness error when Tasks is nil, satisfying AC-3.
+// Test Spec: TS-NS-3. Requirement: NS-REQ-3.
+func TestValidateCrossFile_NilTasks(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "01",
+			SpecName:              "test",
+			SchemaVersion:         1,
+			Introduction:          "Test.",
+			Glossary:              RequirementsV1JsonGlossary{},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: nil, // missing
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when Tasks is nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	if !strings.Contains(e.Message, "tasks") {
+		t.Errorf("error Message %q does not contain %q", e.Message, "tasks")
+	}
+	if strings.Contains(e.Message, "requirements") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "requirements")
+	}
+	if strings.Contains(e.Message, "test_spec") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "test_spec")
+	}
+}
+
+// TestValidateCrossFile_AllNilArtifacts verifies that ValidateCrossFile returns
+// exactly one completeness error listing all three artifact names when all
+// three pointers are nil, satisfying AC-4.
+// Test Spec: TS-NS-4. Requirement: NS-REQ-4.
+func TestValidateCrossFile_AllNilArtifacts(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements:  nil, // missing
+		TestSpec:      nil, // missing
+		Tasks:         nil, // missing
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when all artifacts are nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Category != "integrity" {
+		t.Errorf("error Category = %q, want %q", e.Category, "integrity")
+	}
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	for _, name := range []string{"requirements", "test_spec", "tasks"} {
+		if !strings.Contains(e.Message, name) {
+			t.Errorf("error Message %q does not contain %q", e.Message, name)
+		}
+	}
+}
+
 // TestValidateCrossFile_CompletenessGuard_NoRegression verifies that
 // ValidateCrossFile proceeds normally with zero errors for a fully
 // populated valid spec (existing test, but explicitly re-confirmed).
-// Test Spec: TS-NS-4. Requirement: NS-REQ-4.
+// Test Spec: TS-NS-5. Requirement: NS-REQ-5.
 // (Covered by TestValidateCrossFile_ConsistentReferences below)
 
 // TestValidateCrossFile_ConsistentReferences verifies that ValidateCrossFile
@@ -1768,7 +1997,10 @@ func TestValidateCrossFile_PropertyTestCoverage(t *testing.T) {
 					{Id: "04-PROP-1", Title: "Prop A", ForAny: "any input", Invariant: "holds", Validates: []string{"04-REQ-1.1"}},
 					{Id: "04-PROP-2", Title: "Prop B", ForAny: "any input", Invariant: "holds", Validates: []string{"04-REQ-1.1"}},
 				}
-				s.TestSpec = nil // No test_spec — all properties uncovered
+				// No property tests — simulate a test_spec with no coverage by
+				// clearing the PropertyTests slice (nil would trigger the nil-artifact
+				// completeness guard and return early before coverage checks).
+				s.TestSpec.PropertyTests = []PropertyTest{}
 				return s
 			}(),
 			wantErrorCount:   2,
@@ -2055,7 +2287,10 @@ func TestValidateCrossFile_ExecutionPathSmokeCoverage(t *testing.T) {
 					{Id: "04-PATH-1", Title: "Path A", Steps: []PathStep{{Actor: "CLI", Action: "step 1"}, {Actor: "System", Action: "step 2"}}},
 					{Id: "04-PATH-2", Title: "Path B", Steps: []PathStep{{Actor: "CLI", Action: "step 1"}, {Actor: "System", Action: "step 2"}}},
 				}
-				s.TestSpec = nil // No test_spec — all paths uncovered
+				// No smoke tests — simulate a test_spec with no path coverage by
+				// clearing the SmokeTests slice (nil would trigger the nil-artifact
+				// completeness guard and return early before coverage checks).
+				s.TestSpec.SmokeTests = []SmokeTest{}
 				return s
 			}(),
 			wantErrorCount:   2,

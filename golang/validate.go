@@ -769,18 +769,25 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	var warnings []ValidationEntry
 
 	// --- Completeness guard ---
-	// If any artifact has an empty SpecId, the spec is incomplete and
-	// downstream cross-file checks would produce misleading errors.
-	// Return a single completeness error listing the incomplete artifacts.
+	// If any artifact pointer is nil or has an empty SpecId, the spec is
+	// incomplete and downstream cross-file checks would produce misleading
+	// errors.  Return a single completeness error listing the incomplete
+	// artifacts.
 	{
 		var incomplete []string
-		if s.Requirements != nil && s.Requirements.SpecId == "" {
+		if s.Requirements == nil {
+			incomplete = append(incomplete, "requirements.json")
+		} else if s.Requirements.SpecId == "" {
 			incomplete = append(incomplete, "requirements")
 		}
-		if s.TestSpec != nil && s.TestSpec.SpecId == "" {
+		if s.TestSpec == nil {
+			incomplete = append(incomplete, "test_spec.json")
+		} else if s.TestSpec.SpecId == "" {
 			incomplete = append(incomplete, "test_spec")
 		}
-		if s.Tasks != nil && s.Tasks.SpecId == "" {
+		if s.Tasks == nil {
+			incomplete = append(incomplete, "tasks.json")
+		} else if s.Tasks.SpecId == "" {
 			incomplete = append(incomplete, "tasks")
 		}
 		if len(incomplete) > 0 {
