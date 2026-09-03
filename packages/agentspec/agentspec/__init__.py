@@ -16,6 +16,7 @@ from agentspec.errors import (
 )
 from agentspec.session import (
     Assessment,
+    AssessmentQuality,
     GenerateResult,
     Question,
     RepairSuggestion,
@@ -29,6 +30,7 @@ __all__ = [
     "AgentSpecConfig",
     "AgentSpecError",
     "Assessment",
+    "AssessmentQuality",
     "Campaign",
     "CampaignError",
     "CampaignMetadata",

@@ -193,7 +193,7 @@ func TestSpec07_AssessPRD_HappyPath(t *testing.T) {
 	capture := &aiCallCapture{}
 
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "PRD is well-structured", []string{"Missing auth flow"}, []map[string]any{
+		makeAssessmentToolCall("ready", "PRD is well-structured", []string{"Missing auth flow"}, []map[string]any{
 			{"id": "q1", "text": "How will auth work?"},
 		}),
 	)
@@ -242,7 +242,7 @@ func TestSpec07_AssessPRD_HappyPath(t *testing.T) {
 // Test Spec: TS-07-25, Requirement: 07-REQ-5.2
 func TestSpec07_AssessPRD_WithOptions(t *testing.T) {
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("medium", "Needs improvement", []string{"Gap 1"}, nil),
+		makeAssessmentToolCall("needs_refinement", "Needs improvement", []string{"Gap 1"}, nil),
 	)
 
 	mockFn := newMockAICallFunc(nil, mockAICallResult{
@@ -585,7 +585,7 @@ func TestSpec07_AssessPRD_EmptyPRDText(t *testing.T) {
 	capture := &aiCallCapture{}
 
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("low", "Empty PRD", []string{"No content"}, nil),
+		makeAssessmentToolCall("incomplete", "Empty PRD", []string{"No content"}, nil),
 	)
 
 	mockFn := newMockAICallFunc(capture, mockAICallResult{
@@ -628,7 +628,7 @@ func TestSpec07_RefinePRD_HappyPath(t *testing.T) {
 	// Response contains both tool calls.
 	resp := makeToolCallResponse("end_turn",
 		makePRDUpdateToolCall("Updated PRD text"),
-		makeAssessmentToolCall("high", "Much improved", nil, nil),
+		makeAssessmentToolCall("ready", "Much improved", nil, nil),
 	)
 
 	mockFn := newMockAICallFunc(capture, mockAICallResult{
@@ -639,7 +639,7 @@ func TestSpec07_RefinePRD_HappyPath(t *testing.T) {
 	agent.aiCallFunc = mockFn
 
 	ctx := context.Background()
-	prevAssessment := Assessment{Quality: "medium", Summary: "Needs work"}
+	prevAssessment := Assessment{Quality: "needs_refinement", Summary: "Needs work"}
 	updatedPRD, newAssessment, err := agent.RefinePRD(ctx, "Original PRD",
 		map[string]string{"q1": "a1"}, prevAssessment)
 
@@ -655,8 +655,8 @@ func TestSpec07_RefinePRD_HappyPath(t *testing.T) {
 	if isZeroAssessment(newAssessment) {
 		t.Error("RefinePRD() newAssessment is zero-value; want populated Assessment")
 	}
-	if newAssessment.Quality != "high" {
-		t.Errorf("newAssessment.Quality = %q; want %q", newAssessment.Quality, "high")
+	if newAssessment.Quality != "ready" {
+		t.Errorf("newAssessment.Quality = %q; want %q", newAssessment.Quality, "ready")
 	}
 
 	// Verify AICall was invoked exactly once (both tools in single response).
@@ -684,7 +684,7 @@ func TestSpec07_RefinePRD_FallbackAssessmentCall(t *testing.T) {
 
 	// Second call: submit_assessment.
 	secondResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Good after update", nil, nil),
+		makeAssessmentToolCall("ready", "Good after update", nil, nil),
 	)
 
 	var mu sync.Mutex
@@ -707,7 +707,7 @@ func TestSpec07_RefinePRD_FallbackAssessmentCall(t *testing.T) {
 
 	ctx := context.Background()
 	updatedPRD, newAssessment, err := agent.RefinePRD(ctx, "Original PRD",
-		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
+		map[string]string{"q1": "a1"}, Assessment{Quality: "needs_refinement"})
 
 	if err != nil {
 		t.Fatalf("RefinePRD() returned error: %v", err)
@@ -1618,7 +1618,7 @@ func TestSpec07_AgentOption_AppliedByAssessPRD(t *testing.T) {
 	capture := &aiCallCapture{}
 
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Good", nil, nil),
+		makeAssessmentToolCall("ready", "Good", nil, nil),
 	)
 
 	mockFn := newMockAICallFunc(capture, mockAICallResult{
@@ -1655,7 +1655,7 @@ func TestSpec07_AgentOption_AppliedByAssessPRD(t *testing.T) {
 // Test Spec: TS-07-39, Requirement: 07-REQ-8.3
 func TestSpec07_AgentOption_ZeroValueDefaults(t *testing.T) {
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("medium", "OK", nil, nil),
+		makeAssessmentToolCall("needs_refinement", "OK", nil, nil),
 	)
 
 	mockFn := newMockAICallFunc(nil, mockAICallResult{
@@ -2465,7 +2465,7 @@ func TestNS58_FallbackAssessment_SingleMessage(t *testing.T) {
 		makePRDUpdateToolCall(updatedPRDText),
 	)
 	secondResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Good after update", nil, nil),
+		makeAssessmentToolCall("ready", "Good after update", nil, nil),
 	)
 
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
@@ -2485,7 +2485,7 @@ func TestNS58_FallbackAssessment_SingleMessage(t *testing.T) {
 
 	ctx := context.Background()
 	updatedPRD, _, err := agent.RefinePRD(ctx, originalPRDText,
-		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
+		map[string]string{"q1": "a1"}, Assessment{Quality: "needs_refinement"})
 
 	if err != nil {
 		t.Fatalf("RefinePRD() returned error: %v", err)
@@ -2539,7 +2539,7 @@ func TestNS58_FallbackAssessment_ToolsAndContext(t *testing.T) {
 		makePRDUpdateToolCall("Updated PRD for NS58 tools check"),
 	)
 	secondResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Assessed", nil, nil),
+		makeAssessmentToolCall("ready", "Assessed", nil, nil),
 	)
 
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
@@ -2559,7 +2559,7 @@ func TestNS58_FallbackAssessment_ToolsAndContext(t *testing.T) {
 
 	ctx := context.Background()
 	_, _, err := agent.RefinePRD(ctx, "Original PRD",
-		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
+		map[string]string{"q1": "a1"}, Assessment{Quality: "needs_refinement"})
 
 	if err != nil {
 		t.Fatalf("RefinePRD() returned error: %v", err)
@@ -2975,5 +2975,117 @@ func TestNS62_ValidateArtifactContent_TasksBadSubtaskID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "BAD.SUB.ID") && !strings.Contains(err.Error(), "id_format") {
 		t.Errorf("error %q does not mention the malformed ID or 'id_format'", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1: Valid quality values are accepted by parseAssessment (NS-REQ-1)
+// TS-NS-2: Invalid quality value is rejected with informative error (NS-REQ-2)
+// TS-NS-3: Missing quality field is rejected (NS-REQ-3)
+// TS-NS-5: Invalid quality does not enter AssessmentHistory (NS-REQ-5)
+// ---------------------------------------------------------------------------
+
+// TestNS70_ParseAssessment_ValidQualities verifies that each of the three valid
+// quality values is accepted by parseAssessment without error.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS70_ParseAssessment_ValidQualities(t *testing.T) {
+	t.Parallel()
+	for _, quality := range []string{"ready", "needs_refinement", "incomplete"} {
+		quality := quality
+		t.Run(quality, func(t *testing.T) {
+			t.Parallel()
+			input := map[string]any{
+				"quality": quality,
+				"summary": "test summary",
+			}
+			got, err := parseAssessment(input)
+			if err != nil {
+				t.Fatalf("parseAssessment(%q) returned unexpected error: %v", quality, err)
+			}
+			if got.Quality != quality {
+				t.Errorf("Assessment.Quality = %q; want %q", got.Quality, quality)
+			}
+		})
+	}
+}
+
+// TestNS70_ParseAssessment_InvalidQuality verifies that an invalid quality value
+// is rejected with an error mentioning the invalid value and the allowed enum values.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS70_ParseAssessment_InvalidQuality(t *testing.T) {
+	t.Parallel()
+	input := map[string]any{
+		"quality": "mostly_good",
+		"summary": "test summary",
+	}
+	got, err := parseAssessment(input)
+	if err == nil {
+		t.Fatal("parseAssessment() returned nil error; want error for invalid quality")
+	}
+	if !isZeroAssessment(got) {
+		t.Errorf("parseAssessment() returned non-zero Assessment on error: %+v", got)
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "mostly_good") {
+		t.Errorf("error %q does not mention the invalid value %q", errMsg, "mostly_good")
+	}
+	for _, allowed := range []string{"ready", "needs_refinement", "incomplete"} {
+		if !strings.Contains(errMsg, allowed) {
+			t.Errorf("error %q does not mention allowed value %q", errMsg, allowed)
+		}
+	}
+}
+
+// TestNS70_ParseAssessment_MissingQuality verifies that a missing quality field
+// is rejected with an informative error.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS70_ParseAssessment_MissingQuality(t *testing.T) {
+	t.Parallel()
+	input := map[string]any{
+		"summary": "test summary",
+		// "quality" intentionally omitted
+	}
+	got, err := parseAssessment(input)
+	if err == nil {
+		t.Fatal("parseAssessment() returned nil error; want error for missing quality")
+	}
+	if !isZeroAssessment(got) {
+		t.Errorf("parseAssessment() returned non-zero Assessment on error: %+v", got)
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "quality") {
+		t.Errorf("error %q does not mention 'quality'", errMsg)
+	}
+}
+
+// TestNS70_AssessmentHistory_NotAppendedOnInvalidQuality verifies that an
+// invalid quality value from the LLM does not get appended to AssessmentHistory.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestNS70_AssessmentHistory_NotAppendedOnInvalidQuality(t *testing.T) {
+	t.Parallel()
+
+	// Mock returns a submit_assessment with an invalid quality value.
+	resp := makeToolCallResponse("end_turn",
+		makeAssessmentToolCall("hallucinated_value", "Test summary", nil, nil),
+	)
+
+	mockFn := newMockAICallFunc(nil, mockAICallResult{
+		raw: resp,
+	})
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	assessment, err := agent.AssessPRD(ctx, "Sample PRD", "test-spec")
+
+	// Must return an error.
+	if err == nil {
+		t.Fatal("AssessPRD() returned nil error; want error for invalid quality")
+	}
+
+	// Assessment must be zero-value (nothing valid returned).
+	if !isZeroAssessment(assessment) {
+		t.Errorf("assessment = %+v; want zero-value Assessment", assessment)
 	}
 }

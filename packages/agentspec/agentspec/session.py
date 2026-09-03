@@ -108,6 +108,14 @@ class SessionState(enum.StrEnum):
     GENERATED = "generated"
 
 
+class AssessmentQuality(enum.StrEnum):
+    """Valid quality values for PRD assessment output."""
+
+    READY = "ready"
+    NEEDS_REFINEMENT = "needs_refinement"
+    INCOMPLETE = "incomplete"
+
+
 @dataclass
 class Question:
     """A structured question the agent asks the user."""
@@ -121,12 +129,22 @@ class Question:
 
 @dataclass
 class Assessment:
-    """Structured evaluation of a PRD."""
+    """Structured evaluation of a PRD.
 
-    quality: str  # "ready" | "needs_refinement" | "incomplete"
+    The ``quality`` field is a typed enum (``AssessmentQuality``).  Passing an
+    invalid string at construction time raises ``ValueError``, ensuring that
+    hallucinated or malformed quality ratings never propagate silently.
+    """
+
+    quality: AssessmentQuality
     summary: str
     gaps: list[str] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.quality, AssessmentQuality):
+            # Coerce valid strings; raise ValueError for invalid ones.
+            self.quality = AssessmentQuality(self.quality)
 
 
 @dataclass

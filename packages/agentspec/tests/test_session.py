@@ -21,6 +21,7 @@ from agentspec.campaign import Campaign
 from agentspec.errors import AgentError, SessionError
 from agentspec.session import (
     Assessment,
+    AssessmentQuality,
     Question,
     SessionState,
     SpecSession,
@@ -1571,3 +1572,70 @@ class TestQAExchangeSmoke:
         assert data["qa_exchanges"][0]["answers"] == {"q1": "answer1"}
         assert data["qa_exchanges"][0]["timestamp"] == "2026-06-10T12:00:00+00:00"
         assert len(data["assessment_history"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# TS-NS-1: Valid quality values are accepted by Assessment (NS-REQ-4)
+# TS-NS-2: Invalid quality value raises ValueError at construction (NS-REQ-4)
+# TS-NS-5: Invalid quality does not enter session history (NS-REQ-5)
+# ---------------------------------------------------------------------------
+
+
+class TestNS70_AssessmentQualityEnum:
+    """Assessment uses a typed enum for quality; invalid values raise ValueError."""
+
+    def test_ts_ns1_valid_qualities_accepted(self) -> None:
+        """TS-NS-1: Each valid quality value constructs Assessment without error."""
+        for quality in ("ready", "needs_refinement", "incomplete"):
+            a = Assessment(quality=quality, summary="ok")
+            assert a.quality == quality, f"quality={quality!r} should be accepted"
+            assert isinstance(a.quality, AssessmentQuality)
+
+    def test_ts_ns1_enum_member_accepted(self) -> None:
+        """TS-NS-1: Passing an AssessmentQuality enum member directly is accepted."""
+        a = Assessment(quality=AssessmentQuality.READY, summary="ok")
+        assert a.quality == "ready"
+        assert a.quality == AssessmentQuality.READY
+
+    def test_ts_ns2_invalid_quality_raises_value_error(self) -> None:
+        """TS-NS-2: An invalid quality value raises ValueError at construction time."""
+        with pytest.raises(ValueError):
+            Assessment(quality="mostly_good", summary="ok")  # type: ignore[arg-type]
+
+    def test_ts_ns2_empty_quality_raises_value_error(self) -> None:
+        """TS-NS-2: An empty quality string raises ValueError at construction time."""
+        with pytest.raises(ValueError):
+            Assessment(quality="", summary="ok")  # type: ignore[arg-type]
+
+    def test_ts_ns5_invalid_quality_not_in_session_history(
+        self, tmp_path: Path
+    ) -> None:
+        """TS-NS-5: assess() returns error and does not append to history when LLM
+        returns an invalid quality value."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from agentspec.errors import AgentError
+
+        session = _create_session(tmp_path)
+
+        # Mock _create_agent() to return an agent whose assess_prd raises AgentError,
+        # simulating what _parse_assessment does for an invalid quality value.
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.assess_prd = AsyncMock(
+            side_effect=AgentError(
+                "invalid assessment quality 'hallucinated_value': "
+                "must be one of [incomplete, needs_refinement, ready]",
+                category="validation",
+            )
+        )
+
+        with (
+            patch("agentspec.session._create_agent", return_value=mock_agent_instance),
+            pytest.raises(AgentError),
+        ):
+            _run_sync(session.assess())
+
+        # History must remain empty — nothing was appended.
+        assert session._assessment_history == [], (
+            "assessment_history must not be modified when assess() raises AgentError"
+        )

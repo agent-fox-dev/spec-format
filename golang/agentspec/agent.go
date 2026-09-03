@@ -624,7 +624,25 @@ func parseAssessment(input any) (Assessment, error) {
 	}
 
 	var a Assessment
-	a.Quality, _ = m["quality"].(string)
+
+	// Validate the quality enum value (NS-REQ-2, NS-REQ-3).
+	quality, _ := m["quality"].(string)
+	if quality == "" {
+		return Assessment{}, fmt.Errorf("assessment payload missing required 'quality' field")
+	}
+	validQualities := map[string]bool{
+		"ready":            true,
+		"needs_refinement": true,
+		"incomplete":       true,
+	}
+	if !validQualities[quality] {
+		return Assessment{}, fmt.Errorf(
+			"invalid assessment quality %q: must be one of [incomplete, needs_refinement, ready]",
+			quality,
+		)
+	}
+	a.Quality = quality
+
 	a.Summary, _ = m["summary"].(string)
 
 	// Parse gaps — could be []string or []any.
