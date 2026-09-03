@@ -236,6 +236,13 @@ func TestSpec07_AssessPRD_HappyPath(t *testing.T) {
 	if len(callOpts.Tools) == 0 {
 		t.Error("AICall Tools is empty; want AssessmentTools()")
 	}
+
+	// Verify temperature=0.2 was set (NS-REQ-1).
+	if callOpts.Temperature == nil {
+		t.Error("AICall Temperature is nil; want 0.2")
+	} else if *callOpts.Temperature != 0.2 {
+		t.Errorf("AICall Temperature = %f; want 0.2", *callOpts.Temperature)
+	}
 }
 
 // TestSpec07_AssessPRD_WithOptions verifies that AssessPRD accepts AgentOptions.
@@ -662,6 +669,14 @@ func TestSpec07_RefinePRD_HappyPath(t *testing.T) {
 	// Verify AICall was invoked exactly once (both tools in single response).
 	if capture.count() != 1 {
 		t.Errorf("AICall invocation count = %d; want 1", capture.count())
+	}
+
+	// Verify temperature=0.2 was set (NS-REQ-2).
+	refineCallOpts := capture.get(0)
+	if refineCallOpts.Temperature == nil {
+		t.Error("RefinePRD AICall Temperature is nil; want 0.2")
+	} else if *refineCallOpts.Temperature != 0.2 {
+		t.Errorf("RefinePRD AICall Temperature = %f; want 0.2", *refineCallOpts.Temperature)
 	}
 }
 

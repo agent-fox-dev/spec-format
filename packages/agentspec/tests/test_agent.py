@@ -66,6 +66,10 @@ async def test_assess_prd_returns_assessment_with_valid_quality(mock_ai_call):
     assert result.quality == "needs_refinement"
     assert mock_ai_call.call_count == 1
 
+    # NS-REQ-3: assess_prd must pass temperature=0.2.
+    call_kwargs = mock_ai_call.call_args.kwargs
+    assert call_kwargs.get("temperature") == 0.2
+
 
 # ===================================================================
 # TS-03-2: Assessment contains summary
@@ -179,6 +183,10 @@ async def test_refine_prd_returns_updated_prd_and_assessment(
     assert "REST API" in updated
     assert isinstance(assessment, Assessment)
     assert assessment.quality == "ready"
+
+    # NS-REQ-4: refine_prd must pass temperature=0.2.
+    call_kwargs = mock_ai_call.call_args.kwargs
+    assert call_kwargs.get("temperature") == 0.2
 
 
 # ===================================================================

@@ -107,13 +107,15 @@ func (sa *SpecAgent) AssessPRD(ctx context.Context, prdText, specName string, op
 	toolDefs := mapToTools(AssessmentTools())
 
 	// Build AICall options.
+	assessTemp := 0.2
 	callOpts := AICallOptions{
-		ModelTier:  sa.modelTier,
-		System:     systemPrompt,
-		Messages:   []Message{{Role: "user", Content: userPrompt}},
-		Tools:      toolDefs,
-		ToolChoice: map[string]any{"type": "any"},
-		Context:    "AssessPRD",
+		ModelTier:   sa.modelTier,
+		System:      systemPrompt,
+		Messages:    []Message{{Role: "user", Content: userPrompt}},
+		Tools:       toolDefs,
+		ToolChoice:  map[string]any{"type": "any"},
+		Temperature: &assessTemp,
+		Context:     "AssessPRD",
 	}
 
 	// Invoke AICall (or test mock).
@@ -185,13 +187,15 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 	toolDefs := mapToTools(RefinementTools())
 
 	// Build AICall options.
+	refineTemp := 0.2
 	callOpts := AICallOptions{
-		ModelTier:  sa.modelTier,
-		System:     systemPrompt,
-		Messages:   []Message{{Role: "user", Content: userPrompt}},
-		Tools:      toolDefs,
-		ToolChoice: map[string]any{"type": "any"},
-		Context:    "RefinePRD",
+		ModelTier:   sa.modelTier,
+		System:      systemPrompt,
+		Messages:    []Message{{Role: "user", Content: userPrompt}},
+		Tools:       toolDefs,
+		ToolChoice:  map[string]any{"type": "any"},
+		Temperature: &refineTemp,
+		Context:     "RefinePRD",
 	}
 
 	// Invoke AICall (or test mock).
