@@ -25,7 +25,7 @@ func newNewCmd() *cobra.Command {
 	var name string
 
 	cmd := &cobra.Command{
-		Use:   "new SPEC_PATH",
+		Use:   "new PRD_FILE",
 		Short: "Create a new spec from a PRD file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -35,10 +35,10 @@ func newNewCmd() *cobra.Command {
 			// Validate PRD file exists and is a file (before any initialization).
 			info, err := os.Stat(prdPath)
 			if err != nil {
-				return fmt.Errorf("SPEC_PATH %q: %w", prdPath, err)
+				return fmt.Errorf("PRD_FILE %q: %w", prdPath, err)
 			}
 			if info.IsDir() {
-				return fmt.Errorf("SPEC_PATH %q is a directory, not a file", prdPath)
+				return fmt.Errorf("PRD_FILE %q is a directory, not a file", prdPath)
 			}
 
 			// Validate or derive spec name.

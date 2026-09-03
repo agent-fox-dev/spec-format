@@ -23,12 +23,12 @@ spec [OPTIONS] [COMMAND] [ARGS]...
 Create a new spec from a PRD file. Auto-initializes the spec root directory and a default `campaign.yaml` if they do not already exist.
 
 ```
-spec new [OPTIONS] SPEC_PATH
+spec new [OPTIONS] PRD_FILE
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
-| `SPEC_PATH` | Path to an existing PRD file (required positional argument). The file must exist and must not be a directory. |
+| `PRD_FILE` | Path to an existing PRD file (required positional argument). The file must exist and must not be a directory. |
 | `--name TEXT` | Snake-case spec name. When omitted, derived automatically from the PRD filename (CamelCase is converted to snake_case). Must match `[a-z][a-z0-9_]*`. |
 
 **Example:**

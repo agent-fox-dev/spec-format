@@ -954,6 +954,79 @@ func TestTS_NS_1_ScaffoldPassesValidation(t *testing.T) {
 	}
 }
 
+// --- TS-NS-1: spec new --help shows PRD_FILE, not SPEC_PATH ---
+
+// TestTS_NS_HelpShowsPRDFile verifies that the usage string for spec new
+// uses PRD_FILE as the positional argument name, not SPEC_PATH.
+// Covers: TS-NS-1, NS-REQ-1
+func TestTS_NS_HelpShowsPRDFile(t *testing.T) {
+	cmd := newRootCmd()
+	outBuf := new(bytes.Buffer)
+	cmd.SetOut(outBuf)
+	cmd.SetErr(outBuf)
+	cmd.SetArgs([]string{"new", "--help"})
+
+	// cobra exits with a non-nil error on --help; that's expected.
+	_ = cmd.Execute()
+
+	output := outBuf.String()
+	if !strings.Contains(output, "PRD_FILE") {
+		t.Errorf("help output does not contain 'PRD_FILE'; got:\n%s", output)
+	}
+	if strings.Contains(output, "SPEC_PATH") {
+		t.Errorf("help output still contains 'SPEC_PATH'; got:\n%s", output)
+	}
+}
+
+// --- TS-NS-2: spec new error messages reference PRD_FILE, not SPEC_PATH ---
+
+// TestTS_NS_ErrorMessagesPRDFile verifies that error messages produced by
+// spec new when the positional argument is invalid use 'PRD_FILE', not
+// 'SPEC_PATH'.
+// Covers: TS-NS-2, NS-REQ-2
+func TestTS_NS_ErrorMessagesPRDFile(t *testing.T) {
+	// Case 1: non-existent file.
+	cmd1 := newRootCmd()
+	errBuf1 := new(bytes.Buffer)
+	cmd1.SetOut(new(bytes.Buffer))
+	cmd1.SetErr(errBuf1)
+	cmd1.SetArgs([]string{"new", "/nonexistent/prd.md", "--name", "test"})
+
+	err := cmd1.Execute()
+	if err == nil {
+		t.Fatal("Execute() with non-existent path returned nil; want error")
+	}
+	errMsg1 := err.Error()
+	if !strings.Contains(errMsg1, "PRD_FILE") {
+		t.Errorf("error for non-existent file does not contain 'PRD_FILE'; got: %q", errMsg1)
+	}
+	if strings.Contains(errMsg1, "SPEC_PATH") {
+		t.Errorf("error for non-existent file still contains 'SPEC_PATH'; got: %q", errMsg1)
+	}
+
+	// Case 2: path is a directory, not a file.
+	tmpDir := t.TempDir()
+	dirPath := tmpDir // a real directory
+
+	cmd2 := newRootCmd()
+	errBuf2 := new(bytes.Buffer)
+	cmd2.SetOut(new(bytes.Buffer))
+	cmd2.SetErr(errBuf2)
+	cmd2.SetArgs([]string{"new", dirPath, "--name", "test"})
+
+	err2 := cmd2.Execute()
+	if err2 == nil {
+		t.Fatal("Execute() with directory path returned nil; want error")
+	}
+	errMsg2 := err2.Error()
+	if !strings.Contains(errMsg2, "PRD_FILE") {
+		t.Errorf("error for directory path does not contain 'PRD_FILE'; got: %q", errMsg2)
+	}
+	if strings.Contains(errMsg2, "SPEC_PATH") {
+		t.Errorf("error for directory path still contains 'SPEC_PATH'; got: %q", errMsg2)
+	}
+}
+
 // TestTS_NS_2_WiringChecksEnforcedWithSmokeTests verifies that wiring
 // verification checks A and B are still enforced when the spec has smoke
 // tests but the wiring group lacks proper subtasks referencing them.
