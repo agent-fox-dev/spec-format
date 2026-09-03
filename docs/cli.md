@@ -213,6 +213,35 @@ No additional options.
 spec status 01_auth_redesign
 ```
 
+### activate
+
+Transition a draft spec to the active state. Activation computes and stores the `intent_hash` from the `## Intent` section of the PRD, and captures immutable fields (`spec_id`, `spec_name`, `created_at`).
+
+```
+spec activate SPEC
+```
+
+No additional options.
+
+**Output format:**
+
+```json
+{
+  "ok": true,
+  "spec": "my_feature",
+  "status": "active"
+}
+```
+
+**Example:**
+
+```bash
+spec activate 01_auth_redesign
+spec --spec-dir /path/to/specs activate 01
+```
+
+**Errors:** Returns exit code 1 if the transition is invalid (e.g., the spec is already active, sealed, archived, or superseded). Returns exit code 1 with an `IntentError` if the PRD body does not contain a `## Intent` section — the spec remains in `draft` state. In agent mode (`AF_AGENT=1`), errors are emitted as `{"ok": false, "error": "..."}` to stdout.
+
 ### seal
 
 Transition an active spec to the sealed state. Sealing marks a spec as finalized — no further edits are permitted.

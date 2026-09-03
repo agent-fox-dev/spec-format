@@ -22,7 +22,7 @@ func shouldShowBanner(quiet bool, subcmd string, args []string) bool {
 		return false
 	}
 	switch subcmd {
-	case "validate", "status", "list", "seal", "archive", "supersede":
+	case "validate", "status", "list", "activate", "seal", "archive", "supersede":
 		return false
 	}
 	for _, a := range args {
