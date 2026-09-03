@@ -68,12 +68,19 @@ func (s *Spec) Transition(target, dir string) (*Spec, error) {
 
 	// When activating a draft spec, compute and store the intent hash.
 	// Reject the transition if the PRD body lacks a ## Intent section.
+	// Also capture the immutable snapshot so subsequent Save calls on the
+	// returned Spec can detect mutations to spec_id, spec_name, and created_at.
 	if s.Status == "draft" && target == "active" {
 		hash, err := ComputeIntentHash(s.PRDBody)
 		if err != nil {
 			return nil, err
 		}
 		newSpec.IntentHash = &hash
+		newSpec.loaded = &immutableSnapshot{
+			SpecID:    newSpec.SpecID,
+			SpecName:  newSpec.SpecName,
+			CreatedAt: newSpec.CreatedAt,
+		}
 	}
 
 	// Persist via saveToDisk which bypasses the public Save lifecycle guard,

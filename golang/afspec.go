@@ -7,6 +7,15 @@ import (
 	"path/filepath"
 )
 
+// immutableSnapshot captures the values of fields that must not change once a
+// spec becomes active: spec_id, spec_name, and created_at (Section 9 of the
+// spec format: "Immutable after creation").
+type immutableSnapshot struct {
+	SpecID    string
+	SpecName  string
+	CreatedAt string
+}
+
 // Spec represents a complete specification package with all artifacts.
 // The PRD frontmatter fields are stored directly on the struct, while
 // the PRD Markdown body is stored in PRDBody. The three JSON artifacts
@@ -36,6 +45,12 @@ type Spec struct {
 
 	// Optional architecture document
 	Architecture string
+
+	// loaded holds an immutable snapshot of identity fields captured at load
+	// time (or at activation via Transition). Non-nil when the spec was loaded
+	// in an active state or transitioned to active, enabling Save to reject
+	// mutations to spec_id, spec_name, and created_at.
+	loaded *immutableSnapshot
 }
 
 // LoadSpec reads all spec artifacts from a directory and returns a
@@ -124,6 +139,16 @@ func LoadSpec(dir string) (*Spec, error) {
 		Architecture:  architecture,
 	}
 
+	// Capture immutable snapshot for active specs so Save can detect mutations
+	// to spec_id, spec_name, and created_at (Section 9: immutable after creation).
+	if fm.Status == "active" {
+		spec.loaded = &immutableSnapshot{
+			SpecID:    fm.SpecID,
+			SpecName:  fm.SpecName,
+			CreatedAt: fm.CreatedAt,
+		}
+	}
+
 	return spec, nil
 }
 
@@ -163,6 +188,32 @@ func (s *Spec) Save(dir string) error {
 		return &LifecycleError{
 			Msg: fmt.Sprintf("cannot save spec in %s state", s.Status),
 			Err: &SpecError{Msg: fmt.Sprintf("cannot save spec in %s state", s.Status)},
+		}
+	}
+
+	// For active specs with a stored immutable snapshot, reject mutations to
+	// spec_id, spec_name, and created_at (Section 9: immutable after creation).
+	if s.Status == "active" && s.loaded != nil {
+		if s.SpecID != s.loaded.SpecID {
+			msg := fmt.Sprintf("cannot mutate immutable field spec_id on active spec (was %q, now %q)", s.loaded.SpecID, s.SpecID)
+			return &LifecycleError{
+				Msg: msg,
+				Err: &SpecError{Msg: msg},
+			}
+		}
+		if s.SpecName != s.loaded.SpecName {
+			msg := fmt.Sprintf("cannot mutate immutable field spec_name on active spec (was %q, now %q)", s.loaded.SpecName, s.SpecName)
+			return &LifecycleError{
+				Msg: msg,
+				Err: &SpecError{Msg: msg},
+			}
+		}
+		if s.CreatedAt != s.loaded.CreatedAt {
+			msg := fmt.Sprintf("cannot mutate immutable field created_at on active spec (was %q, now %q)", s.loaded.CreatedAt, s.CreatedAt)
+			return &LifecycleError{
+				Msg: msg,
+				Err: &SpecError{Msg: msg},
+			}
 		}
 	}
 

@@ -737,6 +737,173 @@ func TestSave_CoverageNoTestCases(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Issue #64 — immutable-field enforcement on active specs
+// ---------------------------------------------------------------------------
+
+// createActiveSpecFromDisk creates a draft spec, transitions it to active
+// (persisting to disk), then reloads it with LoadSpec so that the returned
+// Spec has the immutable snapshot captured by LoadSpec.
+// Requirement: NS-REQ-1, NS-REQ-2, NS-REQ-3; Test Spec: TS-NS-1, TS-NS-2, TS-NS-3
+func createActiveSpecFromDisk(t *testing.T, dir string) *Spec {
+	t.Helper()
+
+	draft := createDraftSpec(t, dir)
+
+	_, err := draft.Transition("active", dir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Reload so LoadSpec captures the immutable snapshot.
+	active, err := LoadSpec(dir)
+	if err != nil {
+		t.Fatalf("LoadSpec after activation failed: %v", err)
+	}
+	if active.Status != "active" {
+		t.Fatalf("expected active status after reload, got %q", active.Status)
+	}
+	return active
+}
+
+// TestSave_ActiveSpec_RejectsCreatedAtMutation verifies that Save returns a
+// LifecycleError (also unwrappable to SpecError) when created_at is mutated on
+// an active spec loaded via LoadSpec, without writing any file.
+// Test Spec: TS-NS-1; Requirement: NS-REQ-1
+func TestSave_ActiveSpec_RejectsCreatedAtMutation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createActiveSpecFromDisk(t, tmpDir)
+
+	spec.CreatedAt = "2099-01-01T00:00:00Z"
+
+	err := spec.Save(tmpDir)
+	if err == nil {
+		t.Fatal("expected error when mutating created_at on active spec, got nil")
+	}
+
+	var le *LifecycleError
+	if !errors.As(err, &le) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err = %v (type %T)", err, err)
+	}
+
+	var se *SpecError
+	if !errors.As(err, &se) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err = %v (type %T)", err, err)
+	}
+}
+
+// TestSave_ActiveSpec_RejectsSpecIDMutation verifies that Save returns a
+// LifecycleError when spec_id is mutated on an active spec loaded via LoadSpec.
+// Test Spec: TS-NS-2; Requirement: NS-REQ-2
+func TestSave_ActiveSpec_RejectsSpecIDMutation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createActiveSpecFromDisk(t, tmpDir)
+
+	spec.SpecID = "99"
+
+	err := spec.Save(tmpDir)
+	if err == nil {
+		t.Fatal("expected error when mutating spec_id on active spec, got nil")
+	}
+
+	var le *LifecycleError
+	if !errors.As(err, &le) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err = %v (type %T)", err, err)
+	}
+
+	var se *SpecError
+	if !errors.As(err, &se) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err = %v (type %T)", err, err)
+	}
+}
+
+// TestSave_ActiveSpec_RejectsSpecNameMutation verifies that Save returns a
+// LifecycleError when spec_name is mutated on an active spec loaded via LoadSpec.
+// Test Spec: TS-NS-3; Requirement: NS-REQ-3
+func TestSave_ActiveSpec_RejectsSpecNameMutation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createActiveSpecFromDisk(t, tmpDir)
+
+	spec.SpecName = "other_feature"
+
+	err := spec.Save(tmpDir)
+	if err == nil {
+		t.Fatal("expected error when mutating spec_name on active spec, got nil")
+	}
+
+	var le *LifecycleError
+	if !errors.As(err, &le) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err = %v (type %T)", err, err)
+	}
+
+	var se *SpecError
+	if !errors.As(err, &se) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err = %v (type %T)", err, err)
+	}
+}
+
+// TestSave_DraftSpec_AllowsCreatedAtMutation verifies that Save succeeds and
+// persists the new value when created_at is mutated on a draft spec.
+// Immutability applies only after activation.
+// Test Spec: TS-NS-4; Requirement: NS-REQ-4
+func TestSave_DraftSpec_AllowsCreatedAtMutation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createDraftSpec(t, tmpDir)
+
+	const newDate = "2099-01-01T00:00:00Z"
+	spec.CreatedAt = newDate
+
+	if err := spec.Save(tmpDir); err != nil {
+		t.Fatalf("Save returned unexpected error for draft spec: %v", err)
+	}
+
+	// Verify the new value was actually written to disk.
+	saved, err := os.ReadFile(filepath.Join(tmpDir, "prd.md"))
+	if err != nil {
+		t.Fatalf("failed to read prd.md after save: %v", err)
+	}
+	if !strings.Contains(string(saved), newDate) {
+		t.Errorf("persisted prd.md does not contain new created_at %q", newDate)
+	}
+}
+
+// TestSave_Transition_CapturesSnapshot verifies that a Spec returned by
+// Transition("active") has its immutable snapshot set, so subsequent Save
+// calls detect mutations without requiring a round-trip through LoadSpec.
+// Test Spec: TS-NS-5; Requirement: NS-REQ-5
+func TestSave_Transition_CapturesSnapshot(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	draft := createDraftSpec(t, tmpDir)
+
+	active, err := draft.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Mutate spec_id on the Spec returned directly by Transition.
+	active.SpecID = "99"
+
+	err = active.Save(tmpDir)
+	if err == nil {
+		t.Fatal("expected LifecycleError after mutating spec_id on Transition result, got nil")
+	}
+
+	var le *LifecycleError
+	if !errors.As(err, &le) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err = %v (type %T)", err, err)
+	}
+}
+
 // TestSave_CoverageNilTestSpec verifies that calling Save when TestSpec is nil
 // does not cause a nil-pointer dereference from the coverage computation guard.
 // Requirements: NS-REQ-4; Test Spec: TS-NS-4
