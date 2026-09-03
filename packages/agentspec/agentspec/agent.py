@@ -288,7 +288,7 @@ class SpecAgent:
 
             tool_name = f"submit_{artifact_name}"
             tool_input = self._extract_tool_call(response, tool_name)
-            content: dict[str, Any] = tool_input["content"]
+            content: dict[str, Any] = tool_input
 
             content["spec_id"] = spec_id
             content["spec_name"] = spec_name
@@ -378,7 +378,7 @@ class SpecAgent:
                 messages, tools, system=system, temperature=0.2
             )
             tool_input = self._extract_tool_call(response, tool_name)
-            content: dict[str, Any] = tool_input["content"]
+            content: dict[str, Any] = tool_input
 
             content["spec_id"] = spec_id
             content["spec_name"] = spec_name

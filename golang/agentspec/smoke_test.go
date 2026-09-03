@@ -230,7 +230,8 @@ func TestSmoke_ResumeSessionAndAcceptPRD(t *testing.T) {
 }
 
 // TestSmoke_ArtifactToolRequirements builds the artifact tool schema for
-// "requirements", verifying InlineRefs and CleanSchema are applied correctly.
+// "requirements", verifying InlineRefs and CleanSchema are applied correctly
+// and the schema is used directly as input_schema without a 'content' wrapper.
 // Test Spec: TS-06-SMOKE-4, Execution Path: 06-PATH-4
 func TestSmoke_ArtifactToolRequirements(t *testing.T) {
 	tools := ArtifactTool("requirements")
@@ -245,7 +246,7 @@ func TestSmoke_ArtifactToolRequirements(t *testing.T) {
 		t.Errorf("tool name = %v; want %q", tool["name"], "submit_requirements")
 	}
 
-	// Get the input schema.
+	// Get the input schema — this IS the cleaned artifact schema directly.
 	inputSchema, ok := tool["input_schema"].(map[string]any)
 	if !ok {
 		t.Fatal("tool input_schema is not a map")
@@ -254,17 +255,23 @@ func TestSmoke_ArtifactToolRequirements(t *testing.T) {
 	if !ok {
 		t.Fatal("input_schema properties is not a map")
 	}
-	content, ok := props["content"].(map[string]any)
-	if !ok {
-		t.Fatal("content property is not a map")
+
+	// The schema must NOT have a 'content' wrapper.
+	if _, hasContent := props["content"]; hasContent {
+		t.Error("input_schema.properties has a 'content' key; want flat artifact fields (no wrapper)")
 	}
 
-	// Check that $schema is stripped at the content schema top level.
-	if _, ok := content["$schema"]; ok {
-		t.Error("content schema has $schema at top level; should be stripped by CleanSchema")
+	// The flat schema must expose 'requirements' directly.
+	if _, hasReqs := props["requirements"]; !hasReqs {
+		t.Error("input_schema.properties missing 'requirements'; want top-level artifact field")
 	}
 
-	// Walk the entire content schema tree and verify no $ref, $defs, title,
+	// Check that $schema is stripped at the input_schema top level.
+	if _, ok := inputSchema["$schema"]; ok {
+		t.Error("input_schema has $schema at top level; should be stripped by CleanSchema")
+	}
+
+	// Walk the entire input schema tree and verify no $ref, $defs, title,
 	// or default keys exist at ANY nesting level.
 	var walkSchema func(path string, m map[string]any)
 	walkSchema = func(path string, m map[string]any) {
@@ -294,7 +301,7 @@ func TestSmoke_ArtifactToolRequirements(t *testing.T) {
 		}
 	}
 
-	walkSchema("content", content)
+	walkSchema("input_schema", inputSchema)
 
 	// Verify that description fields are preserved (the requirements schema
 	// should have at least some description fields).
@@ -319,9 +326,9 @@ func TestSmoke_ArtifactToolRequirements(t *testing.T) {
 		return count
 	}
 
-	descCount := countDescriptions(content)
+	descCount := countDescriptions(inputSchema)
 	if descCount == 0 {
-		t.Error("content schema has no description fields; expected descriptions to be preserved")
+		t.Error("input_schema has no description fields; expected descriptions to be preserved")
 	}
 }
 

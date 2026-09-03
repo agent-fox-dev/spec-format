@@ -187,28 +187,22 @@ def artifact_tool(artifact_name: str) -> list[dict[str, Any]]:
     """Return tool definition for generating one artifact.
 
     Produces a per-artifact tool (``submit_requirements``,
-    ``submit_test_spec``, or ``submit_tasks``) whose ``content``
-    property embeds the Pydantic model's JSON schema so the LLM
-    is structurally constrained.
+    ``submit_test_spec``, or ``submit_tasks``) whose ``input_schema``
+    is the cleaned Pydantic model's JSON schema directly, with no
+    intermediate ``content`` wrapper property.
 
     Args:
         artifact_name: One of ``"requirements"``, ``"test_spec"``,
             ``"tasks"``.
     """
     model_cls = _ARTIFACT_MODELS[artifact_name]
-    content_schema = _clean_schema(model_cls.model_json_schema())  # type: ignore[union-attr]
+    artifact_schema = _clean_schema(model_cls.model_json_schema())  # type: ignore[union-attr]
 
     tool_name = f"submit_{artifact_name}"
     return [
         {
             "name": tool_name,
             "description": (f"Submit the generated {artifact_name} artifact content."),
-            "input_schema": {
-                "type": "object",
-                "required": ["content"],
-                "properties": {
-                    "content": content_schema,
-                },
-            },
+            "input_schema": artifact_schema,
         }
     ]

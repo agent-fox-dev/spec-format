@@ -131,10 +131,14 @@ def test_artifact_tool_correct_name():
 
 
 def test_artifact_tool_schema_fields():
-    """TS-03-20: input_schema has content field with structured schema."""
+    """TS-03-20: input_schema is the flat artifact schema (no 'content' wrapper)."""
     tools = artifact_tool("requirements")
     schema = tools[0]["input_schema"]
-    assert "content" in schema["properties"]
-    content_schema = schema["properties"]["content"]
-    assert content_schema["type"] == "object"
-    assert "properties" in content_schema
+    # The schema must be the artifact schema directly — no intermediate 'content' key.
+    assert "content" not in schema.get("properties", {}), (
+        "input_schema must not wrap the artifact in a 'content' property"
+    )
+    assert schema["type"] == "object"
+    assert "properties" in schema
+    # The artifact-level 'requirements' key must be directly accessible.
+    assert "requirements" in schema["properties"]

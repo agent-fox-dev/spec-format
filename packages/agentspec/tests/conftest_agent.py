@@ -139,6 +139,7 @@ def make_artifact_response(
     """Build a fake API response containing a per-artifact tool call.
 
     The tool name is ``submit_{artifact_name}`` (e.g. ``submit_requirements``).
+    The ``input`` is the flat artifact dict directly — no ``content`` wrapper.
     """
     if content is None:
         content = {"placeholder": True}
@@ -147,9 +148,7 @@ def make_artifact_response(
         content=[
             FakeToolUseBlock(
                 name=tool_name,
-                input={
-                    "content": content,
-                },
+                input=content,
             )
         ]
     )

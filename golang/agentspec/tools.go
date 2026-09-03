@@ -149,19 +149,13 @@ func ArtifactTool(artifactName string) []map[string]any {
 	// Strip title, default, and $schema metadata.
 	cleaned := CleanSchema(inlined)
 
-	// Build the tool definition with the cleaned schema as the content property.
+	// Build the tool definition with the cleaned schema used directly as input_schema.
 	toolName := "submit_" + artifactName
 	return []map[string]any{
 		{
-			"name":        toolName,
-			"description": "Submit the " + artifactName + " artifact.",
-			"input_schema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"content": cleaned,
-				},
-				"required": []any{"content"},
-			},
+			"name":         toolName,
+			"description":  "Submit the " + artifactName + " artifact.",
+			"input_schema": cleaned,
 		},
 	}
 }
