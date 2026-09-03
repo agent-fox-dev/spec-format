@@ -76,7 +76,7 @@ func mkAssessmentResponse() *MessageResponse {
 				Type: "tool_use",
 				Name: "submit_assessment",
 				Input: map[string]any{
-					"quality": "high",
+					"quality": "needs_refinement",
 					"summary": "Well-structured PRD covering all required areas.",
 					"gaps":    []any{"Missing error handling details"},
 					"questions": []any{
@@ -106,7 +106,7 @@ func mkRefinementResponse() *MessageResponse {
 				Type: "tool_use",
 				Name: "submit_assessment",
 				Input: map[string]any{
-					"quality":   "excellent",
+					"quality":   "ready",
 					"summary":   "Refined PRD is comprehensive.",
 					"gaps":      []any{},
 					"questions": []any{},
@@ -129,11 +129,11 @@ func mkArtifactResponse(name string) *MessageResponse {
 		}
 	case "test_spec":
 		content["test_cases"] = []any{
-			map[string]any{"id": "TC-1", "name": "test X"},
+			map[string]any{"id": "TS-07-1", "name": "test X"},
 		}
 	case "tasks":
-		content["tasks"] = []any{
-			map[string]any{"id": "T-1", "name": "implement X"},
+		content["task_groups"] = []any{
+			map[string]any{"id": 1, "name": "implement X"},
 		}
 	}
 
@@ -202,8 +202,8 @@ func TestSpec07_WiringAssessChain(t *testing.T) {
 	}
 
 	// Verify assessment was returned from the full chain.
-	if assessment.Quality != "high" {
-		t.Errorf("assessment.Quality = %q; want %q", assessment.Quality, "high")
+	if assessment.Quality != "needs_refinement" {
+		t.Errorf("assessment.Quality = %q; want %q", assessment.Quality, "needs_refinement")
 	}
 	if assessment.Summary == "" {
 		t.Error("assessment.Summary is empty")
@@ -234,7 +234,7 @@ func TestSpec07_WiringRefineChain(t *testing.T) {
 	session, specDir := setupWiringSession(t, doer)
 
 	// Seed with an initial assessment (required for Refine).
-	session.AssessmentHistory = []Assessment{{Quality: "medium", Summary: "Initial"}}
+	session.AssessmentHistory = []Assessment{{Quality: "needs_refinement", Summary: "Initial"}}
 	data, _ := json.Marshal(session)
 	_ = os.WriteFile(filepath.Join(specDir, "_session.json"), data, 0o644)
 
@@ -245,8 +245,8 @@ func TestSpec07_WiringRefineChain(t *testing.T) {
 	}
 
 	// Verify assessment came back.
-	if assessment.Quality != "excellent" {
-		t.Errorf("assessment.Quality = %q; want %q", assessment.Quality, "excellent")
+	if assessment.Quality != "ready" {
+		t.Errorf("assessment.Quality = %q; want %q", assessment.Quality, "ready")
 	}
 
 	// Verify Doer was called.
@@ -438,7 +438,7 @@ func TestSpec07_WiringNoStubs(t *testing.T) {
 	})
 }
 
-// TestSpec07_WiringEmbeddedTemplatesLoad verifies all 10 embedded prompt
+// TestSpec07_WiringEmbeddedTemplatesLoad verifies all 9 embedded prompt
 // templates are accessible and non-empty (required by 17.V).
 func TestSpec07_WiringEmbeddedTemplatesLoad(t *testing.T) {
 	names := []string{
@@ -451,7 +451,6 @@ func TestSpec07_WiringEmbeddedTemplatesLoad(t *testing.T) {
 		"generation_user_requirements",
 		"generation_user_test_spec",
 		"generation_user_tasks",
-		"repair_user",
 	}
 
 	for _, name := range names {

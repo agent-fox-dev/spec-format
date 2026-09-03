@@ -110,7 +110,7 @@
     "task_group": {
       "type": "object",
       "properties": {
-        "id": { "type": "integer" },
+        "id": { "type": "integer", "minimum": 1 },
         "kind": {
           "type": "string",
           "enum": ["tests", "standard", "checkpoint", "wiring_verification"]

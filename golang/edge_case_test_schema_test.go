@@ -243,3 +243,86 @@ func TestEdgeCaseTest_SchemaValidation(t *testing.T) {
 		t.Errorf("ValidateSchema for complete EdgeCaseTest should pass, got errors: %v", result.Errors)
 	}
 }
+
+// TestEdgeCaseTest_ValidateSchema_InvalidKind verifies that ValidateSchema rejects
+// an edge_case_test whose kind field is not in the enum ["unit", "integration"].
+// This exercises the JSON schema's enum constraint for edge_case_test.kind.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3.1
+func TestEdgeCaseTest_ValidateSchema_InvalidKind(t *testing.T) {
+	// Use raw JSON to bypass Go struct's UnmarshalJSON validation so that
+	// we can test the JSON schema's enum constraint directly.
+	doc := parseJSON(t, `{
+		"$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+		"spec_id": "04",
+		"spec_name": "test",
+		"schema_version": 1,
+		"test_cases": [],
+		"property_tests": [],
+		"edge_case_tests": [
+			{
+				"id": "TS-04-E1",
+				"requirement_id": "04-REQ-1.E1",
+				"kind": "foo",
+				"description": "edge case with invalid kind",
+				"preconditions": [],
+				"expected": "pass",
+				"assertion_pseudocode": "assert true"
+			}
+		],
+		"smoke_tests": [],
+		"coverage": {}
+	}`)
+	errs := requireSchemaError(t, doc, "test_spec.v1.json")
+	found := false
+	for _, e := range errs {
+		if containsSubstring(e.Message+e.Path+e.Keyword, "foo") ||
+			containsSubstring(e.Message+e.Path+e.Keyword, "enum") ||
+			containsSubstring(e.Message+e.Path+e.Keyword, "kind") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected schema error mentioning kind enum violation, got: %v", errs)
+	}
+}
+
+// TestEdgeCaseTest_ValidateSchema_MissingPreconditions verifies that ValidateSchema
+// rejects an edge_case_test that is missing the required preconditions field.
+// This exercises the JSON schema's required array for edge_case_test.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3.1
+func TestEdgeCaseTest_ValidateSchema_MissingPreconditions(t *testing.T) {
+	// Use raw JSON to produce an edge_case_test without the preconditions field,
+	// bypassing Go struct defaults.
+	doc := parseJSON(t, `{
+		"$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+		"spec_id": "04",
+		"spec_name": "test",
+		"schema_version": 1,
+		"test_cases": [],
+		"property_tests": [],
+		"edge_case_tests": [
+			{
+				"id": "TS-04-E1",
+				"requirement_id": "04-REQ-1.E1",
+				"kind": "unit",
+				"description": "edge case missing preconditions",
+				"expected": "pass",
+				"assertion_pseudocode": "assert true"
+			}
+		],
+		"smoke_tests": [],
+		"coverage": {}
+	}`)
+	errs := requireSchemaError(t, doc, "test_spec.v1.json")
+	found := false
+	for _, e := range errs {
+		if containsSubstring(e.Message+e.Path+e.Keyword, "preconditions") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected schema error mentioning 'preconditions', got: %v", errs)
+	}
+}

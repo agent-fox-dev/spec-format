@@ -171,6 +171,13 @@ func (s *SpecSession) persistSession() error {
 			Cause: err,
 		}
 	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return &SessionError{
+			Msg:   fmt.Sprintf("failed to sync _session.json temp file: %v", err),
+			Cause: err,
+		}
+	}
 	if err := tmpFile.Close(); err != nil {
 		return &SessionError{
 			Msg:   fmt.Sprintf("failed to close _session.json temp file: %v", err),
@@ -301,6 +308,69 @@ func (s *SpecSession) Validate() (SessionValidationResult, error) {
 
 	// LoadSpec failed — fall back to individual artifact validation.
 	return s.validateFallback()
+}
+
+// ValidateCrossFile loads the spec from the session's spec directory and runs
+// only cross-file integrity checks, skipping schema validation. Schema
+// validation is already performed inline during artifact generation by
+// validateArtifactContent. If LoadSpec fails (e.g., missing or unreadable
+// artifacts), it falls back to reporting the affected artifacts as integrity
+// errors without running schema validation.
+func (s *SpecSession) ValidateCrossFile() (SessionValidationResult, error) {
+	// Try the happy path: load the full spec and run cross-file checks only.
+	spec, loadErr := afspec.LoadSpec(s.specDir)
+	if loadErr == nil {
+		vr := spec.ValidateCrossFile()
+		return categorizeValidationResult(vr), nil
+	}
+
+	// LoadSpec failed — fall back to reporting missing or unreadable artifacts
+	// as integrity errors.
+	return s.crossFileFallback()
+}
+
+// crossFileFallback checks which known artifact files are present in the spec
+// directory and reports any missing or unreadable artifacts as integrity
+// errors. It does not run schema validation — inline validation in the
+// generation pipeline already covers schema correctness.
+func (s *SpecSession) crossFileFallback() (SessionValidationResult, error) {
+	result := SessionValidationResult{
+		Valid:           false,
+		SchemaErrors:    []string{},
+		IntegrityErrors: []string{},
+	}
+
+	foundAny := false
+	for _, artifactName := range knownArtifacts {
+		artifactPath := filepath.Join(s.specDir, artifactName)
+		data, err := os.ReadFile(artifactPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				result.IntegrityErrors = append(result.IntegrityErrors,
+					fmt.Sprintf("missing artifact: %s", artifactName))
+			} else {
+				result.IntegrityErrors = append(result.IntegrityErrors,
+					fmt.Sprintf("cannot read %s: %v", artifactName, err))
+			}
+			continue
+		}
+		foundAny = true
+		// If the file exists but cannot be parsed as JSON, LoadSpec would have
+		// failed for that reason. Report as an integrity error since cross-file
+		// checks cannot proceed without parseable content.
+		var raw json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			result.IntegrityErrors = append(result.IntegrityErrors,
+				fmt.Sprintf("cannot parse %s for cross-file check: %v", artifactName, err))
+		}
+	}
+
+	if !foundAny {
+		result.IntegrityErrors = append(result.IntegrityErrors,
+			"no artifact files found in spec directory")
+	}
+
+	return result, nil
 }
 
 // categorizeValidationResult converts an afspec.ValidationResult into a
@@ -715,40 +785,35 @@ func (s *SpecSession) persistError(err error) {
 }
 
 // loadSiblingLandscape attempts to load spec landscape entries from
-// sibling spec directories (same parent directory). Returns an empty
-// slice on any error — landscape loading is best-effort.
+// sibling spec directories (same parent directory). Each entry's status
+// is read from the sibling's prd.md frontmatter. Returns nil on any
+// directory-read error — landscape loading is best-effort; individual
+// siblings with missing or malformed prd.md are silently skipped.
 func (s *SpecSession) loadSiblingLandscape() []map[string]any {
 	parentDir := filepath.Dir(s.specDir)
 	currentName := filepath.Base(s.specDir)
 
-	entries, err := os.ReadDir(parentDir)
-	if err != nil {
+	// Derive the current spec's ID from its directory name (best-effort)
+	// so LoadSpecLandscape can exclude it from results.
+	currentSpecID, _, _ := afspec.ParseSpecDirName(currentName)
+
+	// LoadSpecLandscape scans parentDir, reads each sibling's prd.md
+	// frontmatter to obtain the actual status, and excludes the current
+	// spec. Errors from missing or malformed PRDs are silently ignored.
+	metas, _ := afspec.LoadSpecLandscape(parentDir, false, currentSpecID)
+
+	if len(metas) == 0 {
 		return nil
 	}
 
-	var landscape []map[string]any
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if name == currentName || name == "archive" {
-			continue
-		}
-		if !afspec.IsSpecDirName(name) {
-			continue
-		}
-		prefix, specName, err := afspec.ParseSpecDirName(name)
-		if err != nil {
-			continue
-		}
+	landscape := make([]map[string]any, 0, len(metas))
+	for _, m := range metas {
 		landscape = append(landscape, map[string]any{
-			"spec_id": prefix,
-			"title":   specName,
-			"status":  "active",
+			"spec_id": m.SpecID,
+			"title":   m.SpecName,
+			"status":  m.Status,
 		})
 	}
-
 	return landscape
 }
 
@@ -862,8 +927,16 @@ func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) {
 	// Transition to StateGenerated.
 	s.Current = StateGenerated
 
-	// Run Validate (validation errors are non-fatal).
-	validation, _ := s.Validate()
+	// Run ValidateCrossFile to check cross-file integrity of generated artifacts.
+	// Schema validation is skipped here because it was already performed inline
+	// during artifact generation by validateArtifactContent.
+	validation, validateErr := s.ValidateCrossFile()
+	if validateErr != nil {
+		// Validate() itself failed (e.g., could not read artifacts); record
+		// the error in the validation result so callers can surface it.
+		validation.Valid = false
+		validation.IntegrityErrors = append(validation.IntegrityErrors, validateErr.Error())
+	}
 
 	// Collect warnings from validation result.
 	var warnings []string

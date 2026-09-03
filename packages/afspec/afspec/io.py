@@ -146,6 +146,9 @@ def load_spec(dir: Union[str, Path]) -> Spec:
         created_at=prd.frontmatter.created_at,
     )
 
+    # Record source directory for folder-name validation.
+    spec._source_dir = dir_path
+
     return spec
 
 
@@ -237,6 +240,8 @@ def _atomic_write(path: Path, content: str) -> str:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
         os.rename(tmp_path, str(path))
     except Exception:
         # Clean up temp file on failure

@@ -107,13 +107,16 @@ func (sa *SpecAgent) AssessPRD(ctx context.Context, prdText, specName string, op
 	toolDefs := mapToTools(AssessmentTools())
 
 	// Build AICall options.
+	assessTemp := 0.2
 	callOpts := AICallOptions{
-		ModelTier:  sa.modelTier,
-		System:     systemPrompt,
-		Messages:   []Message{{Role: "user", Content: userPrompt}},
-		Tools:      toolDefs,
-		ToolChoice: map[string]any{"type": "any"},
-		Context:    "AssessPRD",
+		ModelTier:   sa.modelTier,
+		System:      systemPrompt,
+		Messages:    []Message{{Role: "user", Content: userPrompt}},
+		Tools:       toolDefs,
+		ToolChoice:  map[string]any{"type": "any"},
+		Temperature: &assessTemp,
+		MaxTokens:   4096,
+		Context:     "AssessPRD",
 	}
 
 	// Invoke AICall (or test mock).
@@ -185,13 +188,16 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 	toolDefs := mapToTools(RefinementTools())
 
 	// Build AICall options.
+	refineTemp := 0.2
 	callOpts := AICallOptions{
-		ModelTier:  sa.modelTier,
-		System:     systemPrompt,
-		Messages:   []Message{{Role: "user", Content: userPrompt}},
-		Tools:      toolDefs,
-		ToolChoice: map[string]any{"type": "any"},
-		Context:    "RefinePRD",
+		ModelTier:   sa.modelTier,
+		System:      systemPrompt,
+		Messages:    []Message{{Role: "user", Content: userPrompt}},
+		Tools:       toolDefs,
+		ToolChoice:  map[string]any{"type": "any"},
+		Temperature: &refineTemp,
+		MaxTokens:   16384,
+		Context:     "RefinePRD",
 	}
 
 	// Invoke AICall (or test mock).
@@ -231,63 +237,17 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 		}
 	}
 
-	// Try to extract submit_assessment from the same response.
-	assessmentInput, assessErr := extractToolCall(resp, "submit_assessment")
-	if assessErr == nil {
-		// Assessment found in same response — parse it.
-		assessment, parseErr := parseAssessment(assessmentInput)
-		if parseErr != nil {
-			return "", Assessment{}, &AgentError{
-				Detail:        fmt.Sprintf("RefinePRD: failed to parse assessment: %v", parseErr),
-				ErrorCategory: "internal",
-				Cause:         parseErr,
-			}
-		}
-		return updatedPRD, assessment, nil
-	}
-
-	// Assessment not found in first response — make a fallback call
-	// with only the assessment tool to get a re-assessment. Send only
-	// the updated PRD text (not the full original conversation) to
-	// minimise input cost.
-	assessToolDefs := mapToTools(AssessmentTools())
-	fallbackOpts := AICallOptions{
-		ModelTier: sa.modelTier,
-		System:    systemPrompt,
-		Messages: []Message{
-			{Role: "user", Content: fmt.Sprintf("Please assess the following updated PRD:\n\n%s", updatedPRD)},
-		},
-		Tools:      assessToolDefs,
-		ToolChoice: map[string]any{"type": "any"},
-		Context:    "RefinePRD:fallback_assessment",
-	}
-
-	_, raw2, err2 := callFn(ctx, fallbackOpts)
-	if err2 != nil {
-		return "", Assessment{}, wrapCallError(err2)
-	}
-
-	resp2, ok := raw2.(*MessageResponse)
-	if !ok {
-		return "", Assessment{}, &AgentError{
-			Detail:        "RefinePRD: unexpected response type from fallback AICall",
-			ErrorCategory: "internal",
-		}
-	}
-
-	if err := checkStopReason(resp2.StopReason); err != nil {
+	// Extract submit_assessment from the same response — both tools must
+	// appear in a single LLM call; no fallback second call is made.
+	assessmentInput, err := extractToolCall(resp, "submit_assessment")
+	if err != nil {
 		return "", Assessment{}, err
 	}
 
-	assessmentInput2, err2 := extractToolCall(resp2, "submit_assessment")
-	if err2 != nil {
-		return "", Assessment{}, err2
-	}
-
-	assessment, parseErr := parseAssessment(assessmentInput2)
+	assessment, parseErr := parseAssessment(assessmentInput)
 	if parseErr != nil {
 		return "", Assessment{}, &AgentError{
-			Detail:        fmt.Sprintf("RefinePRD: failed to parse fallback assessment: %v", parseErr),
+			Detail:        fmt.Sprintf("RefinePRD: failed to parse assessment: %v", parseErr),
 			ErrorCategory: "internal",
 			Cause:         parseErr,
 		}
@@ -624,7 +584,25 @@ func parseAssessment(input any) (Assessment, error) {
 	}
 
 	var a Assessment
-	a.Quality, _ = m["quality"].(string)
+
+	// Validate the quality enum value (NS-REQ-2, NS-REQ-3).
+	quality, _ := m["quality"].(string)
+	if quality == "" {
+		return Assessment{}, fmt.Errorf("assessment payload missing required 'quality' field")
+	}
+	validQualities := map[string]bool{
+		"ready":            true,
+		"needs_refinement": true,
+		"incomplete":       true,
+	}
+	if !validQualities[quality] {
+		return Assessment{}, fmt.Errorf(
+			"invalid assessment quality %q: must be one of [incomplete, needs_refinement, ready]",
+			quality,
+		)
+	}
+	a.Quality = quality
+
 	a.Summary, _ = m["summary"].(string)
 
 	// Parse gaps — could be []string or []any.
@@ -709,7 +687,7 @@ func validateArtifactContent(input any, artifactName string) (map[string]any, er
 	case "test_spec":
 		requiredKeys = []string{"spec_id", "spec_name", "test_cases"}
 	case "tasks":
-		requiredKeys = []string{"spec_id", "spec_name", "tasks"}
+		requiredKeys = []string{"spec_id", "spec_name", "task_groups"}
 	}
 
 	var missing []string
@@ -723,10 +701,18 @@ func validateArtifactContent(input any, artifactName string) (map[string]any, er
 		return nil, fmt.Errorf("artifact %s missing required keys: %s", artifactName, strings.Join(missing, ", "))
 	}
 
-	// Run library validation for requirements artifacts: EARS pattern field
-	// constraints and requirement ID format checks.
-	if artifactName == "requirements" {
+	// Run library validation for structural integrity beyond key presence.
+	switch artifactName {
+	case "requirements":
 		if entries := afspec.ValidateRequirementsMap(m); len(entries) > 0 {
+			return nil, formatValidationEntries(artifactName, entries)
+		}
+	case "test_spec":
+		if entries := afspec.ValidateTestSpecMap(m); len(entries) > 0 {
+			return nil, formatValidationEntries(artifactName, entries)
+		}
+	case "tasks":
+		if entries := afspec.ValidateTasksMap(m); len(entries) > 0 {
 			return nil, formatValidationEntries(artifactName, entries)
 		}
 	}

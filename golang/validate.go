@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -456,6 +457,136 @@ func ValidateRequirementsMap(content map[string]any) []ValidationEntry {
 	return entries
 }
 
+// subtaskIDPattern matches valid subtask IDs like "1.1" or "2.3" ({group}.{N}).
+var subtaskIDPattern = regexp.MustCompile(`^\d+\.\d+$`)
+
+// verificationIDPattern matches valid verification IDs like "1.V" or "2.V" ({group}.V).
+var verificationIDPattern = regexp.MustCompile(`^\d+\.V$`)
+
+// validTestCaseKinds is the set of allowed values for a test case's "kind" field.
+var validTestCaseKinds = map[string]bool{
+	"unit":        true,
+	"integration": true,
+	"smoke":       true,
+	"property":    true,
+	"edge_case":   true,
+}
+
+// ValidateTestSpecMap performs targeted validation on a test_spec artifact
+// represented as a raw map[string]any. It checks test case ID format and
+// kind enum values without requiring every JSON schema field to be present.
+// This is used by the AI generation pipeline to validate AI-produced content
+// that may lack optional schema fields.
+//
+// Checks performed:
+//   - Test case ID format: must match testCaseIDPattern (^TS-\w+-\d+$) (id_format check)
+//   - Test case kind enum: must be one of unit/integration/smoke/property/edge_case (kind_enum check)
+//
+// Returns a slice of ValidationEntry describing any violations. An empty
+// slice means the content passed all checks.
+func ValidateTestSpecMap(content map[string]any) []ValidationEntry {
+	var entries []ValidationEntry
+
+	testCases, _ := content["test_cases"].([]any)
+	for tcIdx, rawTC := range testCases {
+		tc, ok := rawTC.(map[string]any)
+		if !ok {
+			continue
+		}
+		tcID, _ := tc["id"].(string)
+
+		// Check test case ID format.
+		if tcID != "" && !testCaseIDPattern.MatchString(tcID) {
+			entries = append(entries, ValidationEntry{
+				Category: "integrity",
+				Check:    "id_format",
+				Message:  fmt.Sprintf("test case ID %q does not match expected format TS-<spec>-<N>", tcID),
+				Artifact: "test_spec.json",
+				EntityID: tcID,
+				Path:     fmt.Sprintf("test_cases[%d].id", tcIdx),
+			})
+		}
+
+		// Check kind enum value.
+		kind, hasKind := tc["kind"].(string)
+		if hasKind && kind != "" && !validTestCaseKinds[kind] {
+			entries = append(entries, ValidationEntry{
+				Category: "schema",
+				Check:    "kind_enum",
+				Message:  fmt.Sprintf("test case %q has invalid kind %q; must be one of: unit, integration, smoke, property, edge_case", tcID, kind),
+				Artifact: "test_spec.json",
+				EntityID: tcID,
+				Path:     fmt.Sprintf("test_cases[%d].kind", tcIdx),
+			})
+		}
+	}
+
+	return entries
+}
+
+// ValidateTasksMap performs targeted validation on a tasks artifact
+// represented as a raw map[string]any. It checks subtask ID format and
+// verification ID format without requiring every JSON schema field to be
+// present. This is used by the AI generation pipeline to validate AI-produced
+// content that may lack optional schema fields.
+//
+// Checks performed:
+//   - Subtask ID format: must match {group}.{N} (^\d+\.\d+$) (id_format check)
+//   - Verification ID format: must match {group}.V (^\d+\.V$) (id_format check)
+//
+// Returns a slice of ValidationEntry describing any violations. An empty
+// slice means the content passed all checks.
+func ValidateTasksMap(content map[string]any) []ValidationEntry {
+	var entries []ValidationEntry
+
+	taskGroups, _ := content["task_groups"].([]any)
+	for gIdx, rawGroup := range taskGroups {
+		group, ok := rawGroup.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		// Check verification ID format if present.
+		if rawVerification, exists := group["verification"]; exists {
+			if verification, ok := rawVerification.(map[string]any); ok {
+				verID, _ := verification["id"].(string)
+				if verID != "" && !verificationIDPattern.MatchString(verID) {
+					entries = append(entries, ValidationEntry{
+						Category: "integrity",
+						Check:    "id_format",
+						Message:  fmt.Sprintf("verification ID %q does not match expected format {group}.V", verID),
+						Artifact: "tasks.json",
+						EntityID: verID,
+						Path:     fmt.Sprintf("task_groups[%d].verification.id", gIdx),
+					})
+				}
+			}
+		}
+
+		// Check subtask ID format.
+		subtasks, _ := group["subtasks"].([]any)
+		for sIdx, rawSub := range subtasks {
+			sub, ok := rawSub.(map[string]any)
+			if !ok {
+				continue
+			}
+			subID, _ := sub["id"].(string)
+			if subID != "" && !subtaskIDPattern.MatchString(subID) {
+				entries = append(entries, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("subtask ID %q does not match expected format {group}.{N}", subID),
+					Artifact: "tasks.json",
+					EntityID: subID,
+					Path:     fmt.Sprintf("task_groups[%d].subtasks[%d].id", gIdx, sIdx),
+				})
+			}
+		}
+	}
+
+	return entries
+}
+
 // validateEarsConstraints checks that each criterion's pattern-specific
 // fields match the required set for its ears_pattern. For each criterion:
 //   - Required fields must be non-nil
@@ -638,18 +769,25 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	var warnings []ValidationEntry
 
 	// --- Completeness guard ---
-	// If any artifact has an empty SpecId, the spec is incomplete and
-	// downstream cross-file checks would produce misleading errors.
-	// Return a single completeness error listing the incomplete artifacts.
+	// If any artifact pointer is nil or has an empty SpecId, the spec is
+	// incomplete and downstream cross-file checks would produce misleading
+	// errors.  Return a single completeness error listing the incomplete
+	// artifacts.
 	{
 		var incomplete []string
-		if s.Requirements != nil && s.Requirements.SpecId == "" {
+		if s.Requirements == nil {
+			incomplete = append(incomplete, "requirements.json")
+		} else if s.Requirements.SpecId == "" {
 			incomplete = append(incomplete, "requirements")
 		}
-		if s.TestSpec != nil && s.TestSpec.SpecId == "" {
+		if s.TestSpec == nil {
+			incomplete = append(incomplete, "test_spec.json")
+		} else if s.TestSpec.SpecId == "" {
 			incomplete = append(incomplete, "test_spec")
 		}
-		if s.Tasks != nil && s.Tasks.SpecId == "" {
+		if s.Tasks == nil {
+			incomplete = append(incomplete, "tasks.json")
+		} else if s.Tasks.SpecId == "" {
 			incomplete = append(incomplete, "tasks")
 		}
 		if len(incomplete) > 0 {
@@ -1126,6 +1264,57 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 		}
 	}
 
+	// --- Tasks: subtask and verification ID format validation ---
+	// Validates subtask IDs match {group}.{N} (^\d+\.\d+$) and also checks
+	// that the numeric prefix matches the parent group's ID. Validates
+	// verification subtask IDs match {group}.V (^\d+\.V$).
+	if s.Tasks != nil {
+		for gIdx, group := range s.Tasks.TaskGroups {
+			groupIDStr := fmt.Sprintf("%d", group.Id)
+
+			for sIdx, sub := range group.Subtasks {
+				if sub.Id == "" {
+					continue
+				}
+				if !subtaskIDPattern.MatchString(sub.Id) {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "id_format",
+						Message:  fmt.Sprintf("subtask ID %q does not match expected format {group}.{N}", sub.Id),
+						Artifact: "tasks.json",
+						EntityID: sub.Id,
+						Path:     fmt.Sprintf("task_groups[%d].subtasks[%d].id", gIdx, sIdx),
+					})
+				} else {
+					// Verify the numeric prefix matches the parent group ID.
+					if prefix, _, ok := strings.Cut(sub.Id, "."); ok && prefix != groupIDStr {
+						errors = append(errors, ValidationEntry{
+							Category: "integrity",
+							Check:    "id_format",
+							Message:  fmt.Sprintf("subtask ID %q has group prefix %q but parent group ID is %q", sub.Id, prefix, groupIDStr),
+							Artifact: "tasks.json",
+							EntityID: sub.Id,
+							Path:     fmt.Sprintf("task_groups[%d].subtasks[%d].id", gIdx, sIdx),
+						})
+					}
+				}
+			}
+
+			// Check verification subtask ID format.
+			verID := group.Verification.Id
+			if verID != "" && !verificationIDPattern.MatchString(verID) {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("verification ID %q does not match expected format {group}.V", verID),
+					Artifact: "tasks.json",
+					EntityID: verID,
+					Path:     fmt.Sprintf("task_groups[%d].verification.id", gIdx),
+				})
+			}
+		}
+	}
+
 	// --- Coverage gap errors ---
 	// Check all acceptance criteria and edge case criteria for test coverage.
 	// Coverage gaps are blocking errors (matching Python cross-file-2 behavior).
@@ -1487,46 +1676,55 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	//   A. at least one subtask has non-empty test_spec_refs
 	//   B. at least one test_spec_refs entry matches TS-*-SMOKE-*
 	//   C. at least one subtask title or details mentions 'stub' or 'dead'
+	//
+	// Checks A and B are only enforced when the spec has at least one smoke
+	// test. A freshly scaffolded spec (spec new) has no smoke tests yet, so
+	// these checks are deferred per section 3.3 (bootstrap mode). Check C
+	// always runs because wiring_verification must acknowledge stub removal.
 	if s.Tasks != nil && len(s.Tasks.TaskGroups) > 0 {
 		lastGroup := s.Tasks.TaskGroups[len(s.Tasks.TaskGroups)-1]
 		if lastGroup.Kind == TaskGroupKindWiringVerification {
-			// Sub-check A: at least one subtask has non-empty test_spec_refs
-			hasRefs := false
-			for _, sub := range lastGroup.Subtasks {
-				if len(sub.TestSpecRefs) > 0 {
-					hasRefs = true
-					break
-				}
-			}
-			if !hasRefs {
-				errors = append(errors, ValidationEntry{
-					Category: "integrity",
-					Check:    "wiring_verification",
-					Message:  "wiring_verification group: no subtask has non-empty test_spec_refs",
-					Artifact: "tasks.json",
-				})
-			}
+			hasSmokeTests := s.TestSpec != nil && len(s.TestSpec.SmokeTests) > 0
 
-			// Sub-check B: at least one test_spec_refs entry matches TS-*-SMOKE-*
-			hasSmokeRef := false
-			for _, sub := range lastGroup.Subtasks {
-				for _, ref := range sub.TestSpecRefs {
-					if wiringSmokeRefPattern.MatchString(ref) {
-						hasSmokeRef = true
+			if hasSmokeTests {
+				// Sub-check A: at least one subtask has non-empty test_spec_refs
+				hasRefs := false
+				for _, sub := range lastGroup.Subtasks {
+					if len(sub.TestSpecRefs) > 0 {
+						hasRefs = true
 						break
 					}
 				}
-				if hasSmokeRef {
-					break
+				if !hasRefs {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "wiring_verification",
+						Message:  "wiring_verification group: no subtask has non-empty test_spec_refs",
+						Artifact: "tasks.json",
+					})
 				}
-			}
-			if !hasSmokeRef {
-				errors = append(errors, ValidationEntry{
-					Category: "integrity",
-					Check:    "wiring_verification",
-					Message:  "wiring_verification group: no test_spec_refs entry matches smoke test pattern TS-*-SMOKE-*",
-					Artifact: "tasks.json",
-				})
+
+				// Sub-check B: at least one test_spec_refs entry matches TS-*-SMOKE-*
+				hasSmokeRef := false
+				for _, sub := range lastGroup.Subtasks {
+					for _, ref := range sub.TestSpecRefs {
+						if wiringSmokeRefPattern.MatchString(ref) {
+							hasSmokeRef = true
+							break
+						}
+					}
+					if hasSmokeRef {
+						break
+					}
+				}
+				if !hasSmokeRef {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "wiring_verification",
+						Message:  "wiring_verification group: no test_spec_refs entry matches smoke test pattern TS-*-SMOKE-*",
+						Artifact: "tasks.json",
+					})
+				}
 			}
 
 			// Sub-check C: at least one subtask title/details or verification check
@@ -1626,6 +1824,35 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 					Check:    "cross_file_7",
 					Message:  fmt.Sprintf("spec_name mismatch: prd.md has '%s' but tasks.json has '%s'", prdSpecName, s.Tasks.SpecName),
 					Artifact: "tasks.json",
+				})
+			}
+		}
+	}
+
+	// --- Folder-name rule: spec_id and spec_name must match the folder prefix/suffix ---
+	// When the spec was loaded from a directory whose name follows the
+	// NN_snake_case pattern, the numeric prefix must equal SpecID and the
+	// snake_case suffix must equal SpecName. If the directory name does not
+	// match the pattern (e.g. ad-hoc or non-spec directories), this check
+	// is skipped so that non-spec directories are not rejected.
+	if s.Dir != "" {
+		dirBase := filepath.Base(s.Dir)
+		if IsSpecDirName(dirBase) {
+			folderPrefix, folderSuffix, _ := ParseSpecDirName(dirBase)
+			if folderPrefix != s.SpecID {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "folder_name",
+					Message:  fmt.Sprintf("spec_id '%s' does not match folder prefix '%s' in '%s'", s.SpecID, folderPrefix, dirBase),
+					Artifact: "prd.md",
+				})
+			}
+			if folderSuffix != s.SpecName {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "folder_name",
+					Message:  fmt.Sprintf("spec_name '%s' does not match folder suffix '%s' in '%s'", s.SpecName, folderSuffix, dirBase),
+					Artifact: "prd.md",
 				})
 			}
 		}

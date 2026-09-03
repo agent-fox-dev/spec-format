@@ -78,7 +78,7 @@ func newGenerateCmd() *cobra.Command {
 			// Run Generate with a spinner.
 			spinner := NewStatusSpinner("Generating spec artifacts...", cmd.ErrOrStderr(), quiet, false)
 			spinner.Start()
-			artifacts, genErr := generateArtifacts(ctx, specPath, session)
+			artifacts, warnings, genErr := generateArtifacts(ctx, specPath, session)
 			spinner.Stop()
 
 			if genErr != nil {
@@ -91,6 +91,17 @@ func newGenerateCmd() *cobra.Command {
 			session["generated_artifacts"] = artifacts
 			if err := saveSession(sessionPath, session); err != nil {
 				return fmt.Errorf("cannot save session: %w", err)
+			}
+
+			// Emit validation warnings to stderr so the user can see them.
+			for _, w := range warnings {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+			}
+
+			// Validation errors are a hard failure: exit non-zero so callers
+			// and CI pipelines know the generated spec has integrity issues.
+			if len(warnings) > 0 {
+				return fmt.Errorf("spec generated but post-generation validation found %d error(s); see warnings above", len(warnings))
 			}
 
 			return emitOKTo(cmd.OutOrStdout(), "artifacts", artifacts)
@@ -131,25 +142,32 @@ func cleanupPartialArtifacts(specPath string) {
 }
 
 // generateArtifacts calls the agentspec AI pipeline to produce specification
-// artifacts from the accepted PRD. Returns a list of generated artifact
-// filenames. When SPEC_TEST_BLOCK_AI=1, blocks until context cancellation.
-func generateArtifacts(ctx context.Context, specPath string, _ map[string]any) ([]string, error) {
+// artifacts from the accepted PRD. Returns the list of generated artifact
+// filenames, any post-generation validation warnings, and an error.
+// When SPEC_TEST_BLOCK_AI=1, blocks until context cancellation.
+func generateArtifacts(ctx context.Context, specPath string, _ map[string]any) ([]string, []string, error) {
 	// Test hook: block until context cancellation to simulate a long-running
 	// AI call. Activated by SPEC_TEST_BLOCK_AI=1 environment variable.
+	// If SPEC_TEST_READY_FILE is also set, the file is created before blocking
+	// so tests can wait for readiness before sending signals, avoiding timing
+	// races on cold binary startup.
 	if os.Getenv("SPEC_TEST_BLOCK_AI") == "1" {
+		if rf := os.Getenv("SPEC_TEST_READY_FILE"); rf != "" {
+			_ = os.WriteFile(rf, []byte("ready"), 0600)
+		}
 		<-ctx.Done()
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	default:
 	}
 
 	result, err := generateFunc(ctx, specPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Map agentspec artifact keys (e.g. "requirements") to filenames
@@ -168,5 +186,5 @@ func generateArtifacts(ctx context.Context, specPath string, _ map[string]any) (
 		artifacts = append(artifacts, artifactFiles...)
 	}
 
-	return artifacts, nil
+	return artifacts, result.Warnings, nil
 }

@@ -25,16 +25,6 @@ All IDs must follow these formats exactly — use the spec_id from the PRD front
 
 N values are sequential positive integers starting at 1.
 
-## Glossary Backtick Convention
-
-In the `action`, `trigger`, `condition`, `error_condition`, `state`, `feature`, `for_any`, and `invariant` fields: any domain-specific term must be wrapped in backticks (e.g. `` `SpaceManager` ``). Every backtick-wrapped token must have a corresponding entry in the top-level `glossary` object. Unquoted natural-language words are not checked — only backtick-wrapped tokens are treated as domain terms requiring glossary entries.
-
-## Task Group Ordering Rules
-
-- Task group 1 **must** have `kind: "tests"` — write failing tests first (TDD).
-- The **final** task group **must** have `kind: "wiring_verification"`.
-- **No more than one** `"wiring_verification"` group is allowed per spec.
-
 ## Required JSON Structures
 
 ### requirements.json

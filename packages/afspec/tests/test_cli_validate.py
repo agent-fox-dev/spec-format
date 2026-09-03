@@ -439,7 +439,7 @@ def oversized_spec_dir(tmp_path: Path) -> Path:
     """
     return _write_spec_fixture(
         tmp_path,
-        spec_id="OV",
+        spec_id="01",
         spec_name="oversized_test",
         dir_name="01_oversized_test",
         num_refs=20,
@@ -455,7 +455,7 @@ def clean_spec_dir(tmp_path: Path) -> Path:
     """
     return _write_spec_fixture(
         tmp_path,
-        spec_id="CL",
+        spec_id="01",
         spec_name="clean_test",
         dir_name="01_clean_test",
         num_refs=3,
@@ -472,7 +472,7 @@ def error_and_warning_spec_dir(tmp_path: Path) -> Path:
     """
     return _write_spec_fixture(
         tmp_path,
-        spec_id="EW",
+        spec_id="01",
         spec_name="error_warning_test",
         dir_name="01_error_warning_test",
         num_refs=20,
@@ -485,7 +485,7 @@ def malformed_spec_dir(tmp_path: Path) -> Path:
     """Spec fixture with a malformed JSON artifact (invalid test_spec.json)."""
     return _write_spec_fixture(
         tmp_path,
-        spec_id="MF",
+        spec_id="01",
         spec_name="malformed_test",
         dir_name="01_malformed_test",
         num_refs=3,

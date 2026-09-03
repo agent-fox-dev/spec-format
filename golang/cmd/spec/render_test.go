@@ -404,6 +404,267 @@ func TestTS08_26_RenderMissingSpecArg(t *testing.T) {
 	}
 }
 
+// --- TS-NS-1: Combined render includes PRD body but NOT YAML frontmatter ---
+
+// TestTSNS1_CombinedRenderPRDBodyNoFrontmatter verifies that combined render
+// outputs the PRD body text but strips the YAML frontmatter block.
+// Covers: NS-REQ-1, TS-NS-1
+func TestTSNS1_CombinedRenderPRDBodyNoFrontmatter(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "08_my_spec")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// prd.md with YAML frontmatter.
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"),
+		[]byte("---\nspec_id: test-spec\n---\nBody text of the PRD."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Minimal JSON artifact so the command succeeds.
+	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"),
+		[]byte(`{"requirements": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AF_AGENT", "")
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "render", "08_my_spec", "--combined"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	output := stdoutBuf.String()
+
+	// PRD body should be present.
+	if !strings.Contains(output, "Body text of the PRD.") {
+		t.Errorf("output does not contain PRD body text; got:\n%s", output)
+	}
+
+	// YAML frontmatter key should NOT appear.
+	if strings.Contains(output, "spec_id") {
+		t.Errorf("output contains frontmatter key 'spec_id'; want it stripped:\n%s", output)
+	}
+}
+
+// --- TS-NS-2: Combined render includes architecture.md content when present ---
+
+// TestTSNS2_CombinedRenderIncludesArchitecture verifies that combined render
+// outputs architecture.md content when the file is present, positioned after
+// the PRD body and before JSON artifact sections.
+// Covers: NS-REQ-2, TS-NS-2
+func TestTSNS2_CombinedRenderIncludesArchitecture(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "08_my_spec")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"),
+		[]byte("PRD body content here."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "architecture.md"),
+		[]byte("ARCH_MARKER: unique architecture content."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"),
+		[]byte(`{"requirements": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AF_AGENT", "")
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "render", "08_my_spec", "--combined"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	output := stdoutBuf.String()
+
+	// Architecture content must appear.
+	if !strings.Contains(output, "ARCH_MARKER: unique architecture content.") {
+		t.Errorf("output does not contain architecture content; got:\n%s", output)
+	}
+
+	// PRD body must appear before architecture content.
+	prdIdx := strings.Index(output, "PRD body content here.")
+	archIdx := strings.Index(output, "ARCH_MARKER:")
+	reqIdx := strings.Index(output, "# requirements")
+	if prdIdx < 0 {
+		t.Fatalf("output does not contain PRD body")
+	}
+	if archIdx < 0 {
+		t.Fatalf("output does not contain architecture marker")
+	}
+	if reqIdx < 0 {
+		t.Fatalf("output does not contain requirements section")
+	}
+	if prdIdx >= archIdx {
+		t.Errorf("PRD (pos %d) should appear before architecture (pos %d)", prdIdx, archIdx)
+	}
+	if archIdx >= reqIdx {
+		t.Errorf("architecture (pos %d) should appear before requirements (pos %d)", archIdx, reqIdx)
+	}
+}
+
+// --- TS-NS-3: Combined render succeeds without architecture.md ---
+
+// TestTSNS3_CombinedRenderNoArchitecture verifies that combined render
+// succeeds and produces no architecture section when architecture.md is absent.
+// Covers: NS-REQ-3, TS-NS-3
+func TestTSNS3_CombinedRenderNoArchitecture(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "08_my_spec")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"),
+		[]byte("PRD body here."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"),
+		[]byte(`{"requirements": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// architecture.md is intentionally absent.
+
+	t.Setenv("AF_AGENT", "")
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "render", "08_my_spec", "--combined"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error (want nil): %v", err)
+	}
+
+	output := stdoutBuf.String()
+
+	// No architecture section header should appear.
+	if strings.Contains(output, "# architecture") {
+		t.Errorf("output contains '# architecture' section; want absent:\n%s", output)
+	}
+}
+
+// --- TS-NS-4: Combined render includes all three JSON artifact sections ---
+
+// TestTSNS4_CombinedRenderAllJSONArtifacts verifies that combined render
+// includes section headers for all three JSON artifacts in canonical order.
+// Covers: NS-REQ-4, TS-NS-4
+func TestTSNS4_CombinedRenderAllJSONArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := setupRenderSpec(t, tmpDir)
+
+	t.Setenv("AF_AGENT", "")
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "render", "08_my_spec", "--combined"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	output := stdoutBuf.String()
+
+	for _, section := range []string{"# requirements", "# test_spec", "# tasks"} {
+		if !strings.Contains(output, section) {
+			t.Errorf("output does not contain section %q; got:\n%s", section, output)
+		}
+	}
+
+	// Verify canonical order: prd → requirements → test_spec → tasks.
+	prdIdx := strings.Index(output, "# prd")
+	reqIdx := strings.Index(output, "# requirements")
+	tsIdx := strings.Index(output, "# test_spec")
+	tasksIdx := strings.Index(output, "# tasks")
+
+	if prdIdx < 0 || reqIdx < 0 || tsIdx < 0 || tasksIdx < 0 {
+		t.Fatalf("one or more section headers missing in output:\n%s", output)
+	}
+	if !(prdIdx < reqIdx && reqIdx < tsIdx && tsIdx < tasksIdx) {
+		t.Errorf("sections are not in canonical order (prd=%d, requirements=%d, test_spec=%d, tasks=%d)",
+			prdIdx, reqIdx, tsIdx, tasksIdx)
+	}
+}
+
+// --- TS-NS-5: --json --combined content includes PRD body and architecture ---
+
+// TestTSNS5_JSONCombinedIncludesPRDAndArchitecture verifies that the JSON
+// combined envelope's content field includes PRD body (without frontmatter)
+// and architecture prose.
+// Covers: NS-REQ-5, TS-NS-5
+func TestTSNS5_JSONCombinedIncludesPRDAndArchitecture(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	specPath := filepath.Join(specDir, "08_my_spec")
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"),
+		[]byte("---\nspec_id: unique-fm-key\n---\nUnique PRD body marker."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "architecture.md"),
+		[]byte("Unique architecture marker."), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "requirements.json"),
+		[]byte(`{"requirements": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "render", "08_my_spec", "--json", "--combined"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(stdoutBuf.Bytes(), &parsed); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", err, stdoutBuf.String())
+	}
+
+	content, ok := parsed["content"].(string)
+	if !ok || len(content) == 0 {
+		t.Fatalf("parsed.content is not a non-empty string: %v", parsed["content"])
+	}
+
+	if !strings.Contains(content, "Unique PRD body marker.") {
+		t.Errorf("content does not contain PRD body; got:\n%s", content)
+	}
+	if !strings.Contains(content, "Unique architecture marker.") {
+		t.Errorf("content does not contain architecture content; got:\n%s", content)
+	}
+	if strings.Contains(content, "unique-fm-key") {
+		t.Errorf("content contains frontmatter key 'unique-fm-key'; want it stripped:\n%s", content)
+	}
+}
+
 // --- Render: non-existent spec ---
 
 // TestTS08_26_RenderNonexistentSpec verifies that spec render returns

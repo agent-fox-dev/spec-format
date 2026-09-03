@@ -11,7 +11,7 @@ import (
 // TS-07-11: Embedded prompt templates
 // ---------------------------------------------------------------------------
 
-// TestSpec07_EmbeddedTemplates_AllAccessible verifies that all 10 prompt
+// TestSpec07_EmbeddedTemplates_AllAccessible verifies that all 9 prompt
 // template names are embedded at compile time and accessible via the embedded
 // filesystem.
 // Test Spec: TS-07-11, Requirement: 07-REQ-3.1
@@ -26,7 +26,6 @@ func TestSpec07_EmbeddedTemplates_AllAccessible(t *testing.T) {
 		"generation_user_requirements",
 		"generation_user_test_spec",
 		"generation_user_tasks",
-		"repair_user",
 	}
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
@@ -42,11 +41,11 @@ func TestSpec07_EmbeddedTemplates_AllAccessible(t *testing.T) {
 }
 
 // TestSpec07_EmbeddedTemplates_NameListComplete verifies that
-// PromptTemplateNames contains exactly the 10 expected template names.
+// PromptTemplateNames contains exactly the 9 expected template names.
 // Test Spec: TS-07-11, Requirement: 07-REQ-3.1
 func TestSpec07_EmbeddedTemplates_NameListComplete(t *testing.T) {
-	if len(PromptTemplateNames) != 10 {
-		t.Errorf("len(PromptTemplateNames) = %d; want 10", len(PromptTemplateNames))
+	if len(PromptTemplateNames) != 9 {
+		t.Errorf("len(PromptTemplateNames) = %d; want 9", len(PromptTemplateNames))
 	}
 }
 

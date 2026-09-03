@@ -720,3 +720,158 @@ func TestTSNS5_GenerateMissingAPIKeyError(t *testing.T) {
 		t.Errorf("error message = %q; want it to contain %q", errMsg, "ANTHROPIC_API_KEY")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TS-NS-3 / TS-NS-4: Validation errors are surfaced to CLI user as warnings
+// on stderr and cause a non-zero exit code.
+// Requirements: NS-REQ-3, NS-REQ-4
+// ---------------------------------------------------------------------------
+
+// setupSpecWithSession creates a minimal spec directory with a prd_accepted
+// session and prd.md, returning the spec directory path.
+func setupSpecWithSession(t *testing.T, specDir, specName string) string {
+	t.Helper()
+	specPath := filepath.Join(specDir, specName)
+	if err := os.MkdirAll(specPath, 0755); err != nil {
+		t.Fatalf("MkdirAll %s: %v", specPath, err)
+	}
+	sessionData := map[string]any{
+		"state":               "prd_accepted",
+		"mode":                "standard",
+		"prd_path":            "prd.md",
+		"assessment_history":  []any{},
+		"qa_exchanges":        []any{},
+		"generated_artifacts": []any{},
+	}
+	sessionJSON, _ := json.Marshal(sessionData)
+	if err := os.WriteFile(filepath.Join(specPath, "_session.json"), sessionJSON, 0644); err != nil {
+		t.Fatalf("write _session.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(specPath, "prd.md"), []byte("# Test PRD\nContent"), 0644); err != nil {
+		t.Fatalf("write prd.md: %v", err)
+	}
+	return specPath
+}
+
+// TestTSNS3_GenerateValidationWarningsSurfacedToStderr verifies that when
+// generateFunc returns a GenerateResult with non-empty Warnings, the
+// spec generate command emits each warning to stderr with a "warning:" prefix.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestTSNS3_GenerateValidationWarningsSurfacedToStderr(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupSpecWithSession(t, specDir, "66_validation_test")
+
+	const warningMsg = "test_spec.json: dangling reference to 66-REQ-NONEXISTENT"
+
+	orig := generateFunc
+	generateFunc = func(ctx context.Context, sp string) (agentspec.GenerateResult, error) {
+		// Write artifact stubs so the session save succeeds.
+		for _, f := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
+			_ = os.WriteFile(filepath.Join(sp, f), []byte(`{"spec_id":"66"}`), 0644)
+		}
+		return agentspec.GenerateResult{
+			Artifacts: []string{"requirements", "test_spec", "tasks"},
+			Warnings:  []string{warningMsg},
+		}, nil
+	}
+	t.Cleanup(func() { generateFunc = orig })
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	stderrBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(stderrBuf)
+	cmd.SetArgs([]string{"--spec-dir", specDir, "generate", "66_validation_test"})
+
+	err := cmd.Execute()
+
+	// NS-REQ-3: warnings must appear in stderr.
+	stderrOutput := stderrBuf.String()
+	if !strings.Contains(stderrOutput, "warning:") {
+		t.Errorf("stderr = %q; want 'warning:' prefix for validation errors", stderrOutput)
+	}
+	if !strings.Contains(stderrOutput, warningMsg) {
+		t.Errorf("stderr = %q; want warning message %q", stderrOutput, warningMsg)
+	}
+
+	// NS-REQ-4: must exit non-zero when validation errors are present.
+	if err == nil {
+		t.Error("Execute() returned nil; want non-zero exit when validation warnings are present")
+	}
+}
+
+// TestTSNS4_GenerateValidationExitsNonZero verifies that when generateFunc
+// returns a GenerateResult with non-empty Warnings, spec generate exits with
+// a non-zero exit code (returns an error from RunE).
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestTSNS4_GenerateValidationExitsNonZero(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupSpecWithSession(t, specDir, "66_exitcode_test")
+
+	orig := generateFunc
+	generateFunc = func(ctx context.Context, sp string) (agentspec.GenerateResult, error) {
+		for _, f := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
+			_ = os.WriteFile(filepath.Join(sp, f), []byte(`{"spec_id":"66"}`), 0644)
+		}
+		return agentspec.GenerateResult{
+			Artifacts: []string{"requirements", "test_spec", "tasks"},
+			Warnings:  []string{"integrity error: dangling reference found"},
+		}, nil
+	}
+	t.Cleanup(func() { generateFunc = orig })
+
+	cmd := newRootCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--spec-dir", specDir, "generate", "66_exitcode_test"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Error("Execute() returned nil; want error (exit code 1) when validation warnings present")
+	}
+}
+
+// TestTSNS3_GenerateNoWarningsExitsZero verifies that when generateFunc
+// returns a GenerateResult with empty Warnings, spec generate succeeds
+// (exit code 0) and emits OK JSON to stdout.
+// Regression guard for NS-REQ-3/4: no false positives.
+func TestTSNS3_GenerateNoWarningsExitsZero(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	setupSpecWithSession(t, specDir, "66_ok_test")
+
+	orig := generateFunc
+	generateFunc = func(ctx context.Context, sp string) (agentspec.GenerateResult, error) {
+		for _, f := range []string{"requirements.json", "test_spec.json", "tasks.json"} {
+			_ = os.WriteFile(filepath.Join(sp, f), []byte(`{"spec_id":"66"}`), 0644)
+		}
+		return agentspec.GenerateResult{
+			Artifacts: []string{"requirements", "test_spec", "tasks"},
+			Warnings:  nil,
+		}, nil
+	}
+	t.Cleanup(func() { generateFunc = orig })
+
+	cmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	stderrBuf := new(bytes.Buffer)
+	cmd.SetOut(stdoutBuf)
+	cmd.SetErr(stderrBuf)
+	cmd.SetArgs([]string{"--spec-dir", specDir, "generate", "66_ok_test"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Execute() returned error %v; want nil when no validation warnings", err)
+	}
+
+	// stdout should contain the OK JSON response.
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(stdoutBuf.String()), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, stdoutBuf.String())
+	}
+	if ok, _ := parsed["ok"].(bool); !ok {
+		t.Errorf("parsed.ok = %v; want true", parsed["ok"])
+	}
+}

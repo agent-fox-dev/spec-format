@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -666,10 +667,239 @@ func TestValidateCrossFile_CompletenessGuard_SkipsDownstream(t *testing.T) {
 	}
 }
 
+// TestValidateCrossFile_NilRequirements verifies that ValidateCrossFile returns
+// a completeness error when Requirements is nil, satisfying AC-1.
+// Test Spec: TS-NS-1. Requirement: NS-REQ-1.
+func TestValidateCrossFile_NilRequirements(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements:  nil, // missing
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when Requirements is nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Category != "integrity" {
+		t.Errorf("error Category = %q, want %q", e.Category, "integrity")
+	}
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	if !strings.Contains(e.Message, "requirements") {
+		t.Errorf("error Message %q does not contain %q", e.Message, "requirements")
+	}
+	if strings.Contains(e.Message, "test_spec") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "test_spec")
+	}
+	if strings.Contains(e.Message, "tasks") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "tasks")
+	}
+}
+
+// TestValidateCrossFile_NilTestSpec verifies that ValidateCrossFile returns
+// a completeness error when TestSpec is nil, satisfying AC-2.
+// Test Spec: TS-NS-2. Requirement: NS-REQ-2.
+func TestValidateCrossFile_NilTestSpec(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "01",
+			SpecName:              "test",
+			SchemaVersion:         1,
+			Introduction:          "Test.",
+			Glossary:              RequirementsV1JsonGlossary{},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: nil, // missing
+		Tasks: &TasksV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCommands:  TestCommands{SpecTests: "test", AllTests: "test", Linter: "lint"},
+			Dependencies:  []TaskDependency{},
+			TaskGroups:    []TaskGroup{},
+			Traceability:  []TraceabilityEntry{},
+		},
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when TestSpec is nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	if !strings.Contains(e.Message, "test_spec") {
+		t.Errorf("error Message %q does not contain %q", e.Message, "test_spec")
+	}
+	if strings.Contains(e.Message, "requirements") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "requirements")
+	}
+	if strings.Contains(e.Message, "tasks") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "tasks")
+	}
+}
+
+// TestValidateCrossFile_NilTasks verifies that ValidateCrossFile returns
+// a completeness error when Tasks is nil, satisfying AC-3.
+// Test Spec: TS-NS-3. Requirement: NS-REQ-3.
+func TestValidateCrossFile_NilTasks(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements: &RequirementsV1Json{
+			SpecId:                "01",
+			SpecName:              "test",
+			SchemaVersion:         1,
+			Introduction:          "Test.",
+			Glossary:              RequirementsV1JsonGlossary{},
+			Requirements:          []Requirement{},
+			CorrectnessProperties: []CorrectnessProperty{},
+			ExecutionPaths:        []ExecutionPath{},
+			ErrorHandling:         []ErrorHandlingEntry{},
+		},
+		TestSpec: &TestSpecV1Json{
+			SpecId:        "01",
+			SpecName:      "test",
+			SchemaVersion: 1,
+			TestCases:     []TestCase{},
+			PropertyTests: []PropertyTest{},
+			EdgeCaseTests: []EdgeCaseTest{},
+			SmokeTests:    []SmokeTest{},
+			Coverage:      Coverage{},
+		},
+		Tasks: nil, // missing
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when Tasks is nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	if !strings.Contains(e.Message, "tasks") {
+		t.Errorf("error Message %q does not contain %q", e.Message, "tasks")
+	}
+	if strings.Contains(e.Message, "requirements") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "requirements")
+	}
+	if strings.Contains(e.Message, "test_spec") {
+		t.Errorf("error Message %q should not contain %q", e.Message, "test_spec")
+	}
+}
+
+// TestValidateCrossFile_AllNilArtifacts verifies that ValidateCrossFile returns
+// exactly one completeness error listing all three artifact names when all
+// three pointers are nil, satisfying AC-4.
+// Test Spec: TS-NS-4. Requirement: NS-REQ-4.
+func TestValidateCrossFile_AllNilArtifacts(t *testing.T) {
+	spec := &Spec{
+		SpecID:        "01",
+		SpecName:      "test",
+		Title:         "Test",
+		Status:        "draft",
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-01T00:00:00Z",
+		Owner:         "test",
+		Source:        "https://example.com",
+		SchemaVersion: 1,
+		PRDBody:       "# Test\n",
+		Requirements:  nil, // missing
+		TestSpec:      nil, // missing
+		Tasks:         nil, // missing
+	}
+
+	result := spec.ValidateCrossFile()
+
+	if result.Valid {
+		t.Error("ValidateCrossFile().Valid = true, want false when all artifacts are nil")
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected exactly 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	e := result.Errors[0]
+	if e.Category != "integrity" {
+		t.Errorf("error Category = %q, want %q", e.Category, "integrity")
+	}
+	if e.Check != "completeness" {
+		t.Errorf("error Check = %q, want %q", e.Check, "completeness")
+	}
+	for _, name := range []string{"requirements", "test_spec", "tasks"} {
+		if !strings.Contains(e.Message, name) {
+			t.Errorf("error Message %q does not contain %q", e.Message, name)
+		}
+	}
+}
+
 // TestValidateCrossFile_CompletenessGuard_NoRegression verifies that
 // ValidateCrossFile proceeds normally with zero errors for a fully
 // populated valid spec (existing test, but explicitly re-confirmed).
-// Test Spec: TS-NS-4. Requirement: NS-REQ-4.
+// Test Spec: TS-NS-5. Requirement: NS-REQ-5.
 // (Covered by TestValidateCrossFile_ConsistentReferences below)
 
 // TestValidateCrossFile_ConsistentReferences verifies that ValidateCrossFile
@@ -1767,7 +1997,10 @@ func TestValidateCrossFile_PropertyTestCoverage(t *testing.T) {
 					{Id: "04-PROP-1", Title: "Prop A", ForAny: "any input", Invariant: "holds", Validates: []string{"04-REQ-1.1"}},
 					{Id: "04-PROP-2", Title: "Prop B", ForAny: "any input", Invariant: "holds", Validates: []string{"04-REQ-1.1"}},
 				}
-				s.TestSpec = nil // No test_spec — all properties uncovered
+				// No property tests — simulate a test_spec with no coverage by
+				// clearing the PropertyTests slice (nil would trigger the nil-artifact
+				// completeness guard and return early before coverage checks).
+				s.TestSpec.PropertyTests = []PropertyTest{}
 				return s
 			}(),
 			wantErrorCount:   2,
@@ -2054,7 +2287,10 @@ func TestValidateCrossFile_ExecutionPathSmokeCoverage(t *testing.T) {
 					{Id: "04-PATH-1", Title: "Path A", Steps: []PathStep{{Actor: "CLI", Action: "step 1"}, {Actor: "System", Action: "step 2"}}},
 					{Id: "04-PATH-2", Title: "Path B", Steps: []PathStep{{Actor: "CLI", Action: "step 1"}, {Actor: "System", Action: "step 2"}}},
 				}
-				s.TestSpec = nil // No test_spec — all paths uncovered
+				// No smoke tests — simulate a test_spec with no path coverage by
+				// clearing the SmokeTests slice (nil would trigger the nil-artifact
+				// completeness guard and return early before coverage checks).
+				s.TestSpec.SmokeTests = []SmokeTest{}
 				return s
 			}(),
 			wantErrorCount:   2,
@@ -3293,6 +3529,11 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 			{Id: "2.1", Title: "subtask A", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
 			{Id: "2.2", Title: "subtask B", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
 		})
+		// Add a smoke test so that wiring checks A and B are enforced (not in bootstrap mode).
+		spec.TestSpec.SmokeTests = []SmokeTest{{
+			Id: "TS-04-SMOKE-1", Description: "Smoke test", Trigger: "run",
+			RealComponents: []string{"all"}, Mockable: []string{}, ExpectedEffects: []string{"ok"},
+		}}
 		result := spec.ValidateCrossFile()
 
 		var refErrors []ValidationEntry
@@ -3315,6 +3556,11 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 				TestSpecRefs: []string{"TS-04-1", "TS-04-2"}, // no SMOKE entries
 			},
 		})
+		// Add a smoke test so that wiring check B is enforced (not in bootstrap mode).
+		spec.TestSpec.SmokeTests = []SmokeTest{{
+			Id: "TS-04-SMOKE-1", Description: "Smoke test", Trigger: "run",
+			RealComponents: []string{"all"}, Mockable: []string{}, ExpectedEffects: []string{"ok"},
+		}}
 		result := spec.ValidateCrossFile()
 
 		var smokeErrors []ValidationEntry
@@ -3406,8 +3652,15 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 		}
 	})
 
-	t.Run("wiring_group_no_subtasks_three_errors", func(t *testing.T) {
+	// TS-NS-2: When smoke tests exist and the wiring group has no subtasks,
+	// all three wiring verification checks (A, B, C) must fire.
+	t.Run("wiring_group_no_subtasks_with_smoke_three_errors", func(t *testing.T) {
 		spec := buildWiringSpec([]Subtask{}) // no subtasks
+		// Add a smoke test so that A and B are enforced (not in bootstrap mode).
+		spec.TestSpec.SmokeTests = []SmokeTest{{
+			Id: "TS-04-SMOKE-1", Description: "Smoke test", Trigger: "run",
+			RealComponents: []string{"all"}, Mockable: []string{}, ExpectedEffects: []string{"ok"},
+		}}
 		result := spec.ValidateCrossFile()
 
 		var wiringErrors int
@@ -3420,8 +3673,39 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 			}
 		}
 		if wiringErrors != 3 {
-			t.Errorf("expected 3 wiring verification errors for empty subtask group, got %d; all errors: %v",
+			t.Errorf("expected 3 wiring verification errors for empty subtask group with smoke tests, got %d; all errors: %v",
 				wiringErrors, result.Errors)
+		}
+	})
+
+	// TS-NS-2: When no smoke tests exist (bootstrap mode), checks A and B are
+	// skipped. Check C still runs; the wiring group uses "check" (no stub
+	// mention) so C fires — 1 error total.
+	t.Run("wiring_group_no_subtasks_no_smoke_skips_a_b", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{}) // no subtasks, no smoke tests
+		result := spec.ValidateCrossFile()
+
+		var wiringErrors int
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "test_spec_refs") ||
+				strings.Contains(lower, "smoke") ||
+				strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				wiringErrors++
+			}
+		}
+		// A and B are skipped (no smoke tests). C fires because "check" does
+		// not mention stub or dead-code. So exactly 1 wiring error expected.
+		if wiringErrors != 1 {
+			t.Errorf("expected 1 wiring error (check C only) for bootstrap spec with no smoke tests, got %d; all errors: %v",
+				wiringErrors, result.Errors)
+		}
+		// Confirm no error is about test_spec_refs or smoke (only C fires).
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "test_spec_refs") || strings.Contains(lower, "smoke test pattern")) {
+				t.Errorf("unexpected check A/B error in bootstrap mode: %v", e.Message)
+			}
 		}
 	})
 
@@ -7373,5 +7657,510 @@ func TestUnmarshalJSON_TaskGroups_OneGroup(t *testing.T) {
 	}
 	if len(tasks.TaskGroups) != 1 {
 		t.Errorf("TaskGroups length = %d, want 1", len(tasks.TaskGroups))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #65: subtask and verification ID format validation in ValidateCrossFile
+// Requirements: NS-REQ-1 through NS-REQ-5
+// ---------------------------------------------------------------------------
+
+// buildBaseSpecForIDFormat returns a minimal spec with group id=3 for use in
+// subtask/verification ID format tests. It deliberately uses a group ID of 3
+// to avoid conflating prefix "1" with a group 1 that already exists in
+// buildCrossFileBaseSpec.
+func buildBaseSpecForIDFormat(subtasks []Subtask, verID string) *Spec {
+	s := buildCrossFileBaseSpec()
+	// Replace the default two-group layout with a single group whose ID is 3,
+	// plus the mandatory last group (wiring_verification with ID 4) so the
+	// task_group_structure rule is also satisfied.
+	s.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id:       3,
+			Kind:     TaskGroupKindTests,
+			Title:    "Tests",
+			Subtasks: subtasks,
+			Verification: VerificationSubtask{
+				Id:     verID,
+				Checks: []string{"all tests pass"},
+			},
+		},
+		{
+			Id:    4,
+			Kind:  TaskGroupKindWiringVerification,
+			Title: "Wiring Verification",
+			Subtasks: []Subtask{
+				{
+					Id: "4.1", Title: "Stub and dead-code audit", State: SubtaskStatePending,
+					Details:         []string{"Verify all stubs removed"},
+					RequirementRefs: []string{},
+					TestSpecRefs:    []string{"TS-04-SMOKE-1"},
+				},
+			},
+			Verification: VerificationSubtask{
+				Id:     "4.V",
+				Checks: []string{"smoke tests pass"},
+			},
+		},
+	}
+	return s
+}
+
+// TestValidateCrossFile_SubtaskIDFormat tests AC-1 through AC-5 for issue #65:
+// subtask and verification subtask ID format validation in ValidateCrossFile.
+// Requirements: NS-REQ-1, NS-REQ-2, NS-REQ-3, NS-REQ-4, NS-REQ-5.
+func TestValidateCrossFile_SubtaskIDFormat(t *testing.T) {
+	tests := []struct {
+		name             string
+		subtasks         []Subtask
+		verID            string
+		wantIDFormatErrs int      // expected count of id_format errors
+		wantEntityIDs    []string // EntityID values expected in id_format errors
+		wantNoEntityIDs  []string // EntityID values that must NOT appear in id_format errors
+	}{
+		{
+			// AC-1 / NS-REQ-1: well-formed subtask "3.2" in group 3 passes.
+			name: "well_formed_subtask_passes",
+			subtasks: []Subtask{
+				{Id: "3.2", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 0,
+			wantNoEntityIDs:  []string{"3.2"},
+		},
+		{
+			// AC-2 / NS-REQ-2: malformed subtask ID "banana" fails with id_format.
+			name: "malformed_subtask_id_fails",
+			subtasks: []Subtask{
+				{Id: "banana", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 1,
+			wantEntityIDs:    []string{"banana"},
+		},
+		{
+			// AC-3 / NS-REQ-3: well-formed verification ID "3.V" passes.
+			name: "well_formed_verification_id_passes",
+			subtasks: []Subtask{
+				{Id: "3.1", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 0,
+			wantNoEntityIDs:  []string{"3.V"},
+		},
+		{
+			// AC-4 / NS-REQ-4: verification ID "3.2" (numeric suffix) fails.
+			name: "verification_id_with_numeric_suffix_fails",
+			subtasks: []Subtask{
+				{Id: "3.1", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.2",
+			wantIDFormatErrs: 1,
+			wantEntityIDs:    []string{"3.2"},
+		},
+		{
+			// AC-5 / NS-REQ-5: subtask "5.1" in group 3 fails (prefix mismatch).
+			name: "subtask_prefix_mismatch_fails",
+			subtasks: []Subtask{
+				{Id: "5.1", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 1,
+			wantEntityIDs:    []string{"5.1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := buildBaseSpecForIDFormat(tt.subtasks, tt.verID)
+			result := spec.ValidateCrossFile()
+
+			idFormatErrs := filterByCheck(result.Errors, "id_format")
+
+			// Filter to only those referencing tasks.json (to avoid noise from
+			// any requirements/test_spec id_format errors that don't exist here
+			// since the base spec has no requirements).
+			var taskIDErrs []ValidationEntry
+			for _, e := range idFormatErrs {
+				if e.Artifact == "tasks.json" {
+					taskIDErrs = append(taskIDErrs, e)
+				}
+			}
+
+			if len(taskIDErrs) != tt.wantIDFormatErrs {
+				t.Errorf("tasks.json id_format error count = %d, want %d; all id_format errors: %v",
+					len(taskIDErrs), tt.wantIDFormatErrs, idFormatErrs)
+			}
+
+			// For failure cases, check category and artifact.
+			for _, e := range taskIDErrs {
+				if e.Category != "integrity" {
+					t.Errorf("id_format error category = %q, want %q", e.Category, "integrity")
+				}
+				if e.Artifact != "tasks.json" {
+					t.Errorf("id_format error artifact = %q, want %q", e.Artifact, "tasks.json")
+				}
+				if e.Message == "" {
+					t.Error("id_format error message is empty")
+				}
+			}
+
+			// Verify expected EntityIDs appear in errors.
+			for _, wantID := range tt.wantEntityIDs {
+				found := false
+				for _, e := range taskIDErrs {
+					if e.EntityID == wantID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected EntityID %q in id_format errors, not found; errors: %v",
+						wantID, taskIDErrs)
+				}
+			}
+
+			// Verify absent EntityIDs do NOT appear in id_format errors.
+			for _, absentID := range tt.wantNoEntityIDs {
+				for _, e := range taskIDErrs {
+					if e.EntityID == absentID {
+						t.Errorf("EntityID %q should NOT appear in id_format errors, but found: %v",
+							absentID, e)
+					}
+				}
+			}
+
+			// AC-2 specific: ValidateCrossFile returns Valid=false when there
+			// are id_format errors.
+			if tt.wantIDFormatErrs > 0 && result.Valid {
+				t.Error("result.Valid = true, want false when id_format errors present")
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1 / TS-NS-2 / TS-NS-3 / TS-NS-4 / TS-NS-5: Folder-name validation
+// ---------------------------------------------------------------------------
+
+// writeFolderNameSpecDir creates a complete, cross-file-consistent spec dir at
+// dirPath. prdSpecID and prdSpecName go into prd.md; all JSON artifacts also
+// use prdSpecID/prdSpecName so that no cross-file-7 error is emitted — the
+// only errors we expect are from the folder-name check.
+func writeFolderNameSpecDir(t *testing.T, dirPath, prdSpecID, prdSpecName string) {
+	t.Helper()
+	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", dirPath, err)
+	}
+
+	prd := fmt.Sprintf("---\nspec_id: %q\nspec_name: %q\ntitle: %q\n"+
+		"status: \"draft\"\ncreated_at: \"2026-01-01T00:00:00Z\"\n"+
+		"updated_at: \"2026-01-01T00:00:00Z\"\nowner: \"test\"\n"+
+		"source: \"test\"\nsupersedes: []\nintent_hash: null\nschema_version: 1\n---\n# Test\n",
+		prdSpecID, prdSpecName, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "prd.md"), []byte(prd), 0o644); err != nil {
+		t.Fatalf("WriteFile prd.md: %v", err)
+	}
+
+	req := fmt.Sprintf(
+		`{"$schema":"https://agent-fox.dev/schemas/requirements.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,"introduction":"Test",`+
+			`"glossary":{},"requirements":[],"correctness_properties":[],`+
+			`"execution_paths":[],"error_handling":[]}`,
+		prdSpecID, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "requirements.json"), []byte(req), 0o644); err != nil {
+		t.Fatalf("WriteFile requirements.json: %v", err)
+	}
+
+	ts := fmt.Sprintf(
+		`{"$schema":"https://agent-fox.dev/schemas/test_spec.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+			`"test_cases":[],"property_tests":[],"edge_case_tests":[],`+
+			`"smoke_tests":[],"coverage":{}}`,
+		prdSpecID, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "test_spec.json"), []byte(ts), 0o644); err != nil {
+		t.Fatalf("WriteFile test_spec.json: %v", err)
+	}
+
+	tasks := fmt.Sprintf(
+		`{"$schema":"https://agent-fox.dev/schemas/tasks.v1.json",`+
+			`"spec_id":%q,"spec_name":%q,"schema_version":1,`+
+			`"test_commands":{"spec_tests":"go test","all_tests":"go test","linter":"go vet"},`+
+			`"dependencies":[],"task_groups":[`+
+			`{"id":1,"kind":"tests","title":"Tests","subtasks":[`+
+			`{"id":"1.1","title":"Run tests","details":["Run all tests"],`+
+			`"test_spec_refs":[],"requirement_refs":[],"state":"pending","optional":false}`+
+			`],"verification":{"id":"1.V","checks":["verify"]}}],"traceability":[]}`,
+		prdSpecID, prdSpecName)
+	if err := os.WriteFile(filepath.Join(dirPath, "tasks.json"), []byte(tasks), 0o644); err != nil {
+		t.Fatalf("WriteFile tasks.json: %v", err)
+	}
+}
+
+// countFolderNameErrors returns the ValidationEntry values whose Check field
+// is "folder_name".
+func countFolderNameErrors(entries []ValidationEntry) []ValidationEntry {
+	var out []ValidationEntry
+	for _, e := range entries {
+		if e.Check == "folder_name" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// TS-NS-1: spec_id in prd.md frontmatter does not match the numeric folder prefix.
+// Requirement: NS-REQ-1.1
+func TestValidateCrossFile_FolderName_SpecIDMismatch(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Spec lives in 05_my_feature but prd.md declares spec_id "99".
+	writeFolderNameSpecDir(t, dirPath, "99", "my_feature")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) == 0 {
+		t.Fatal("expected at least one folder_name error for spec_id mismatch, got none")
+	}
+
+	// The error must reference both the folder prefix and the frontmatter spec_id.
+	found := false
+	for _, e := range folderErrs {
+		if strings.Contains(e.Message, "99") && strings.Contains(e.Message, "05") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("folder_name error should reference both '99' (spec_id) and '05' (folder prefix); errors: %v", folderErrs)
+	}
+}
+
+// TS-NS-2: spec_name in prd.md frontmatter does not match the folder name suffix.
+// Requirement: NS-REQ-2.1
+func TestValidateCrossFile_FolderName_SpecNameMismatch(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Spec lives in 05_my_feature but prd.md declares spec_name "other_thing".
+	writeFolderNameSpecDir(t, dirPath, "05", "other_thing")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) == 0 {
+		t.Fatal("expected at least one folder_name error for spec_name mismatch, got none")
+	}
+
+	// The error must reference both the folder suffix and the frontmatter spec_name.
+	found := false
+	for _, e := range folderErrs {
+		if strings.Contains(e.Message, "other_thing") && strings.Contains(e.Message, "my_feature") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("folder_name error should reference both 'other_thing' (spec_name) and 'my_feature' (folder suffix); errors: %v", folderErrs)
+	}
+}
+
+// TS-NS-3: A spec whose frontmatter spec_id and spec_name exactly match the folder
+// prefix and suffix passes without folder-name errors.
+// Requirement: NS-REQ-3.1
+func TestValidateCrossFile_FolderName_MatchingSpec(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Spec lives in 05_my_feature and prd.md matches: spec_id "05", spec_name "my_feature".
+	writeFolderNameSpecDir(t, dirPath, "05", "my_feature")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) != 0 {
+		t.Errorf("expected zero folder_name errors for matching spec, got: %v", folderErrs)
+	}
+}
+
+// TS-NS-4: Folder-name validation is skipped when the directory name does not
+// match the NN_snake_case pattern.
+// Requirement: NS-REQ-4.1
+func TestValidateCrossFile_FolderName_NonSpecDirectory(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	// "scratch" does not match the NN_snake_case pattern.
+	dirPath := filepath.Join(base, "scratch")
+	// Deliberately use mismatched values so that any folder-name check would fire.
+	writeFolderNameSpecDir(t, dirPath, "99", "wrong_name")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) != 0 {
+		t.Errorf("expected zero folder_name errors for non-spec directory, got: %v", folderErrs)
+	}
+}
+
+// TS-NS-5: Both spec_id and spec_name mismatches are reported independently.
+// Requirement: NS-REQ-5.1
+func TestValidateCrossFile_FolderName_BothMismatches(t *testing.T) {
+	defer requireImplemented(t)
+
+	base := t.TempDir()
+	dirPath := filepath.Join(base, "05_my_feature")
+	// Both spec_id and spec_name are wrong.
+	writeFolderNameSpecDir(t, dirPath, "99", "other_thing")
+
+	spec, err := LoadSpec(dirPath)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+
+	result := spec.ValidateCrossFile()
+
+	folderErrs := countFolderNameErrors(result.Errors)
+	if len(folderErrs) != 2 {
+		t.Errorf("expected exactly 2 folder_name errors (one for spec_id, one for spec_name), got %d: %v",
+			len(folderErrs), folderErrs)
+	}
+
+	// One error must reference spec_id, another spec_name.
+	hasSpecIDErr := false
+	hasSpecNameErr := false
+	for _, e := range folderErrs {
+		if strings.Contains(e.Message, "spec_id") {
+			hasSpecIDErr = true
+		}
+		if strings.Contains(e.Message, "spec_name") {
+			hasSpecNameErr = true
+		}
+	}
+	if !hasSpecIDErr {
+		t.Errorf("no folder_name error mentions 'spec_id': %v", folderErrs)
+	}
+	if !hasSpecNameErr {
+		t.Errorf("no folder_name error mentions 'spec_name': %v", folderErrs)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task group ID minimum constraint tests (Issue #79)
+// ---------------------------------------------------------------------------
+
+// minimalValidTasksDoc returns a raw tasks document map with one task group
+// using the given id, for use with validateArtifactSchema.
+func minimalTasksDocWithGroupID(id any) map[string]any {
+	return map[string]any{
+		"$schema":        "https://agent-fox.dev/schemas/tasks.v1.json",
+		"spec_id":        "01",
+		"spec_name":      "test",
+		"schema_version": 1,
+		"test_commands": map[string]any{
+			"spec_tests": "pytest -q",
+			"all_tests":  "pytest -q",
+			"linter":     "ruff check",
+		},
+		"dependencies": []any{},
+		"task_groups": []any{
+			map[string]any{
+				"id":       id,
+				"kind":     "tests",
+				"title":    "Test group",
+				"subtasks": []any{},
+				"verification": map[string]any{
+					"id":     "1.V",
+					"checks": []any{"check"},
+				},
+			},
+		},
+		"traceability": []any{},
+	}
+}
+
+// TestValidateSchema_TaskGroupIDZero verifies NS-REQ-1: a tasks artifact with
+// task_group id=0 fails JSON schema validation with a minimum-constraint error.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestValidateSchema_TaskGroupIDZero(t *testing.T) {
+	artifact := minimalTasksDocWithGroupID(0)
+	errs := validateArtifactSchema(artifact, "tasks.v1.json", "tasks.json")
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for task_group id=0, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "id") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one schema error referencing 'id'; got: %v", errs)
+	}
+}
+
+// TestValidateSchema_TaskGroupIDNegative verifies NS-REQ-2: a tasks artifact
+// with task_group id=-5 fails JSON schema validation.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateSchema_TaskGroupIDNegative(t *testing.T) {
+	artifact := minimalTasksDocWithGroupID(-5)
+	errs := validateArtifactSchema(artifact, "tasks.v1.json", "tasks.json")
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for task_group id=-5, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "id") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one schema error referencing 'id'; got: %v", errs)
+	}
+}
+
+// TestValidateSchema_TaskGroupIDPositive verifies NS-REQ-3: a tasks artifact
+// with a valid task_group id ≥ 1 passes schema validation without errors.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestValidateSchema_TaskGroupIDPositive(t *testing.T) {
+	for _, id := range []int{1, 2, 100} {
+		artifact := minimalTasksDocWithGroupID(id)
+		errs := validateArtifactSchema(artifact, "tasks.v1.json", "tasks.json")
+		schemaErrs := []ValidationEntry{}
+		for _, e := range errs {
+			if e.Category == "schema" && strings.Contains(e.Path, "id") {
+				schemaErrs = append(schemaErrs, e)
+			}
+		}
+		if len(schemaErrs) > 0 {
+			t.Errorf("id=%d: expected no schema id-constraint errors; got: %v", id, schemaErrs)
+		}
 	}
 }

@@ -165,6 +165,73 @@ func TestTS08_ResolveSpecDirNotExists(t *testing.T) {
 	}
 }
 
+// --- NS-REQ-1/2/4: Numeric prefix requires underscore separator ---
+
+// TestTS_NS_1_SingleDigitMatchesExactly verifies that resolveSpec("1") returns
+// only the spec whose name begins with "1_", not "10_" or "11_".
+// Covers: NS-REQ-1, TS-NS-1
+func TestTS_NS_1_SingleDigitMatchesExactly(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	for _, name := range []string{"1_foo", "10_bar", "11_baz"} {
+		if err := os.MkdirAll(filepath.Join(specDir, name), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	path, err := resolveSpec(specDir, "1")
+	if err != nil {
+		t.Fatalf("resolveSpec(%q, %q) returned error: %v", specDir, "1", err)
+	}
+
+	expected := filepath.Join(specDir, "1_foo")
+	if path != expected {
+		t.Errorf("resolveSpec(%q, %q) = %q; want %q", specDir, "1", path, expected)
+	}
+}
+
+// TestTS_NS_2_MultiDigitDoesNotMatchLongerPrefix verifies that resolveSpec("10")
+// returns "10_bar" and does not match "1_foo".
+// Covers: NS-REQ-2, TS-NS-2
+func TestTS_NS_2_MultiDigitDoesNotMatchLongerPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	for _, name := range []string{"1_foo", "10_bar"} {
+		if err := os.MkdirAll(filepath.Join(specDir, name), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	path, err := resolveSpec(specDir, "10")
+	if err != nil {
+		t.Fatalf("resolveSpec(%q, %q) returned error: %v", specDir, "10", err)
+	}
+
+	expected := filepath.Join(specDir, "10_bar")
+	if path != expected {
+		t.Errorf("resolveSpec(%q, %q) = %q; want %q", specDir, "10", path, expected)
+	}
+}
+
+// TestTS_NS_4_NoMatchWhenOnlyLongerPrefixExists verifies that resolveSpec("1")
+// returns a not-found error when only "10_bar" exists.
+// Covers: NS-REQ-4, TS-NS-4
+func TestTS_NS_4_NoMatchWhenOnlyLongerPrefixExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+	if err := os.MkdirAll(filepath.Join(specDir, "10_bar"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := resolveSpec(specDir, "1")
+	if err == nil {
+		t.Fatal("resolveSpec() with no matching spec returned nil error; want error")
+	}
+	if !strings.Contains(err.Error(), "no spec matching") {
+		t.Errorf("error message = %q; want it to contain %q", err.Error(), "no spec matching")
+	}
+}
+
 // --- 08-PROP-3: Deterministic resolution ---
 
 // TestTS08_ResolveIsDeterministic verifies that the resolver always

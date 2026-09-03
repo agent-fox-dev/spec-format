@@ -530,8 +530,8 @@ func TestCleanSchema_PreservesAllDescriptions(t *testing.T) {
 // --- TS-06-38: ArtifactTool for requirements ---
 
 // TestTS06_38_ArtifactToolRequirements verifies that ArtifactTool("requirements")
-// returns a tool definition with a fully inlined, cleaned schema embedded
-// as the content property of submit_requirements.
+// returns a tool definition with a fully inlined, cleaned artifact schema used
+// directly as input_schema (no intermediate 'content' property wrapper).
 // Test Spec: TS-06-38, Requirement: 06-REQ-13.1
 func TestTS06_38_ArtifactToolRequirements(t *testing.T) {
 	tools := ArtifactTool("requirements")
@@ -545,7 +545,7 @@ func TestTS06_38_ArtifactToolRequirements(t *testing.T) {
 		t.Errorf("tool[\"name\"] = %v; want %q", tool["name"], "submit_requirements")
 	}
 
-	// Get the content schema from input_schema.properties.content.
+	// input_schema is the cleaned artifact schema directly — no 'content' wrapper.
 	inputSchema, ok := tool["input_schema"].(map[string]any)
 	if !ok {
 		t.Fatalf("input_schema is %T; want map[string]any", tool["input_schema"])
@@ -554,26 +554,32 @@ func TestTS06_38_ArtifactToolRequirements(t *testing.T) {
 	if !ok {
 		t.Fatalf("input_schema[\"properties\"] is %T; want map[string]any", inputSchema["properties"])
 	}
-	contentSchema, ok := props["content"].(map[string]any)
-	if !ok {
-		t.Fatalf("properties[\"content\"] is %T; want map[string]any", props["content"])
+
+	// The flat schema must NOT have a 'content' wrapper key.
+	if _, hasContent := props["content"]; hasContent {
+		t.Error("input_schema.properties has a 'content' key; want flat artifact fields at top level")
 	}
 
-	// Content schema should have no $ref, $defs, title, default, or $schema.
-	if containsKeyAtAnyDepth(contentSchema, "$ref") {
-		t.Error("content schema contains $ref at some depth; want all resolved")
+	// The flat schema should expose the artifact-level 'requirements' key directly.
+	if _, hasReqs := props["requirements"]; !hasReqs {
+		t.Error("input_schema.properties missing 'requirements' key; want top-level artifact field")
 	}
-	if containsKeyAtAnyDepth(contentSchema, "$defs") {
-		t.Error("content schema contains $defs; want removed")
+
+	// The schema should have no $ref, $defs, title, default, or $schema anywhere.
+	if containsKeyAtAnyDepth(inputSchema, "$ref") {
+		t.Error("input_schema contains $ref at some depth; want all resolved")
 	}
-	if containsKeyAtAnyDepth(contentSchema, "title") {
-		t.Error("content schema contains title at some depth; want removed")
+	if containsKeyAtAnyDepth(inputSchema, "$defs") {
+		t.Error("input_schema contains $defs; want removed")
 	}
-	if containsKeyAtAnyDepth(contentSchema, "default") {
-		t.Error("content schema contains default at some depth; want removed")
+	if containsKeyAtAnyDepth(inputSchema, "title") {
+		t.Error("input_schema contains title at some depth; want removed")
 	}
-	if _, has := contentSchema["$schema"]; has {
-		t.Error("content schema contains $schema; want removed")
+	if containsKeyAtAnyDepth(inputSchema, "default") {
+		t.Error("input_schema contains default at some depth; want removed")
+	}
+	if _, has := inputSchema["$schema"]; has {
+		t.Error("input_schema contains $schema; want removed")
 	}
 }
 
@@ -586,22 +592,15 @@ func TestArtifactTool_PreservesDescriptions(t *testing.T) {
 		t.Fatalf("ArtifactTool(\"requirements\") returned %d entries; want 1", len(tools))
 	}
 
+	// input_schema is the cleaned artifact schema directly.
 	inputSchema, ok := tools[0]["input_schema"].(map[string]any)
 	if !ok {
 		t.Fatalf("input_schema is %T; want map[string]any", tools[0]["input_schema"])
 	}
-	props, ok := inputSchema["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("properties missing")
-	}
-	contentSchema, ok := props["content"].(map[string]any)
-	if !ok {
-		t.Fatalf("content property missing")
-	}
 
-	// The requirements schema should have a description field.
-	if !containsKeyAtAnyDepth(contentSchema, "description") {
-		t.Error("content schema has no description fields; want descriptions preserved")
+	// The requirements schema should have description fields at some depth.
+	if !containsKeyAtAnyDepth(inputSchema, "description") {
+		t.Error("input_schema has no description fields; want descriptions preserved")
 	}
 }
 

@@ -137,6 +137,48 @@ func TestSpecTransition_ActiveToSuperseded(t *testing.T) {
 	}
 }
 
+// TestSpecTransition_ActiveToArchived verifies that Transition("archived") on
+// an active spec returns a LifecycleError. Active specs must be sealed first;
+// direct archiving from active is not permitted by the spec (Section 9.2).
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestSpecTransition_ActiveToArchived(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	spec := createDraftSpec(t, tmpDir)
+
+	// Transition to active first.
+	active, err := spec.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Attempt active → archived — must be rejected.
+	_, err = active.Transition("archived", tmpDir)
+	if err == nil {
+		t.Fatal("expected LifecycleError for active→archived, got nil")
+	}
+
+	var lifecycleErr *LifecycleError
+	if !errors.As(err, &lifecycleErr) {
+		t.Errorf("errors.As(err, &LifecycleError{}) = false, want true; err type = %T", err)
+	}
+
+	var specErr *SpecError
+	if !errors.As(err, &specErr) {
+		t.Errorf("errors.As(err, &SpecError{}) = false, want true; err type = %T", err)
+	}
+
+	// Reload from disk and confirm status is still "active" (no partial write).
+	saved, err := LoadSpec(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadSpec after failed Transition failed: %v", err)
+	}
+	if saved.Status != "active" {
+		t.Errorf("saved Status = %q after failed active→archived, want %q", saved.Status, "active")
+	}
+}
+
 // TestSpecTransition_ImmutabilityCheck verifies that Transition does not
 // modify the original spec — it returns a new copy.
 // Test Spec: TS-01-54, Requirement: 01-REQ-28.1
@@ -179,7 +221,6 @@ func TestValidTransition_AllowedTransitions(t *testing.T) {
 		{"draft", "active", true},
 		{"draft", "archived", true},
 		{"active", "sealed", true},
-		{"active", "archived", true},
 		{"sealed", "superseded", true},
 		{"sealed", "archived", true},
 		{"superseded", "archived", true},
@@ -187,6 +228,7 @@ func TestValidTransition_AllowedTransitions(t *testing.T) {
 		// Disallowed transitions
 		{"draft", "sealed", false},
 		{"draft", "superseded", false},
+		{"active", "archived", false},
 		{"active", "superseded", false},
 		{"active", "draft", false},
 		{"sealed", "draft", false},
@@ -1081,5 +1123,240 @@ schema_version: 1
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("failed to write %s: %v", name, err)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #72: deep copy tests for Transition()
+// ---------------------------------------------------------------------------
+
+// writeSpecFixturesWithSupersedes writes minimal valid spec fixtures to dir
+// with a non-empty Supersedes slice (["00"]) to enable element-assignment
+// mutation tests.
+func writeSpecFixturesWithSupersedes(t *testing.T, dir string) {
+	t.Helper()
+
+	prd := `---
+spec_id: "01"
+spec_name: "test_feature"
+title: "Test Feature"
+status: "draft"
+created_at: "2026-01-01T00:00:00Z"
+updated_at: "2026-01-01T00:00:00Z"
+owner: "test-author"
+source: "https://github.com/test/repo/issues/1"
+supersedes: ["00"]
+tags: ["test"]
+intent_hash: null
+schema_version: 1
+---
+# Test Feature
+
+## Intent
+
+Build a test feature that validates the spec library works correctly.
+
+## Goals
+
+- Validate loading and saving of specs.
+
+## Non-goals
+
+- Production deployment.
+`
+
+	reqJSON := `{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v1.json",
+  "spec_id": "01",
+  "spec_name": "test_feature",
+  "schema_version": 1,
+  "introduction": "The test feature validates the spec library.",
+  "glossary": {"spec": "A four-artifact package."},
+  "requirements": [
+    {
+      "id": "01-REQ-1",
+      "title": "Data Model",
+      "user_story": {
+        "role": "developer",
+        "goal": "have typed models",
+        "benefit": "type safety"
+      },
+      "acceptance_criteria": [
+        {
+          "id": "01-REQ-1.1",
+          "ears_pattern": "event_driven",
+          "trigger": "a spec is loaded",
+          "system": "the system",
+          "action": "return a populated Spec",
+          "return_contract": "a Spec instance"
+        }
+      ],
+      "edge_cases": []
+    }
+  ],
+  "correctness_properties": [],
+  "execution_paths": [],
+  "error_handling": []
+}`
+
+	testSpecJSON := `{
+  "$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+  "spec_id": "01",
+  "spec_name": "test_feature",
+  "schema_version": 1,
+  "test_cases": [],
+  "property_tests": [],
+  "edge_case_tests": [],
+  "smoke_tests": [],
+  "coverage": {
+    "requirements_covered": [],
+    "properties_covered": [],
+    "paths_covered": [],
+    "gaps": []
+  }
+}`
+
+	tasksJSON := `{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
+  "spec_id": "01",
+  "spec_name": "test_feature",
+  "schema_version": 1,
+  "test_commands": {
+    "spec_tests": "pytest -q tests/",
+    "all_tests": "pytest -q",
+    "linter": "ruff check"
+  },
+  "dependencies": [],
+  "task_groups": [
+    {"id":1,"kind":"tests","title":"Write Tests","subtasks":[],"verification":{"id":"1.V","checks":["all tests pass"]}},
+    {"id":2,"kind":"wiring_verification","title":"Wiring","subtasks":[],"verification":{"id":"2.V","checks":["no stubs"]}}
+  ],
+  "traceability": []
+}`
+
+	supersedes_files := map[string]string{
+		"prd.md":            prd,
+		"requirements.json": reqJSON,
+		"test_spec.json":    testSpecJSON,
+		"tasks.json":        tasksJSON,
+	}
+	for name, content := range supersedes_files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("failed to write %s: %v", name, err)
+		}
+	}
+}
+
+// TestTransition_SupersedesSliceIsolation verifies NS-REQ-1 / TS-NS-1:
+// after Transition(), mutating the returned spec's Supersedes slice does not
+// affect the original spec's Supersedes slice (and vice versa).
+func TestTransition_SupersedesSliceIsolation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	writeSpecFixturesWithSupersedes(t, tmpDir)
+
+	original, err := LoadSpec(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadSpec failed: %v", err)
+	}
+
+	// Precondition: non-empty Supersedes so element assignment is possible.
+	if len(original.Supersedes) == 0 {
+		t.Fatal("test precondition failed: Supersedes slice must be non-empty")
+	}
+	origSupersedes0 := original.Supersedes[0]
+	origLen := len(original.Supersedes)
+
+	returned, err := original.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Append to returned — must not grow original.
+	returned.Supersedes = append(returned.Supersedes, "99")
+	if len(original.Supersedes) != origLen {
+		t.Errorf("original.Supersedes length changed from %d to %d after append to returned",
+			origLen, len(original.Supersedes))
+	}
+
+	// Element assignment on returned — must not mutate original.
+	returned.Supersedes[0] = "mutated"
+	if original.Supersedes[0] != origSupersedes0 {
+		t.Errorf("original.Supersedes[0] changed to %q after element assignment on returned",
+			original.Supersedes[0])
+	}
+}
+
+// TestTransition_TagsSliceIsolation verifies NS-REQ-2 / TS-NS-2:
+// after Transition(), mutating the returned spec's Tags slice does not affect
+// the original spec's Tags slice.
+func TestTransition_TagsSliceIsolation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	// Default fixture has tags: ["test"], sufficient for this test.
+	original := createDraftSpec(t, tmpDir)
+
+	if len(original.Tags) == 0 {
+		t.Fatal("test precondition failed: Tags slice must be non-empty")
+	}
+	origTag0 := original.Tags[0]
+	origTagLen := len(original.Tags)
+
+	returned, err := original.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Append extra tag — must not affect original.
+	returned.Tags = append(returned.Tags, "extra")
+	if len(original.Tags) != origTagLen {
+		t.Errorf("original.Tags length changed from %d to %d after append to returned",
+			origTagLen, len(original.Tags))
+	}
+
+	// Element assignment — must not mutate original.
+	returned.Tags[0] = "mutated"
+	if original.Tags[0] != origTag0 {
+		t.Errorf("original.Tags[0] changed to %q after element assignment on returned",
+			original.Tags[0])
+	}
+}
+
+// TestTransition_RequirementsArtifactIsolation verifies NS-REQ-3 / TS-NS-3:
+// after Transition(), mutating the returned spec's Requirements.Requirements
+// slice does not affect the original spec's Requirements artifact.
+func TestTransition_RequirementsArtifactIsolation(t *testing.T) {
+	defer requireImplemented(t)
+
+	tmpDir := t.TempDir()
+	// Default fixture has one requirement entry.
+	original := createDraftSpec(t, tmpDir)
+
+	if original.Requirements == nil {
+		t.Fatal("test precondition failed: Requirements must be non-nil")
+	}
+	origLen := len(original.Requirements.Requirements)
+	if origLen == 0 {
+		t.Fatal("test precondition failed: Requirements.Requirements must be non-empty")
+	}
+
+	returned, err := original.Transition("active", tmpDir)
+	if err != nil {
+		t.Fatalf("Transition draft→active failed: %v", err)
+	}
+
+	// Append a duplicate of the first requirement as a dummy entry.
+	returned.Requirements.Requirements = append(
+		returned.Requirements.Requirements,
+		returned.Requirements.Requirements[0],
+	)
+
+	// Original artifact must be unaffected.
+	if len(original.Requirements.Requirements) != origLen {
+		t.Errorf("original.Requirements.Requirements length changed from %d to %d after mutation of returned",
+			origLen, len(original.Requirements.Requirements))
 	}
 }

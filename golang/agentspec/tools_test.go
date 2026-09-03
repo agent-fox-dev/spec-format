@@ -1,6 +1,7 @@
 package agentspec
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -224,4 +225,115 @@ func TestRefinementTools_ReturnsNewSlice(t *testing.T) {
 	if !ok || name != "submit_prd_update" {
 		t.Errorf("after mutation, RefinementTools()[0][\"name\"] = %v; want %q", tools3[0]["name"], "submit_prd_update")
 	}
+}
+
+// --- TS-NS-1: ArtifactTool schema computation caching ---
+
+// TestArtifactTool_CachedResultConsistent verifies that repeated calls to
+// ArtifactTool for the same artifact name return structurally identical
+// results, confirming the cache is used correctly.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestArtifactTool_CachedResultConsistent(t *testing.T) {
+	const artifact = "requirements"
+
+	first := ArtifactTool(artifact)
+	if len(first) != 1 {
+		t.Fatalf("first call returned %d entries; want 1", len(first))
+	}
+
+	for i := 0; i < 5; i++ {
+		got := ArtifactTool(artifact)
+		if len(got) != 1 {
+			t.Fatalf("call %d returned %d entries; want 1", i+2, len(got))
+		}
+		gotName, ok := got[0]["name"].(string)
+		if !ok || gotName != "submit_requirements" {
+			t.Errorf("call %d: tool name = %v; want %q", i+2, got[0]["name"], "submit_requirements")
+		}
+		// Verify input_schema is present on every call.
+		if _, hasSchema := got[0]["input_schema"]; !hasSchema {
+			t.Errorf("call %d: missing input_schema", i+2)
+		}
+	}
+}
+
+// --- TS-NS-3: Mutation isolation ---
+
+// TestArtifactTool_MutationIsolation verifies that mutating the slice
+// returned by one ArtifactTool call does not affect results of subsequent
+// calls (mutation-isolation guarantee preserved post-caching).
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestArtifactTool_MutationIsolation(t *testing.T) {
+	tools1 := ArtifactTool("requirements")
+	if len(tools1) != 1 {
+		t.Fatalf("first call returned %d entries; want 1", len(tools1))
+	}
+
+	// Mutate the tool name in the first result.
+	tools1[0]["name"] = "mutated_name"
+
+	// A second call must still return the correct, unaffected tool name.
+	tools2 := ArtifactTool("requirements")
+	if len(tools2) != 1 {
+		t.Fatalf("second call returned %d entries; want 1", len(tools2))
+	}
+	name, ok := tools2[0]["name"].(string)
+	if !ok || name != "submit_requirements" {
+		t.Errorf("after mutation, second call tool name = %v; want %q", tools2[0]["name"], "submit_requirements")
+	}
+}
+
+// TestArtifactTool_InputSchemaMutationIsolation verifies that mutating
+// the input_schema map returned by one call does not corrupt subsequent calls.
+// Requirement: NS-REQ-3
+func TestArtifactTool_InputSchemaMutationIsolation(t *testing.T) {
+	tools1 := ArtifactTool("requirements")
+	if len(tools1) != 1 {
+		t.Fatalf("first call returned %d entries; want 1", len(tools1))
+	}
+
+	// Mutate the input_schema map from the first result.
+	schema1, ok := tools1[0]["input_schema"].(map[string]any)
+	if !ok {
+		t.Fatal("input_schema is not map[string]any")
+	}
+	schema1["__injected__"] = "mutation"
+
+	// A second call must return an input_schema without the injected key.
+	tools2 := ArtifactTool("requirements")
+	if len(tools2) != 1 {
+		t.Fatalf("second call returned %d entries; want 1", len(tools2))
+	}
+	schema2, ok := tools2[0]["input_schema"].(map[string]any)
+	if !ok {
+		t.Fatal("second call: input_schema is not map[string]any")
+	}
+	if _, present := schema2["__injected__"]; present {
+		t.Error("second call input_schema contains injected key; cache was mutated")
+	}
+}
+
+// --- TS-NS-4: Concurrent access ---
+
+// TestArtifactTool_ConcurrentAccess verifies that concurrent calls to
+// ArtifactTool from multiple goroutines are data-race-free. Run with
+// go test -race to exercise the race detector.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestArtifactTool_ConcurrentAccess(t *testing.T) {
+	artifacts := []string{"requirements", "test_spec", "tasks"}
+
+	var wg sync.WaitGroup
+	for _, name := range artifacts {
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func(artifactName string) {
+				defer wg.Done()
+				tools := ArtifactTool(artifactName)
+				if len(tools) != 1 {
+					t.Errorf("concurrent ArtifactTool(%q) returned %d entries; want 1", artifactName, len(tools))
+				}
+			}(name)
+		}
+	}
+	wg.Wait()
 }

@@ -162,7 +162,13 @@ func sessionNeedsAssessment(state string) bool {
 func assessPRD(ctx context.Context, specPath string) (agentspec.Assessment, error) {
 	// Test hook: block until context cancellation to simulate a long-running
 	// AI call. Activated by SPEC_TEST_BLOCK_AI=1 environment variable.
+	// If SPEC_TEST_READY_FILE is also set, the file is created before blocking
+	// so tests can wait for readiness before sending signals, avoiding timing
+	// races on cold binary startup.
 	if os.Getenv("SPEC_TEST_BLOCK_AI") == "1" {
+		if rf := os.Getenv("SPEC_TEST_READY_FILE"); rf != "" {
+			_ = os.WriteFile(rf, []byte("ready"), 0600)
+		}
 		<-ctx.Done()
 		return agentspec.Assessment{}, ctx.Err()
 	}

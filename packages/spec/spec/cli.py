@@ -194,7 +194,7 @@ def main(ctx: click.Context, spec_dir: str, source: str, quiet: bool) -> None:
 
 
 @main.command("new")
-@click.argument("spec_path", type=click.Path(exists=True))
+@click.argument("prd_file", type=click.Path(exists=True))
 @click.option(
     "--name",
     "spec_name",
@@ -202,7 +202,7 @@ def main(ctx: click.Context, spec_dir: str, source: str, quiet: bool) -> None:
     help="Snake-case spec name (derived from filename when omitted)",
 )
 @click.pass_context
-def new_cmd(ctx: click.Context, spec_path: str, spec_name: str | None) -> None:
+def new_cmd(ctx: click.Context, prd_file: str, spec_name: str | None) -> None:
     """Create a new spec from a PRD file.
 
     Auto-initialises the spec directory if it does not already exist.
@@ -212,7 +212,7 @@ def new_cmd(ctx: click.Context, spec_path: str, spec_name: str | None) -> None:
     spec_dir: Path = ctx.obj["spec_dir"]
 
     if spec_name is None:
-        spec_name = _derive_spec_name(spec_path)
+        spec_name = _derive_spec_name(prd_file)
 
     if not _SPEC_NAME_RE.match(spec_name):
         raise click.ClickException(
@@ -224,7 +224,7 @@ def new_cmd(ctx: click.Context, spec_path: str, spec_name: str | None) -> None:
 
     campaign = Campaign.open(spec_dir)
     session = campaign.new_spec(
-        spec_name, Path(spec_path), mode="interactive", source=ctx.obj["source"]
+        spec_name, Path(prd_file), mode="interactive", source=ctx.obj["source"]
     )
 
     emit_ok(spec_dir=session._spec_dir.name, state=session.state.value)

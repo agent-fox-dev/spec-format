@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	afspec "github.com/agent-fox-dev/spec-format"
 )
 
 // isZeroAssessment returns true if the Assessment has all zero-value fields.
@@ -191,7 +193,7 @@ func TestSpec07_AssessPRD_HappyPath(t *testing.T) {
 	capture := &aiCallCapture{}
 
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "PRD is well-structured", []string{"Missing auth flow"}, []map[string]any{
+		makeAssessmentToolCall("ready", "PRD is well-structured", []string{"Missing auth flow"}, []map[string]any{
 			{"id": "q1", "text": "How will auth work?"},
 		}),
 	)
@@ -234,13 +236,20 @@ func TestSpec07_AssessPRD_HappyPath(t *testing.T) {
 	if len(callOpts.Tools) == 0 {
 		t.Error("AICall Tools is empty; want AssessmentTools()")
 	}
+
+	// Verify temperature=0.2 was set (NS-REQ-1).
+	if callOpts.Temperature == nil {
+		t.Error("AICall Temperature is nil; want 0.2")
+	} else if *callOpts.Temperature != 0.2 {
+		t.Errorf("AICall Temperature = %f; want 0.2", *callOpts.Temperature)
+	}
 }
 
 // TestSpec07_AssessPRD_WithOptions verifies that AssessPRD accepts AgentOptions.
 // Test Spec: TS-07-25, Requirement: 07-REQ-5.2
 func TestSpec07_AssessPRD_WithOptions(t *testing.T) {
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("medium", "Needs improvement", []string{"Gap 1"}, nil),
+		makeAssessmentToolCall("needs_refinement", "Needs improvement", []string{"Gap 1"}, nil),
 	)
 
 	mockFn := newMockAICallFunc(nil, mockAICallResult{
@@ -583,7 +592,7 @@ func TestSpec07_AssessPRD_EmptyPRDText(t *testing.T) {
 	capture := &aiCallCapture{}
 
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("low", "Empty PRD", []string{"No content"}, nil),
+		makeAssessmentToolCall("incomplete", "Empty PRD", []string{"No content"}, nil),
 	)
 
 	mockFn := newMockAICallFunc(capture, mockAICallResult{
@@ -626,7 +635,7 @@ func TestSpec07_RefinePRD_HappyPath(t *testing.T) {
 	// Response contains both tool calls.
 	resp := makeToolCallResponse("end_turn",
 		makePRDUpdateToolCall("Updated PRD text"),
-		makeAssessmentToolCall("high", "Much improved", nil, nil),
+		makeAssessmentToolCall("ready", "Much improved", nil, nil),
 	)
 
 	mockFn := newMockAICallFunc(capture, mockAICallResult{
@@ -637,7 +646,7 @@ func TestSpec07_RefinePRD_HappyPath(t *testing.T) {
 	agent.aiCallFunc = mockFn
 
 	ctx := context.Background()
-	prevAssessment := Assessment{Quality: "medium", Summary: "Needs work"}
+	prevAssessment := Assessment{Quality: "needs_refinement", Summary: "Needs work"}
 	updatedPRD, newAssessment, err := agent.RefinePRD(ctx, "Original PRD",
 		map[string]string{"q1": "a1"}, prevAssessment)
 
@@ -653,73 +662,75 @@ func TestSpec07_RefinePRD_HappyPath(t *testing.T) {
 	if isZeroAssessment(newAssessment) {
 		t.Error("RefinePRD() newAssessment is zero-value; want populated Assessment")
 	}
-	if newAssessment.Quality != "high" {
-		t.Errorf("newAssessment.Quality = %q; want %q", newAssessment.Quality, "high")
+	if newAssessment.Quality != "ready" {
+		t.Errorf("newAssessment.Quality = %q; want %q", newAssessment.Quality, "ready")
 	}
 
 	// Verify AICall was invoked exactly once (both tools in single response).
 	if capture.count() != 1 {
 		t.Errorf("AICall invocation count = %d; want 1", capture.count())
 	}
+
+	// Verify temperature=0.2 was set (NS-REQ-2).
+	refineCallOpts := capture.get(0)
+	if refineCallOpts.Temperature == nil {
+		t.Error("RefinePRD AICall Temperature is nil; want 0.2")
+	} else if *refineCallOpts.Temperature != 0.2 {
+		t.Errorf("RefinePRD AICall Temperature = %f; want 0.2", *refineCallOpts.Temperature)
+	}
 }
 
 // ---------------------------------------------------------------------------
-// TS-07-31: RefinePRD fallback assessment call
+// TS-07-31: RefinePRD missing assessment returns error (single-call contract)
 // ---------------------------------------------------------------------------
 
-// TestSpec07_RefinePRD_FallbackAssessmentCall verifies that RefinePRD makes
-// a second AICall with only the submit_assessment tool when the first
-// response lacks a submit_assessment tool call.
+// TestSpec07_RefinePRD_MissingAssessmentReturnsError verifies that RefinePRD
+// returns an AgentError with category=internal when the single LLM response
+// contains submit_prd_update but lacks submit_assessment. No fallback second
+// call is made.
 // Test Spec: TS-07-31, Requirement: 07-REQ-6.2
-func TestSpec07_RefinePRD_FallbackAssessmentCall(t *testing.T) {
+func TestSpec07_RefinePRD_MissingAssessmentReturnsError(t *testing.T) {
 	capture := &aiCallCapture{}
-	callCount := 0
 
-	// First call: only submit_prd_update, no submit_assessment.
-	firstResp := makeToolCallResponse("end_turn",
-		makePRDUpdateToolCall("Updated PRD from first call"),
+	// Response contains only submit_prd_update — no submit_assessment.
+	resp := makeToolCallResponse("end_turn",
+		makePRDUpdateToolCall("Updated PRD text"),
 	)
 
-	// Second call: submit_assessment.
-	secondResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Good after update", nil, nil),
-	)
-
-	var mu sync.Mutex
-	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
-		if capture != nil {
-			capture.record(opts)
-		}
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-		if c == 0 {
-			return "", firstResp, nil
-		}
-		return "", secondResp, nil
-	}
+	mockFn := newMockAICallFunc(capture, mockAICallResult{
+		raw: resp,
+	})
 
 	agent := NewSpecAgent("STANDARD")
 	agent.aiCallFunc = mockFn
 
 	ctx := context.Background()
 	updatedPRD, newAssessment, err := agent.RefinePRD(ctx, "Original PRD",
-		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
+		map[string]string{"q1": "a1"}, Assessment{Quality: "needs_refinement"})
 
-	if err != nil {
-		t.Fatalf("RefinePRD() returned error: %v", err)
+	// Must return an error.
+	if err == nil {
+		t.Fatal("RefinePRD() returned nil error; want AgentError when assessment is missing")
 	}
-	if updatedPRD != "Updated PRD from first call" {
-		t.Errorf("updatedPRD = %q; want %q", updatedPRD, "Updated PRD from first call")
+	var agentErr *AgentError
+	if !errors.As(err, &agentErr) {
+		t.Fatalf("error type = %T; want *AgentError", err)
 	}
-	if isZeroAssessment(newAssessment) {
-		t.Error("newAssessment is zero-value; want populated Assessment from second call")
+	if agentErr.ErrorCategory != "internal" {
+		t.Errorf("AgentError.ErrorCategory = %q; want %q", agentErr.ErrorCategory, "internal")
 	}
 
-	// Verify AICall was invoked exactly twice.
-	if capture.count() != 2 {
-		t.Errorf("AICall invocation count = %d; want 2", capture.count())
+	// No partial results.
+	if updatedPRD != "" {
+		t.Errorf("updatedPRD = %q; want empty string (no partial results)", updatedPRD)
+	}
+	if !isZeroAssessment(newAssessment) {
+		t.Errorf("newAssessment = %+v; want zero-value Assessment", newAssessment)
+	}
+
+	// Exactly one AICall — no fallback second call.
+	if capture.count() != 1 {
+		t.Errorf("AICall invocation count = %d; want exactly 1 (no fallback)", capture.count())
 	}
 }
 
@@ -833,60 +844,6 @@ func TestSpec07_RefinePRD_StopReason_PauseTurn(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 07-REQ-6.E1: RefinePRD fallback assessment call failure
-// ---------------------------------------------------------------------------
-
-// TestSpec07_RefinePRD_FallbackAssessmentFailure verifies that when the
-// fallback assessment call also fails, RefinePRD returns the error without
-// partial results.
-// Edge Case: 07-REQ-6.E1
-func TestSpec07_RefinePRD_FallbackAssessmentFailure(t *testing.T) {
-	callCount := 0
-	var mu sync.Mutex
-
-	// First call: only submit_prd_update.
-	firstResp := makeToolCallResponse("end_turn",
-		makePRDUpdateToolCall("Updated text"),
-	)
-
-	// Second call: fails.
-	secondErr := &AgentError{
-		Detail:        "service unavailable",
-		ErrorCategory: "transient",
-		Retryable:     true,
-	}
-
-	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-		if c == 0 {
-			return "", firstResp, nil
-		}
-		return "", nil, secondErr
-	}
-
-	agent := NewSpecAgent("STANDARD")
-	agent.aiCallFunc = mockFn
-
-	ctx := context.Background()
-	updatedPRD, newAssessment, err := agent.RefinePRD(ctx, "Original PRD",
-		map[string]string{"q1": "a1"}, Assessment{})
-
-	// Should return error, not partial results.
-	if updatedPRD != "" {
-		t.Errorf("updatedPRD = %q; want empty string (no partial results)", updatedPRD)
-	}
-	if !isZeroAssessment(newAssessment) {
-		t.Errorf("newAssessment = %+v; want zero-value Assessment", newAssessment)
-	}
-	if err == nil {
-		t.Fatal("RefinePRD() returned nil error; want error from second call")
-	}
-}
-
-// ---------------------------------------------------------------------------
 // 07-REQ-6.E2: RefinePRD context cancellation mid-refinement
 // ---------------------------------------------------------------------------
 
@@ -983,9 +940,9 @@ func TestSpec07_GenerateArtifacts_HappyPath(t *testing.T) {
 		"test_cases": []any{},
 	}
 	tasksContent := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
-		"tasks":     []any{},
+		"spec_id":     "07",
+		"spec_name":   "test",
+		"task_groups": []any{},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1093,9 +1050,9 @@ func TestSpec07_GenerateArtifacts_RepairLoop_Success(t *testing.T) {
 		"test_cases": []any{},
 	}
 	validTasks := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
-		"tasks":     []any{},
+		"spec_id":     "07",
+		"spec_name":   "test",
+		"task_groups": []any{},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1220,12 +1177,12 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 	testSpecContent := map[string]any{
 		"spec_id":    "07",
 		"spec_name":  "test",
-		"test_cases": []any{map[string]any{"id": "TC-1", "requirement": "07-REQ-1"}},
+		"test_cases": []any{map[string]any{"id": "TS-07-1", "requirement": "07-REQ-1"}},
 	}
 	tasksContent := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
-		"tasks":     []any{map[string]any{"id": "T-1", "description": "Implement 07-REQ-1"}},
+		"spec_id":     "07",
+		"spec_name":   "test",
+		"task_groups": []any{map[string]any{"id": 1, "description": "Implement 07-REQ-1"}},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1399,9 +1356,9 @@ func TestSpec07_GenerateArtifacts_MalformedPayload(t *testing.T) {
 		"test_cases": []any{},
 	}
 	validTasks := map[string]any{
-		"spec_id":   "07",
-		"spec_name": "test",
-		"tasks":     []any{},
+		"spec_id":     "07",
+		"spec_name":   "test",
+		"task_groups": []any{},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1616,7 +1573,7 @@ func TestSpec07_AgentOption_AppliedByAssessPRD(t *testing.T) {
 	capture := &aiCallCapture{}
 
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Good", nil, nil),
+		makeAssessmentToolCall("ready", "Good", nil, nil),
 	)
 
 	mockFn := newMockAICallFunc(capture, mockAICallResult{
@@ -1653,7 +1610,7 @@ func TestSpec07_AgentOption_AppliedByAssessPRD(t *testing.T) {
 // Test Spec: TS-07-39, Requirement: 07-REQ-8.3
 func TestSpec07_AgentOption_ZeroValueDefaults(t *testing.T) {
 	assessmentResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("medium", "OK", nil, nil),
+		makeAssessmentToolCall("needs_refinement", "OK", nil, nil),
 	)
 
 	mockFn := newMockAICallFunc(nil, mockAICallResult{
@@ -1724,7 +1681,7 @@ func TestSpec07_AgentOption_NilCallbackGeneration(t *testing.T) {
 			content = map[string]any{"spec_id": "07", "spec_name": "test", "test_cases": []any{}}
 		case strings.Contains(opts.Context, "tasks"):
 			artifactName = "tasks"
-			content = map[string]any{"spec_id": "07", "spec_name": "test", "tasks": []any{}}
+			content = map[string]any{"spec_id": "07", "spec_name": "test", "task_groups": []any{}}
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
@@ -1802,7 +1759,7 @@ func TestNS55_RepairConversation_FirstMessage(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -1902,7 +1859,7 @@ func TestNS55_RepairConversation_AssistantMessage(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2013,7 +1970,7 @@ func TestNS55_RepairConversation_ToolResultMessage(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2135,7 +2092,7 @@ func TestNS55_RepairConversation_MessageCount(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2228,7 +2185,7 @@ func TestNS57_ConcurrentGeneration(t *testing.T) {
 			testSpecUnblocked.Wait() // wait until test_spec is unblocked
 			resp := makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+					"spec_id": "57", "spec_name": "test", "task_groups": []any{},
 				}))
 			return "", resp, nil
 
@@ -2274,7 +2231,7 @@ func TestNS57_ParallelError_TestSpecFails(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			return "", makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+					"spec_id": "57", "spec_name": "test", "task_groups": []any{},
 				})), nil
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2342,7 +2299,7 @@ func TestNS57_AllArtifactsPresent(t *testing.T) {
 		"spec_id": "57", "spec_name": "test", "test_cases": []any{"tc1"},
 	}
 	wantTasks := map[string]any{
-		"spec_id": "57", "spec_name": "test", "tasks": []any{"task1"},
+		"spec_id": "57", "spec_name": "test", "task_groups": []any{"task1"},
 	}
 
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
@@ -2410,7 +2367,7 @@ func TestNS57_CallbackOrder(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			return "", makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+					"spec_id": "57", "spec_name": "test", "task_groups": []any{},
 				})), nil
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2438,151 +2395,6 @@ func TestNS57_CallbackOrder(t *testing.T) {
 	if !parallelSet["test_spec"] || !parallelSet["tasks"] {
 		t.Errorf("callbackNames[1,2] = %q, %q; want {test_spec, tasks} in any order",
 			callbackNames[1], callbackNames[2])
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TS-NS-3: Fallback assessment call sends only updated PRD (NS-REQ-3)
-// TS-NS-4: Fallback call uses AssessmentTools and correct Context (NS-REQ-4)
-// ---------------------------------------------------------------------------
-
-// TestNS58_FallbackAssessment_SingleMessage verifies that when the first
-// RefinePRD response contains only submit_prd_update (no submit_assessment),
-// the fallback AICall sends exactly one user message containing only the
-// updated PRD text — not the original userPrompt, answers, or prior assessment.
-// Test Spec: TS-NS-3, Requirement: NS-REQ-3
-func TestNS58_FallbackAssessment_SingleMessage(t *testing.T) {
-	capture := &aiCallCapture{}
-	callCount := 0
-	var mu sync.Mutex
-
-	const updatedPRDText = "Updated PRD from first call for NS58"
-	const originalPRDText = "Original PRD for NS58"
-
-	firstResp := makeToolCallResponse("end_turn",
-		makePRDUpdateToolCall(updatedPRDText),
-	)
-	secondResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Good after update", nil, nil),
-	)
-
-	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
-		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-		if c == 0 {
-			return "", firstResp, nil
-		}
-		return "", secondResp, nil
-	}
-
-	agent := NewSpecAgent("STANDARD")
-	agent.aiCallFunc = mockFn
-
-	ctx := context.Background()
-	updatedPRD, _, err := agent.RefinePRD(ctx, originalPRDText,
-		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
-
-	if err != nil {
-		t.Fatalf("RefinePRD() returned error: %v", err)
-	}
-	if updatedPRD != updatedPRDText {
-		t.Errorf("updatedPRD = %q; want %q", updatedPRD, updatedPRDText)
-	}
-
-	if capture.count() != 2 {
-		t.Fatalf("AICall invocation count = %d; want 2", capture.count())
-	}
-
-	// NS-REQ-3: fallback call (index 1) must have exactly one Message.
-	fallbackOpts := capture.get(1)
-	if len(fallbackOpts.Messages) != 1 {
-		t.Fatalf("fallback Messages count = %d; want 1", len(fallbackOpts.Messages))
-	}
-
-	// NS-REQ-3: the single message must be a user message.
-	msg := fallbackOpts.Messages[0]
-	if msg.Role != "user" {
-		t.Errorf("fallback Messages[0].Role = %q; want \"user\"", msg.Role)
-	}
-
-	// NS-REQ-3: message content must contain the updated PRD text.
-	content, ok := msg.Content.(string)
-	if !ok {
-		t.Fatalf("fallback Messages[0].Content type = %T; want string", msg.Content)
-	}
-	if !strings.Contains(content, updatedPRDText) {
-		t.Errorf("fallback message content does not contain updated PRD text\ngot:  %q\nwant: contains %q",
-			content, updatedPRDText)
-	}
-
-	// NS-REQ-3: message content must NOT contain the original PRD text.
-	if strings.Contains(content, originalPRDText) {
-		t.Errorf("fallback message content contains original PRD text (full context was re-sent)\ngot: %q", content)
-	}
-}
-
-// TestNS58_FallbackAssessment_ToolsAndContext verifies that the fallback
-// AICall uses exactly one tool (submit_assessment) and has Context equal to
-// "RefinePRD:fallback_assessment".
-// Test Spec: TS-NS-4, Requirement: NS-REQ-4
-func TestNS58_FallbackAssessment_ToolsAndContext(t *testing.T) {
-	capture := &aiCallCapture{}
-	callCount := 0
-	var mu sync.Mutex
-
-	firstResp := makeToolCallResponse("end_turn",
-		makePRDUpdateToolCall("Updated PRD for NS58 tools check"),
-	)
-	secondResp := makeToolCallResponse("end_turn",
-		makeAssessmentToolCall("high", "Assessed", nil, nil),
-	)
-
-	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
-		capture.record(opts)
-		mu.Lock()
-		c := callCount
-		callCount++
-		mu.Unlock()
-		if c == 0 {
-			return "", firstResp, nil
-		}
-		return "", secondResp, nil
-	}
-
-	agent := NewSpecAgent("STANDARD")
-	agent.aiCallFunc = mockFn
-
-	ctx := context.Background()
-	_, _, err := agent.RefinePRD(ctx, "Original PRD",
-		map[string]string{"q1": "a1"}, Assessment{Quality: "medium"})
-
-	if err != nil {
-		t.Fatalf("RefinePRD() returned error: %v", err)
-	}
-	if capture.count() != 2 {
-		t.Fatalf("AICall invocation count = %d; want 2", capture.count())
-	}
-
-	fallbackOpts := capture.get(1)
-
-	// NS-REQ-4: exactly one tool in fallback call.
-	if len(fallbackOpts.Tools) != 1 {
-		t.Fatalf("fallback Tools count = %d; want 1", len(fallbackOpts.Tools))
-	}
-
-	// NS-REQ-4: the tool must be submit_assessment.
-	if fallbackOpts.Tools[0].Name != "submit_assessment" {
-		t.Errorf("fallback Tools[0].Name = %q; want %q",
-			fallbackOpts.Tools[0].Name, "submit_assessment")
-	}
-
-	// NS-REQ-4: Context must be "RefinePRD:fallback_assessment".
-	if fallbackOpts.Context != "RefinePRD:fallback_assessment" {
-		t.Errorf("fallback Context = %q; want %q",
-			fallbackOpts.Context, "RefinePRD:fallback_assessment")
 	}
 }
 
@@ -2844,5 +2656,378 @@ func TestNS48_RepairLoop_Exhaustion_ReturnsValidationAgentError(t *testing.T) {
 	errMsg := err.Error()
 	if !strings.Contains(strings.ToLower(errMsg), "requirements") {
 		t.Errorf("error message %q does not mention 'requirements'", errMsg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-1/TS-NS-1: validateArtifactContent checks "task_groups" not "tasks"
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateArtifactContent_TasksMissingTaskGroups verifies that
+// validateArtifactContent for the "tasks" artifact rejects a map that has
+// "spec_id" and "spec_name" but is missing the "task_groups" key.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS62_ValidateArtifactContent_TasksMissingTaskGroups(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "62",
+		"spec_name": "foo",
+		// "task_groups" intentionally absent — should be rejected
+	}
+
+	_, err := validateArtifactContent(content, "tasks")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want error for missing task_groups")
+	}
+	if !strings.Contains(err.Error(), "task_groups") {
+		t.Errorf("error %q does not mention 'task_groups'", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-2/TS-NS-2: ValidateTestSpecMap rejects invalid test case ID format
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateArtifactContent_TestSpecBadID verifies that
+// validateArtifactContent for the "test_spec" artifact rejects a map whose
+// test_cases contain an entry with an ID that does not match ^TS-\w+-\d+$.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS62_ValidateArtifactContent_TestSpecBadID(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "62",
+		"spec_name": "foo",
+		"test_cases": []any{
+			map[string]any{
+				"id": "BAD-TC", // does not match ^TS-\w+-\d+$
+			},
+		},
+	}
+
+	_, err := validateArtifactContent(content, "test_spec")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want ID format error")
+	}
+	errStr := err.Error()
+	if !strings.Contains(errStr, "id_format") && !strings.Contains(errStr, "BAD-TC") {
+		t.Errorf("error %q does not mention 'id_format' or 'BAD-TC'", errStr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-3/TS-NS-3: ValidateTestSpecMap rejects invalid kind enum value
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateTestSpecMap_BadKind verifies that ValidateTestSpecMap
+// returns a non-empty slice when a test case has an invalid "kind" value.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS62_ValidateTestSpecMap_BadKind(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "62",
+		"spec_name": "foo",
+		"test_cases": []any{
+			map[string]any{
+				"id":   "TS-62-1",
+				"kind": "bad_kind", // not a valid enum value
+			},
+		},
+	}
+
+	entries := afspec.ValidateTestSpecMap(content)
+	if len(entries) == 0 {
+		t.Fatal("ValidateTestSpecMap() returned empty slice; want at least one entry for bad kind")
+	}
+	found := false
+	for _, e := range entries {
+		if strings.Contains(e.Message, "kind") || strings.Contains(e.Message, "bad_kind") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no entry mentions 'kind' or 'bad_kind'; entries: %v", entries)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NS-REQ-4/TS-NS-4: ValidateTasksMap rejects malformed subtask IDs
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateArtifactContent_TasksBadSubtaskID verifies that
+// validateArtifactContent for the "tasks" artifact rejects a map whose
+// task_groups contain a subtask with an ID that does not match {group}.{N}.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestNS62_ValidateArtifactContent_TasksBadSubtaskID(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "62",
+		"spec_name": "foo",
+		"task_groups": []any{
+			map[string]any{
+				"id": 1,
+				"subtasks": []any{
+					map[string]any{
+						"id": "BAD.SUB.ID", // does not match ^\d+\.\d+$
+					},
+				},
+			},
+		},
+	}
+
+	_, err := validateArtifactContent(content, "tasks")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want subtask ID format error")
+	}
+	if !strings.Contains(err.Error(), "BAD.SUB.ID") && !strings.Contains(err.Error(), "id_format") {
+		t.Errorf("error %q does not mention the malformed ID or 'id_format'", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1: Valid quality values are accepted by parseAssessment (NS-REQ-1)
+// TS-NS-2: Invalid quality value is rejected with informative error (NS-REQ-2)
+// TS-NS-3: Missing quality field is rejected (NS-REQ-3)
+// TS-NS-5: Invalid quality does not enter AssessmentHistory (NS-REQ-5)
+// ---------------------------------------------------------------------------
+
+// TestNS70_ParseAssessment_ValidQualities verifies that each of the three valid
+// quality values is accepted by parseAssessment without error.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS70_ParseAssessment_ValidQualities(t *testing.T) {
+	t.Parallel()
+	for _, quality := range []string{"ready", "needs_refinement", "incomplete"} {
+		quality := quality
+		t.Run(quality, func(t *testing.T) {
+			t.Parallel()
+			input := map[string]any{
+				"quality": quality,
+				"summary": "test summary",
+			}
+			got, err := parseAssessment(input)
+			if err != nil {
+				t.Fatalf("parseAssessment(%q) returned unexpected error: %v", quality, err)
+			}
+			if got.Quality != quality {
+				t.Errorf("Assessment.Quality = %q; want %q", got.Quality, quality)
+			}
+		})
+	}
+}
+
+// TestNS70_ParseAssessment_InvalidQuality verifies that an invalid quality value
+// is rejected with an error mentioning the invalid value and the allowed enum values.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS70_ParseAssessment_InvalidQuality(t *testing.T) {
+	t.Parallel()
+	input := map[string]any{
+		"quality": "mostly_good",
+		"summary": "test summary",
+	}
+	got, err := parseAssessment(input)
+	if err == nil {
+		t.Fatal("parseAssessment() returned nil error; want error for invalid quality")
+	}
+	if !isZeroAssessment(got) {
+		t.Errorf("parseAssessment() returned non-zero Assessment on error: %+v", got)
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "mostly_good") {
+		t.Errorf("error %q does not mention the invalid value %q", errMsg, "mostly_good")
+	}
+	for _, allowed := range []string{"ready", "needs_refinement", "incomplete"} {
+		if !strings.Contains(errMsg, allowed) {
+			t.Errorf("error %q does not mention allowed value %q", errMsg, allowed)
+		}
+	}
+}
+
+// TestNS70_ParseAssessment_MissingQuality verifies that a missing quality field
+// is rejected with an informative error.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS70_ParseAssessment_MissingQuality(t *testing.T) {
+	t.Parallel()
+	input := map[string]any{
+		"summary": "test summary",
+		// "quality" intentionally omitted
+	}
+	got, err := parseAssessment(input)
+	if err == nil {
+		t.Fatal("parseAssessment() returned nil error; want error for missing quality")
+	}
+	if !isZeroAssessment(got) {
+		t.Errorf("parseAssessment() returned non-zero Assessment on error: %+v", got)
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "quality") {
+		t.Errorf("error %q does not mention 'quality'", errMsg)
+	}
+}
+
+// TestNS70_AssessmentHistory_NotAppendedOnInvalidQuality verifies that an
+// invalid quality value from the LLM does not get appended to AssessmentHistory.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestNS70_AssessmentHistory_NotAppendedOnInvalidQuality(t *testing.T) {
+	t.Parallel()
+
+	// Mock returns a submit_assessment with an invalid quality value.
+	resp := makeToolCallResponse("end_turn",
+		makeAssessmentToolCall("hallucinated_value", "Test summary", nil, nil),
+	)
+
+	mockFn := newMockAICallFunc(nil, mockAICallResult{
+		raw: resp,
+	})
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	assessment, err := agent.AssessPRD(ctx, "Sample PRD", "test-spec")
+
+	// Must return an error.
+	if err == nil {
+		t.Fatal("AssessPRD() returned nil error; want error for invalid quality")
+	}
+
+	// Assessment must be zero-value (nothing valid returned).
+	if !isZeroAssessment(assessment) {
+		t.Errorf("assessment = %+v; want zero-value Assessment", assessment)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1: AssessPRD uses MaxTokens of 4096 (NS-REQ-1)
+// TS-NS-2: RefinePRD uses MaxTokens of 16384 (NS-REQ-2)
+// TS-NS-3: GenerateArtifacts retains 65536 default MaxTokens (NS-REQ-3)
+// ---------------------------------------------------------------------------
+
+// TestNS81_AssessPRD_MaxTokens verifies that AssessPRD sets MaxTokens: 4096
+// in the AICallOptions passed to the underlying AI call function.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS81_AssessPRD_MaxTokens(t *testing.T) {
+	capture := &aiCallCapture{}
+
+	assessmentResp := makeToolCallResponse("end_turn",
+		makeAssessmentToolCall("ready", "OK", nil, nil),
+	)
+
+	mockFn := newMockAICallFunc(capture, mockAICallResult{
+		raw: assessmentResp,
+	})
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.AssessPRD(ctx, "Sample PRD", "test-spec")
+	if err != nil {
+		t.Fatalf("AssessPRD() returned error: %v", err)
+	}
+
+	if capture.count() != 1 {
+		t.Fatalf("AICall invocation count = %d; want 1", capture.count())
+	}
+
+	callOpts := capture.get(0)
+	if callOpts.MaxTokens != 4096 {
+		t.Errorf("AssessPRD AICallOptions.MaxTokens = %d; want 4096", callOpts.MaxTokens)
+	}
+}
+
+// TestNS81_RefinePRD_MaxTokens verifies that RefinePRD sets MaxTokens: 16384
+// in the AICallOptions passed to the underlying AI call function.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS81_RefinePRD_MaxTokens(t *testing.T) {
+	capture := &aiCallCapture{}
+
+	resp := makeToolCallResponse("end_turn",
+		makePRDUpdateToolCall("Updated PRD"),
+		makeAssessmentToolCall("ready", "OK", nil, nil),
+	)
+
+	mockFn := newMockAICallFunc(capture, mockAICallResult{
+		raw: resp,
+	})
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	prevAssessment := Assessment{Quality: "needs_refinement", Summary: "Needs work"}
+	_, _, err := agent.RefinePRD(ctx, "Original PRD",
+		map[string]string{"q1": "a1"}, prevAssessment)
+	if err != nil {
+		t.Fatalf("RefinePRD() returned error: %v", err)
+	}
+
+	if capture.count() != 1 {
+		t.Fatalf("AICall invocation count = %d; want 1", capture.count())
+	}
+
+	callOpts := capture.get(0)
+	if callOpts.MaxTokens != 16384 {
+		t.Errorf("RefinePRD AICallOptions.MaxTokens = %d; want 16384", callOpts.MaxTokens)
+	}
+}
+
+// TestNS81_GenerateArtifacts_MaxTokens verifies that GenerateArtifacts does
+// not set MaxTokens explicitly (leaves it 0 so ApplyDefaults applies 65536).
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS81_GenerateArtifacts_MaxTokens(t *testing.T) {
+	capture := &aiCallCapture{}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		var content map[string]any
+		var artifactName string
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			artifactName = "requirements"
+			content = map[string]any{
+				"spec_id": "81", "spec_name": "test", "requirements": []any{},
+			}
+		case strings.Contains(opts.Context, "test_spec"):
+			artifactName = "test_spec"
+			content = map[string]any{
+				"spec_id": "81", "spec_name": "test", "test_cases": []any{},
+			}
+		case strings.Contains(opts.Context, "tasks"):
+			artifactName = "tasks"
+			content = map[string]any{
+				"spec_id": "81", "spec_name": "test", "task_groups": []any{},
+			}
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+		resp := makeToolCallResponse("end_turn", makeArtifactToolCall(artifactName, content))
+		return "", resp, nil
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.GenerateArtifacts(ctx, "PRD", "81", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() returned error: %v", err)
+	}
+
+	if capture.count() == 0 {
+		t.Fatal("no AICall invocations recorded")
+	}
+
+	// All GenerateArtifacts calls must have MaxTokens == 0 (unset, so
+	// ApplyDefaults will supply 65536 when AICall is called for real).
+	for i := 0; i < capture.count(); i++ {
+		opts := capture.get(i)
+		if opts.MaxTokens != 0 {
+			t.Errorf("GenerateArtifacts call[%d] (context=%q) MaxTokens = %d; want 0 (relies on ApplyDefaults for 65536)",
+				i, opts.Context, opts.MaxTokens)
+		}
 	}
 }

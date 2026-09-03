@@ -20,8 +20,8 @@ func TestArchive_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a loadable spec (any status works for archive).
-	createActiveSpecForCLI(t, specDir, "30_archive_me")
+	// Create a sealed spec (active specs must be sealed before archiving).
+	createSealedSpecForCLI(t, specDir, "30_archive_me")
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)
@@ -71,7 +71,7 @@ func TestArchive_NumericResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	createActiveSpecForCLI(t, specDir, "42_numeric_spec")
+	createSealedSpecForCLI(t, specDir, "42_numeric_spec")
 
 	cmd := newRootCmd()
 	stdoutBuf := new(bytes.Buffer)

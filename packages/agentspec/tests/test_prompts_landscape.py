@@ -212,7 +212,7 @@ class TestRefinementUserPromptLandscape:
             },
         ]
         prev = Assessment(
-            quality="draft",
+            quality="needs_refinement",
             summary="Needs work",
             gaps=[],
             questions=[
@@ -244,7 +244,7 @@ class TestRefinementUserPromptNoLandscape:
 
     def test_none_landscape_produces_no_section(self) -> None:
         prev = Assessment(
-            quality="draft",
+            quality="needs_refinement",
             summary="Needs work",
             gaps=[],
             questions=[
@@ -377,7 +377,7 @@ class TestPromptBackwardCompatibility:
     )
     def test_refinement_default_matches_none(self, prd_text: str) -> None:
         prev = Assessment(
-            quality="draft",
+            quality="needs_refinement",
             summary="Test",
             gaps=[],
             questions=[

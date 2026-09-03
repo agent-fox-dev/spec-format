@@ -353,9 +353,14 @@ async def test_resume_after_partial_generation(tmp_path: Path, mock_ai_call) -> 
 
     session = _create_test_session(tmp_path, SessionState.GENERATING)
 
-    # Pre-write requirements.json as a valid afspec model
+    # In a real partial-generation scenario, fresh generation deletes scaffold
+    # placeholders before starting.  On failure only already-generated artifacts
+    # remain.  Simulate that state here: requirements was generated, the others
+    # haven't been generated yet.
     req_model = Requirements(**SAMPLE_REQUIREMENTS_JSON)
     (session.spec_dir / "requirements.json").write_text(marshal_json(req_model))
+    (session.spec_dir / "test_spec.json").unlink(missing_ok=True)
+    (session.spec_dir / "tasks.json").unlink(missing_ok=True)
 
     # Mock ai_call returns only 2 responses (for the missing artifacts)
     mock_ai_call.side_effect = _ai_call_side_effects(

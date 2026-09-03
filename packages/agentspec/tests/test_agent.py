@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from agentspec.agent import SpecAgent
 from agentspec.errors import AgentError, AgentSpecError
-from agentspec.session import Assessment
+from agentspec.session import Assessment, Question
 from conftest_agent import (
     SAMPLE_REQUIREMENTS_JSON,
     SAMPLE_TASKS_JSON,
@@ -65,6 +65,10 @@ async def test_assess_prd_returns_assessment_with_valid_quality(mock_ai_call):
     assert isinstance(result, Assessment)
     assert result.quality == "needs_refinement"
     assert mock_ai_call.call_count == 1
+
+    # NS-REQ-3: assess_prd must pass temperature=0.2.
+    call_kwargs = mock_ai_call.call_args.kwargs
+    assert call_kwargs.get("temperature") == 0.2
 
 
 # ===================================================================
@@ -179,6 +183,10 @@ async def test_refine_prd_returns_updated_prd_and_assessment(
     assert "REST API" in updated
     assert isinstance(assessment, Assessment)
     assert assessment.quality == "ready"
+
+    # NS-REQ-4: refine_prd must pass temperature=0.2.
+    call_kwargs = mock_ai_call.call_args.kwargs
+    assert call_kwargs.get("temperature") == 0.2
 
 
 # ===================================================================
@@ -1226,3 +1234,59 @@ async def test_spec_agent_with_direct_model_id(mock_ai_call):
 
     call_kwargs = mock_ai_call.call_args.kwargs
     assert call_kwargs["model_tier"] == "claude-sonnet-4-6"
+
+
+# ===================================================================
+# TS-NS-4: assess_prd uses max_tokens=4096 (NS-REQ-4)
+# ===================================================================
+
+
+@pytest.mark.asyncio
+async def test_assess_prd_uses_max_tokens_4096(mock_ai_call):
+    """TS-NS-4: assess_prd passes max_tokens=4096 explicitly to _call_api."""
+    mock_ai_call.return_value = _ai_call_response(make_assessment_response())
+    agent = SpecAgent("STANDARD")
+
+    await agent.assess_prd("# My PRD\n\nContent.", "test_spec")
+
+    call_kwargs = mock_ai_call.call_args.kwargs
+    assert call_kwargs.get("max_tokens") == 4096, (
+        f"assess_prd max_tokens = {call_kwargs.get('max_tokens')}; want 4096"
+    )
+
+
+# ===================================================================
+# TS-NS-5: refine_prd uses max_tokens=16384 (NS-REQ-5)
+# ===================================================================
+
+
+@pytest.mark.asyncio
+async def test_refine_prd_uses_max_tokens_16384(mock_ai_call):
+    """TS-NS-5: refine_prd passes max_tokens=16384 explicitly to _call_api."""
+    mock_ai_call.return_value = _ai_call_response(make_refinement_response())
+    agent = SpecAgent("STANDARD")
+
+    prev_assessment = Assessment(
+        quality="needs_refinement",
+        summary="Needs work",
+        gaps=["Missing goals"],
+        questions=[
+            Question(
+                id="q1",
+                text="What are the goals?",
+                context="ctx",
+                options=[],
+                required=True,
+            )
+        ],
+    )
+    await agent.refine_prd(
+        "# My PRD\n\nContent.",
+        {"q1": "The goals are X."},
+        prev_assessment,
+    )
+
+    call_kwargs = mock_ai_call.call_args.kwargs
+    assert call_kwargs.get("max_tokens") == 16384, (
+        f"refine_prd max_tokens = {call_kwargs.get('max_tokens')}; want 16384"
+    )

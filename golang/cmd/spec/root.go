@@ -108,6 +108,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newLintCmd())
 	cmd.AddCommand(newStatusCmd())
 	cmd.AddCommand(newCampaignCmd())
+	cmd.AddCommand(newActivateCmd())
 	cmd.AddCommand(newSealCmd())
 	cmd.AddCommand(newArchiveCmd())
 	cmd.AddCommand(newSupersedeCmd())

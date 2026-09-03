@@ -23,12 +23,12 @@ spec [OPTIONS] [COMMAND] [ARGS]...
 Create a new spec from a PRD file. Auto-initializes the spec root directory and a default `campaign.yaml` if they do not already exist.
 
 ```
-spec new [OPTIONS] SPEC_PATH
+spec new [OPTIONS] PRD_FILE
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
-| `SPEC_PATH` | Path to an existing PRD file (required positional argument). The file must exist and must not be a directory. |
+| `PRD_FILE` | Path to an existing PRD file (required positional argument). The file must exist and must not be a directory. |
 | `--name TEXT` | Snake-case spec name. When omitted, derived automatically from the PRD filename (CamelCase is converted to snake_case). Must match `[a-z][a-z0-9_]*`. |
 
 **Example:**
@@ -212,6 +212,35 @@ No additional options.
 ```bash
 spec status 01_auth_redesign
 ```
+
+### activate
+
+Transition a draft spec to the active state. Activation computes and stores the `intent_hash` from the `## Intent` section of the PRD, and captures immutable fields (`spec_id`, `spec_name`, `created_at`).
+
+```
+spec activate SPEC
+```
+
+No additional options.
+
+**Output format:**
+
+```json
+{
+  "ok": true,
+  "spec": "my_feature",
+  "status": "active"
+}
+```
+
+**Example:**
+
+```bash
+spec activate 01_auth_redesign
+spec --spec-dir /path/to/specs activate 01
+```
+
+**Errors:** Returns exit code 1 if the transition is invalid (e.g., the spec is already active, sealed, archived, or superseded). Returns exit code 1 with an `IntentError` if the PRD body does not contain a `## Intent` section — the spec remains in `draft` state. In agent mode (`AF_AGENT=1`), errors are emitted as `{"ok": false, "error": "..."}` to stdout.
 
 ### seal
 

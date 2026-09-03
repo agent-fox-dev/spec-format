@@ -131,10 +131,85 @@ def test_artifact_tool_correct_name():
 
 
 def test_artifact_tool_schema_fields():
-    """TS-03-20: input_schema has content field with structured schema."""
+    """TS-03-20: input_schema is the flat artifact schema (no 'content' wrapper)."""
     tools = artifact_tool("requirements")
     schema = tools[0]["input_schema"]
-    assert "content" in schema["properties"]
-    content_schema = schema["properties"]["content"]
-    assert content_schema["type"] == "object"
-    assert "properties" in content_schema
+    # The schema must be the artifact schema directly — no intermediate 'content' key.
+    assert "content" not in schema.get("properties", {}), (
+        "input_schema must not wrap the artifact in a 'content' property"
+    )
+    assert schema["type"] == "object"
+    assert "properties" in schema
+    # The artifact-level 'requirements' key must be directly accessible.
+    assert "requirements" in schema["properties"]
+
+
+# ===================================================================
+# TS-NS-1: Schema computation runs exactly once (caching)
+# ===================================================================
+
+
+def test_artifact_tool_schema_cached_consistent():
+    """TS-NS-1: Repeated artifact_tool calls return structurally identical results."""
+    first = artifact_tool("requirements")
+    assert len(first) == 1
+
+    for _ in range(5):
+        result = artifact_tool("requirements")
+        assert len(result) == 1
+        assert result[0]["name"] == "submit_requirements"
+        assert "input_schema" in result[0]
+        assert result[0]["input_schema"]["type"] == "object"
+        assert "requirements" in result[0]["input_schema"]["properties"]
+
+
+# ===================================================================
+# TS-NS-3: Mutation isolation
+# ===================================================================
+
+
+def test_artifact_tool_mutation_isolation_name():
+    """TS-NS-3: Mutating the name in the first call does not affect subsequent calls."""
+    tools1 = artifact_tool("requirements")
+    assert len(tools1) == 1
+
+    # Mutate the returned tool name.
+    tools1[0]["name"] = "mutated"
+
+    tools2 = artifact_tool("requirements")
+    assert len(tools2) == 1
+    assert tools2[0]["name"] == "submit_requirements", (
+        "second call returned mutated name; cache was not isolated"
+    )
+
+
+def test_artifact_tool_mutation_isolation_schema():
+    """TS-NS-3: Mutating the input_schema from one call does not corrupt subsequent calls."""
+    tools1 = artifact_tool("requirements")
+    assert len(tools1) == 1
+
+    # Inject a key into the returned schema.
+    tools1[0]["input_schema"]["__injected__"] = "mutation"
+
+    tools2 = artifact_tool("requirements")
+    assert len(tools2) == 1
+    assert "__injected__" not in tools2[0]["input_schema"], (
+        "second call schema contains injected key; cache was mutated"
+    )
+
+
+# ===================================================================
+# TS-NS-5: Unknown artifact name
+# ===================================================================
+
+
+def test_artifact_tool_unknown_name_returns_empty():
+    """TS-NS-5: artifact_tool with an unknown name returns an empty list without raising."""
+    result = artifact_tool("unknown_artifact")
+    assert result == []
+
+
+def test_artifact_tool_empty_name_returns_empty():
+    """Edge case: artifact_tool('') returns an empty list without raising."""
+    result = artifact_tool("")
+    assert result == []

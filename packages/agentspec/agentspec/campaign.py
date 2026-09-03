@@ -256,6 +256,20 @@ class Campaign:
         prd_text = f"---\n{frontmatter_yaml}---\n{prd_content}\n"
         (spec_dir / "prd.md").write_text(prd_text)
 
+        # Write placeholder JSON artifacts (issue #91)
+        from afspec.io import marshal_json
+        from afspec.models import Requirements, Tasks, TestSpec
+
+        (spec_dir / "requirements.json").write_text(
+            marshal_json(Requirements(spec_id=spec_id, spec_name=spec_name))
+        )
+        (spec_dir / "test_spec.json").write_text(
+            marshal_json(TestSpec(spec_id=spec_id, spec_name=spec_name))
+        )
+        (spec_dir / "tasks.json").write_text(
+            marshal_json(Tasks(spec_id=spec_id, spec_name=spec_name))
+        )
+
         # Write initial _session.json (02-REQ-5.3)
         from agentspec.session import SpecSession
 

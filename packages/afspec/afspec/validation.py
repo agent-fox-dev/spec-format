@@ -9,7 +9,7 @@ from typing import Any
 import jsonschema
 from pydantic import BaseModel
 
-from afspec.discovery import DependencyGraph
+from afspec.discovery import DependencyGraph, is_spec_dir_name
 from afspec.models import (
     EARSPattern,
     Spec,
@@ -939,6 +939,42 @@ def validate_cross_file(spec: Spec) -> list[ValidationError]:
     # ID format validation
     # -----------------------------------------------------------------------
     errors.extend(_validate_id_formats(spec))
+
+    # -----------------------------------------------------------------------
+    # Folder-name rule: spec_id and spec_name must match folder prefix/suffix
+    # -----------------------------------------------------------------------
+    # When the spec was loaded from a directory whose name follows the
+    # NN_snake_case pattern, the numeric prefix must equal spec_id and the
+    # snake_case suffix must equal spec_name. If the directory name does not
+    # match the pattern (e.g. ad-hoc directories), this check is skipped.
+    if spec._source_dir is not None:
+        dir_base = spec._source_dir.name
+        if is_spec_dir_name(dir_base):
+            prefix_str, _, name_suffix = dir_base.partition("_")
+            prd_spec_id = spec.prd.frontmatter.spec_id
+            prd_spec_name = spec.prd.frontmatter.spec_name
+            if prefix_str != prd_spec_id:
+                errors.append(
+                    ValidationError(
+                        file="prd.md",
+                        path="spec_id",
+                        message=(
+                            f"spec_id '{prd_spec_id}' does not match folder prefix '{prefix_str}' in '{dir_base}'"
+                        ),
+                        rule="folder_name",
+                    )
+                )
+            if name_suffix != prd_spec_name:
+                errors.append(
+                    ValidationError(
+                        file="prd.md",
+                        path="spec_name",
+                        message=(
+                            f"spec_name '{prd_spec_name}' does not match folder suffix '{name_suffix}' in '{dir_base}'"
+                        ),
+                        rule="folder_name",
+                    )
+                )
 
     return errors
 

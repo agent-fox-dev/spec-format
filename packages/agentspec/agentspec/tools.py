@@ -92,7 +92,7 @@ SUBMIT_PRD_UPDATE_TOOL: dict[str, Any] = {
 }
 
 # ---------------------------------------------------------------------------
-# Artifact model mapping
+# Artifact model mapping and schema cache
 # ---------------------------------------------------------------------------
 
 _ARTIFACT_MODELS: dict[str, Any] = {
@@ -100,6 +100,12 @@ _ARTIFACT_MODELS: dict[str, Any] = {
     "test_spec": TestSpec,
     "tasks": Tasks,
 }
+
+# Module-level cache: artifact name → cleaned input_schema dict.
+# Populated on the first call for each artifact type; all subsequent
+# calls return a deep copy of the cached value without re-running
+# model_json_schema() or _clean_schema().
+_ARTIFACT_SCHEMA_CACHE: dict[str, dict[str, Any]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -187,28 +193,36 @@ def artifact_tool(artifact_name: str) -> list[dict[str, Any]]:
     """Return tool definition for generating one artifact.
 
     Produces a per-artifact tool (``submit_requirements``,
-    ``submit_test_spec``, or ``submit_tasks``) whose ``content``
-    property embeds the Pydantic model's JSON schema so the LLM
-    is structurally constrained.
+    ``submit_test_spec``, or ``submit_tasks``) whose ``input_schema``
+    is the cleaned Pydantic model's JSON schema directly, with no
+    intermediate ``content`` wrapper property.
+
+    The schema computation (``model_json_schema`` + ``_clean_schema``)
+    runs exactly once per artifact type per process lifetime; subsequent
+    calls return a deep copy of the cached result without re-running the
+    transformation.
 
     Args:
         artifact_name: One of ``"requirements"``, ``"test_spec"``,
-            ``"tasks"``.
+            ``"tasks"``. Returns an empty list for unknown names.
     """
-    model_cls = _ARTIFACT_MODELS[artifact_name]
-    content_schema = _clean_schema(model_cls.model_json_schema())  # type: ignore[union-attr]
+    model_cls = _ARTIFACT_MODELS.get(artifact_name)
+    if model_cls is None:
+        return []
+
+    if artifact_name not in _ARTIFACT_SCHEMA_CACHE:
+        _ARTIFACT_SCHEMA_CACHE[artifact_name] = _clean_schema(
+            model_cls.model_json_schema()  # type: ignore[union-attr]
+        )
+
+    # Return a deep copy so callers cannot corrupt the shared cache.
+    artifact_schema = copy.deepcopy(_ARTIFACT_SCHEMA_CACHE[artifact_name])
 
     tool_name = f"submit_{artifact_name}"
     return [
         {
             "name": tool_name,
             "description": (f"Submit the generated {artifact_name} artifact content."),
-            "input_schema": {
-                "type": "object",
-                "required": ["content"],
-                "properties": {
-                    "content": content_schema,
-                },
-            },
+            "input_schema": artifact_schema,
         }
     ]

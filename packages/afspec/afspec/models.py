@@ -9,6 +9,7 @@ valid_transition function for the subtask state machine.
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -304,7 +305,7 @@ class Coverage(BaseModel):
 class TestSpec(BaseModel):
     """The test_spec.json artifact."""
 
-    schema_ref: Optional[str] = Field(default=None, alias="$schema")
+    schema_ref: Optional[str] = Field(default="https://agent-fox.dev/schemas/test_spec.v1.json", alias="$schema")
     spec_id: str = ""
     spec_name: str = ""
     schema_version: int = 1
@@ -379,7 +380,7 @@ class Subtask(BaseModel):
 class TaskGroup(BaseModel):
     """A task group containing subtasks."""
 
-    id: int = 0
+    id: int = Field(default=1, ge=1)
     kind: TaskGroupKind = TaskGroupKind.STANDARD
     title: str = ""
     subtasks: list[Subtask] = Field(default_factory=list)
@@ -432,6 +433,10 @@ class Spec(BaseModel):
     tasks: Tasks = Field(default_factory=Tasks)
     architecture: str | None = None
     _loaded: Optional[_ImmutableSnapshot] = PrivateAttr(default=None)
+    # Directory from which this spec was loaded, used by validate_cross_file
+    # to check that the folder prefix/suffix match spec_id/spec_name.
+    # None when the spec was not loaded from disk.
+    _source_dir: Optional[Path] = PrivateAttr(default=None)
 
 
 # ---------------------------------------------------------------------------

@@ -1,18 +1,37 @@
 package afspec
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 )
 
+// deepCopyJSON returns a deep copy of v by round-tripping through JSON.
+// It returns nil if v is nil. Panics only if T is not JSON-serialisable,
+// which cannot happen for the generated artifact types.
+func deepCopyJSON[T any](v *T) *T {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("deepCopyJSON: marshal failed: %v", err))
+	}
+	var out T
+	if err := json.Unmarshal(b, &out); err != nil {
+		panic(fmt.Sprintf("deepCopyJSON: unmarshal failed: %v", err))
+	}
+	return &out
+}
+
 // validTransitions maps each spec status to the set of statuses it can transition to.
-// Active specs must be sealed before they can be superseded; use Supersede() on a
-// sealed spec to add the required deprecation banner.
+// Active specs must be sealed before they can be archived or superseded; use
+// Supersede() on a sealed spec to add the required deprecation banner.
 var validTransitions = map[string][]string{
 	"draft":      {"active", "archived"},
-	"active":     {"sealed", "archived"},
+	"active":     {"sealed"},
 	"sealed":     {"superseded", "archived"},
 	"superseded": {"archived"},
 }
@@ -25,7 +44,6 @@ var validTransitions = map[string][]string{
 //   - draft      -> active
 //   - draft      -> archived
 //   - active     -> sealed
-//   - active     -> archived
 //   - sealed     -> superseded
 //   - sealed     -> archived
 //   - superseded -> archived
@@ -62,19 +80,33 @@ func (s *Spec) Transition(target, dir string) (*Spec, error) {
 		}
 	}
 
-	// Create a shallow copy with the new status.
+	// Create a deep copy with the new status.
 	// The receiver is not modified — Transition returns a new Spec.
+	// Slice fields and artifact pointers are deep-copied so that mutations
+	// to the returned spec cannot alias back to the original.
 	newSpec := *s
+	newSpec.Supersedes = append([]string{}, s.Supersedes...)
+	newSpec.Tags = append([]string{}, s.Tags...)
+	newSpec.Requirements = deepCopyJSON(s.Requirements)
+	newSpec.TestSpec = deepCopyJSON(s.TestSpec)
+	newSpec.Tasks = deepCopyJSON(s.Tasks)
 	newSpec.Status = target
 
 	// When activating a draft spec, compute and store the intent hash.
 	// Reject the transition if the PRD body lacks a ## Intent section.
+	// Also capture the immutable snapshot so subsequent Save calls on the
+	// returned Spec can detect mutations to spec_id, spec_name, and created_at.
 	if s.Status == "draft" && target == "active" {
 		hash, err := ComputeIntentHash(s.PRDBody)
 		if err != nil {
 			return nil, err
 		}
 		newSpec.IntentHash = &hash
+		newSpec.loaded = &immutableSnapshot{
+			SpecID:    newSpec.SpecID,
+			SpecName:  newSpec.SpecName,
+			CreatedAt: newSpec.CreatedAt,
+		}
 	}
 
 	// Persist via saveToDisk which bypasses the public Save lifecycle guard,
