@@ -33,8 +33,9 @@ func resolveSpec(specDir, arg string) (string, error) {
 		}
 		name := entry.Name()
 		if isNumeric {
-			// Match entries whose name starts with the numeric prefix.
-			if strings.HasPrefix(name, arg) {
+			// Match entries whose name starts with the numeric prefix followed
+			// by an underscore, so "1" matches "1_foo" but not "10_bar".
+			if strings.HasPrefix(name, arg+"_") {
 				matches = append(matches, name)
 			}
 		} else {
