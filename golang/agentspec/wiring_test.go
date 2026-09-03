@@ -438,7 +438,7 @@ func TestSpec07_WiringNoStubs(t *testing.T) {
 	})
 }
 
-// TestSpec07_WiringEmbeddedTemplatesLoad verifies all 10 embedded prompt
+// TestSpec07_WiringEmbeddedTemplatesLoad verifies all 9 embedded prompt
 // templates are accessible and non-empty (required by 17.V).
 func TestSpec07_WiringEmbeddedTemplatesLoad(t *testing.T) {
 	names := []string{
@@ -451,7 +451,6 @@ func TestSpec07_WiringEmbeddedTemplatesLoad(t *testing.T) {
 		"generation_user_requirements",
 		"generation_user_test_spec",
 		"generation_user_tasks",
-		"repair_user",
 	}
 
 	for _, name := range names {

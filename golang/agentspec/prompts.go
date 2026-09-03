@@ -16,7 +16,7 @@ import (
 //go:embed templates/*.md
 var templateFS embed.FS
 
-// PromptTemplateNames lists the 10 embedded prompt template names.
+// PromptTemplateNames lists the 9 embedded prompt template names.
 var PromptTemplateNames = []string{
 	"assessment_system",
 	"assessment_user",
@@ -27,7 +27,6 @@ var PromptTemplateNames = []string{
 	"generation_user_requirements",
 	"generation_user_test_spec",
 	"generation_user_tasks",
-	"repair_user",
 }
 
 // validNameRe matches safe template names: [a-zA-Z0-9_-]+
@@ -491,26 +490,4 @@ func renderTasksArtifact(m map[string]any) string {
 		}
 	}
 	return sb.String()
-}
-
-// RepairUserPrompt loads the repair_user template via LoadPromptTemplate,
-// substituting the artifact name, original content, and validation errors.
-func RepairUserPrompt(artifactName string, originalContent any, validationErrors []string, projectDir string) (string, error) {
-	errorsBlock := strings.Join(validationErrors, "\n")
-
-	var contentStr string
-	if originalContent != nil {
-		data, err := json.MarshalIndent(originalContent, "", "  ")
-		if err != nil {
-			contentStr = fmt.Sprintf("%v", originalContent)
-		} else {
-			contentStr = string(data)
-		}
-	}
-
-	return LoadPromptTemplate("repair_user", projectDir, map[string]string{
-		"artifact_name":    artifactName,
-		"errors_block":     errorsBlock,
-		"original_content": contentStr,
-	})
 }

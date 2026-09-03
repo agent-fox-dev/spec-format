@@ -435,53 +435,6 @@ func TestSpec07_GenerationUserPrompt_UnrecognizedArtifact(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TS-07-23: RepairUserPrompt
-// ---------------------------------------------------------------------------
-
-// TestSpec07_RepairUserPrompt verifies that RepairUserPrompt loads the
-// repair_user template and substitutes artifact name, original content,
-// and validation errors.
-// Test Spec: TS-07-23, Requirement: 07-REQ-4.5
-func TestSpec07_RepairUserPrompt(t *testing.T) {
-	emptyTmpDir := t.TempDir()
-
-	originalContent := map[string]any{"spec_id": "07"}
-	validationErrors := []string{"missing field X", "invalid format Y"}
-
-	prompt, err := RepairUserPrompt("requirements", originalContent, validationErrors, emptyTmpDir)
-	if err != nil {
-		t.Fatalf("RepairUserPrompt() returned error: %v", err)
-	}
-	if !strings.Contains(prompt, "requirements") {
-		t.Error("RepairUserPrompt() output does not contain 'requirements'; artifact name should be substituted")
-	}
-	if !strings.Contains(prompt, "missing field X") {
-		t.Error("RepairUserPrompt() output does not contain 'missing field X'; errors should be substituted")
-	}
-	if !strings.Contains(prompt, "invalid format Y") {
-		t.Error("RepairUserPrompt() output does not contain 'invalid format Y'; errors should be substituted")
-	}
-}
-
-// TestSpec07_RepairUserPrompt_SingleError verifies RepairUserPrompt works
-// with a single validation error.
-// Requirement: 07-REQ-4.5
-func TestSpec07_RepairUserPrompt_SingleError(t *testing.T) {
-	emptyTmpDir := t.TempDir()
-
-	prompt, err := RepairUserPrompt("test_spec", map[string]any{"spec_id": "07"}, []string{"field missing"}, emptyTmpDir)
-	if err != nil {
-		t.Fatalf("RepairUserPrompt() returned error: %v", err)
-	}
-	if !strings.Contains(prompt, "test_spec") {
-		t.Error("RepairUserPrompt() output does not contain 'test_spec'")
-	}
-	if !strings.Contains(prompt, "field missing") {
-		t.Error("RepairUserPrompt() output does not contain 'field missing'")
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Prompt builder error propagation
 // ---------------------------------------------------------------------------
 
@@ -526,15 +479,6 @@ func TestSpec07_PromptBuilders_ErrorPropagation(t *testing.T) {
 			}
 		}()
 		_, _ = GenerationUserPrompt("prd", "requirements", "07", emptyTmpDir, nil, nil, nil)
-	})
-
-	t.Run("RepairUserPrompt", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("RepairUserPrompt panicked: %v", r)
-			}
-		}()
-		_, _ = RepairUserPrompt("requirements", nil, []string{"error"}, emptyTmpDir)
 	})
 }
 
