@@ -48,7 +48,7 @@
       "$ref": "#/$defs/coverage"
     }
   },
-  "required": ["spec_id", "spec_name", "schema_version", "test_cases", "property_tests", "edge_case_tests", "smoke_tests", "coverage"],
+  "required": ["$schema", "spec_id", "spec_name", "schema_version", "test_cases", "property_tests", "edge_case_tests", "smoke_tests", "coverage"],
   "additionalProperties": false,
   "$defs": {
     "test_case": {
@@ -90,7 +90,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "requirement_id": { "type": "string", "minLength": 1 },
-        "kind": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["unit", "integration"] },
         "description": { "type": "string" },
         "preconditions": {
           "type": "array",
@@ -100,7 +100,7 @@
         "expected": {},
         "assertion_pseudocode": { "type": "string" }
       },
-      "required": ["id", "requirement_id", "kind", "description"],
+      "required": ["id", "requirement_id", "kind", "description", "preconditions", "expected", "assertion_pseudocode"],
       "additionalProperties": false
     },
     "smoke_test": {

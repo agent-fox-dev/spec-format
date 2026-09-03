@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import jsonschema
 import pytest
 from hypothesis import given
 from hypothesis.strategies import sampled_from
@@ -17,6 +18,7 @@ import afspec
 from afspec import (
     Criterion,
     EARSPattern,
+    EdgeCaseTest,
     Requirement,
     Spec,
     TaskGroup,
@@ -571,3 +573,74 @@ class TestSchemaEmptyTaskGroups:
             e for e in errors if "task_groups" in e.path.lower() or "task_groups" in e.message.lower()
         ]
         assert task_groups_errors == [], f"unexpected task_groups errors on valid spec: {task_groups_errors}"
+
+
+# ---------------------------------------------------------------------------
+# Issue #60: edge_case_test schema drift — NS-REQ-3, NS-REQ-4
+# TS-NS-3, TS-NS-4
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeCaseTestSchemaValidation:
+    """NS-REQ-4: validate_schema() rejects edge_case_test with invalid kind
+    or absent required fields."""
+
+    def test_invalid_kind_rejected(self, valid_spec_dir: Path) -> None:
+        """AC-3/AC-4: edge_case_test with kind='smoke' (not in enum) fails
+        validate_schema() and returns a non-empty error list.
+        Test Spec: TS-NS-4, Requirement: NS-REQ-4.1"""
+        spec = _load_golden(valid_spec_dir)
+        invalid_ect = EdgeCaseTest(
+            id="TS-01-E99",
+            requirement_id="01-REQ-1.E1",
+            kind="smoke",  # not in ["unit", "integration"]
+            description="Edge case with invalid kind",
+            preconditions=[],
+            input={},
+            expected="pass",
+            assertion_pseudocode="assert True",
+        )
+        spec.test_spec.edge_case_tests.append(invalid_ect)
+
+        errors = validate_schema(spec)
+
+        assert len(errors) > 0, "validate_schema() should return errors for edge_case_test with kind='smoke'"
+        assert any("smoke" in e.message or "enum" in e.message.lower() or "kind" in e.path.lower() for e in errors), (
+            f"no error mentions enum or kind violation; got: {errors}"
+        )
+
+    def test_missing_preconditions_rejected_by_schema(self) -> None:
+        """AC-3/AC-4: edge_case_test without preconditions fails JSON Schema
+        validation. Tests the embedded schema directly using raw JSON.
+        Test Spec: TS-NS-3, Requirement: NS-REQ-3.1"""
+        schema_map = {name: json.loads(raw) for name, raw in schemas().items()}
+        ts_schema = schema_map["test_spec.v1.json"]
+
+        doc = {
+            "spec_id": "01",
+            "spec_name": "test",
+            "schema_version": 1,
+            "test_cases": [],
+            "property_tests": [],
+            "edge_case_tests": [
+                {
+                    "id": "TS-01-E1",
+                    "requirement_id": "01-REQ-1.E1",
+                    "kind": "unit",
+                    "description": "edge case missing preconditions",
+                    # preconditions absent
+                    "expected": "pass",
+                    "assertion_pseudocode": "assert True",
+                }
+            ],
+            "smoke_tests": [],
+            "coverage": {},
+        }
+
+        validator = jsonschema.Draft202012Validator(ts_schema)
+        errors_list = list(validator.iter_errors(doc))
+
+        assert len(errors_list) > 0, "JSON schema should reject edge_case_test missing preconditions"
+        assert any("preconditions" in str(e).lower() for e in errors_list), (
+            f"no schema error mentions 'preconditions'; got: {errors_list}"
+        )

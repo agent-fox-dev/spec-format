@@ -304,7 +304,7 @@ class Coverage(BaseModel):
 class TestSpec(BaseModel):
     """The test_spec.json artifact."""
 
-    schema_ref: Optional[str] = Field(default=None, alias="$schema")
+    schema_ref: Optional[str] = Field(default="https://agent-fox.dev/schemas/test_spec.v1.json", alias="$schema")
     spec_id: str = ""
     spec_name: str = ""
     schema_version: int = 1
