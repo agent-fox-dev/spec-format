@@ -709,7 +709,7 @@ func validateArtifactContent(input any, artifactName string) (map[string]any, er
 	case "test_spec":
 		requiredKeys = []string{"spec_id", "spec_name", "test_cases"}
 	case "tasks":
-		requiredKeys = []string{"spec_id", "spec_name", "tasks"}
+		requiredKeys = []string{"spec_id", "spec_name", "task_groups"}
 	}
 
 	var missing []string
@@ -723,10 +723,20 @@ func validateArtifactContent(input any, artifactName string) (map[string]any, er
 		return nil, fmt.Errorf("artifact %s missing required keys: %s", artifactName, strings.Join(missing, ", "))
 	}
 
-	// Run library validation for requirements artifacts: EARS pattern field
-	// constraints and requirement ID format checks.
-	if artifactName == "requirements" {
+	// Run library validation for each artifact type: EARS pattern field
+	// constraints and ID format checks for requirements; ID format and kind
+	// enum checks for test_spec; subtask and verification ID format for tasks.
+	switch artifactName {
+	case "requirements":
 		if entries := afspec.ValidateRequirementsMap(m); len(entries) > 0 {
+			return nil, formatValidationEntries(artifactName, entries)
+		}
+	case "test_spec":
+		if entries := afspec.ValidateTestSpecMap(m); len(entries) > 0 {
+			return nil, formatValidationEntries(artifactName, entries)
+		}
+	case "tasks":
+		if entries := afspec.ValidateTasksMap(m); len(entries) > 0 {
 			return nil, formatValidationEntries(artifactName, entries)
 		}
 	}

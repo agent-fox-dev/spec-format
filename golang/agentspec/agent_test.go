@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	afspec "github.com/agent-fox-dev/spec-format"
 )
 
 // isZeroAssessment returns true if the Assessment has all zero-value fields.
@@ -985,7 +987,7 @@ func TestSpec07_GenerateArtifacts_HappyPath(t *testing.T) {
 	tasksContent := map[string]any{
 		"spec_id":   "07",
 		"spec_name": "test",
-		"tasks":     []any{},
+		"task_groups": []any{},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1095,7 +1097,7 @@ func TestSpec07_GenerateArtifacts_RepairLoop_Success(t *testing.T) {
 	validTasks := map[string]any{
 		"spec_id":   "07",
 		"spec_name": "test",
-		"tasks":     []any{},
+		"task_groups": []any{},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1220,12 +1222,12 @@ func TestSpec07_GenerateArtifacts_PriorArtifactsContext(t *testing.T) {
 	testSpecContent := map[string]any{
 		"spec_id":    "07",
 		"spec_name":  "test",
-		"test_cases": []any{map[string]any{"id": "TC-1", "requirement": "07-REQ-1"}},
+		"test_cases": []any{map[string]any{"id": "TS-07-1", "requirement": "07-REQ-1"}},
 	}
 	tasksContent := map[string]any{
 		"spec_id":   "07",
 		"spec_name": "test",
-		"tasks":     []any{map[string]any{"id": "T-1", "description": "Implement 07-REQ-1"}},
+		"task_groups": []any{},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1401,7 +1403,7 @@ func TestSpec07_GenerateArtifacts_MalformedPayload(t *testing.T) {
 	validTasks := map[string]any{
 		"spec_id":   "07",
 		"spec_name": "test",
-		"tasks":     []any{},
+		"task_groups": []any{},
 	}
 
 	// Route by artifact name in Context (parallel-safe).
@@ -1724,7 +1726,7 @@ func TestSpec07_AgentOption_NilCallbackGeneration(t *testing.T) {
 			content = map[string]any{"spec_id": "07", "spec_name": "test", "test_cases": []any{}}
 		case strings.Contains(opts.Context, "tasks"):
 			artifactName = "tasks"
-			content = map[string]any{"spec_id": "07", "spec_name": "test", "tasks": []any{}}
+			content = map[string]any{"spec_id": "07", "spec_name": "test", "task_groups": []any{}}
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
 		}
@@ -1802,7 +1804,7 @@ func TestNS55_RepairConversation_FirstMessage(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -1902,7 +1904,7 @@ func TestNS55_RepairConversation_AssistantMessage(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2013,7 +2015,7 @@ func TestNS55_RepairConversation_ToolResultMessage(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2135,7 +2137,7 @@ func TestNS55_RepairConversation_MessageCount(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			resp = makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "07", "spec_name": "test", "tasks": []any{},
+					"spec_id": "07", "spec_name": "test", "task_groups": []any{},
 				}))
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2228,7 +2230,7 @@ func TestNS57_ConcurrentGeneration(t *testing.T) {
 			testSpecUnblocked.Wait() // wait until test_spec is unblocked
 			resp := makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+					"spec_id": "57", "spec_name": "test", "task_groups": []any{},
 				}))
 			return "", resp, nil
 
@@ -2274,7 +2276,7 @@ func TestNS57_ParallelError_TestSpecFails(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			return "", makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+					"spec_id": "57", "spec_name": "test", "task_groups": []any{},
 				})), nil
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2342,7 +2344,7 @@ func TestNS57_AllArtifactsPresent(t *testing.T) {
 		"spec_id": "57", "spec_name": "test", "test_cases": []any{"tc1"},
 	}
 	wantTasks := map[string]any{
-		"spec_id": "57", "spec_name": "test", "tasks": []any{"task1"},
+		"spec_id": "57", "spec_name": "test", "task_groups": []any{},
 	}
 
 	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
@@ -2410,7 +2412,7 @@ func TestNS57_CallbackOrder(t *testing.T) {
 		case strings.Contains(opts.Context, "tasks"):
 			return "", makeToolCallResponse("end_turn",
 				makeArtifactToolCall("tasks", map[string]any{
-					"spec_id": "57", "spec_name": "test", "tasks": []any{},
+					"spec_id": "57", "spec_name": "test", "task_groups": []any{},
 				})), nil
 		default:
 			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
@@ -2844,5 +2846,137 @@ func TestNS48_RepairLoop_Exhaustion_ReturnsValidationAgentError(t *testing.T) {
 	errMsg := err.Error()
 	if !strings.Contains(strings.ToLower(errMsg), "requirements") {
 		t.Errorf("error message %q does not mention 'requirements'", errMsg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-1 (issue #62): validateArtifactContent for tasks checks "task_groups"
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateArtifactContent_TasksMissingTaskGroups verifies that
+// validateArtifactContent for a tasks artifact rejects a map that has
+// spec_id and spec_name but lacks the "task_groups" key.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS62_ValidateArtifactContent_TasksMissingTaskGroups(t *testing.T) {
+	t.Parallel()
+
+	// This artifact has spec_id and spec_name but not task_groups —
+	// it used to pass incorrectly because the old check looked for "tasks".
+	content := map[string]any{
+		"spec_id":   "01",
+		"spec_name": "foo",
+		// "task_groups" intentionally absent
+	}
+
+	_, err := validateArtifactContent(content, "tasks")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want error for missing task_groups")
+	}
+	if !strings.Contains(err.Error(), "task_groups") {
+		t.Errorf("error %q does not mention 'task_groups'", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-2 (issue #62): ValidateTestSpecMap rejects invalid test case ID format
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateArtifactContent_TestSpecBadID verifies that
+// validateArtifactContent for a test_spec artifact returns an error when a
+// test case has an ID that does not match the expected TS-NN-N format.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS62_ValidateArtifactContent_TestSpecBadID(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "01",
+		"spec_name": "foo",
+		"test_cases": []any{
+			map[string]any{
+				"id": "BAD-TC",
+			},
+		},
+	}
+
+	_, err := validateArtifactContent(content, "test_spec")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want error for bad test case ID")
+	}
+	errStr := err.Error()
+	if !strings.Contains(errStr, "id_format") && !strings.Contains(errStr, "BAD-TC") {
+		t.Errorf("error %q does not mention 'id_format' or 'BAD-TC'", errStr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-3 (issue #62): ValidateTestSpecMap rejects invalid kind value
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateTestSpecMap_BadKind verifies that ValidateTestSpecMap
+// returns a non-empty ValidationEntry slice when a test case has an invalid
+// kind value.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS62_ValidateTestSpecMap_BadKind(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "01",
+		"spec_name": "foo",
+		"test_cases": []any{
+			map[string]any{
+				"id":   "TS-01-1",
+				"kind": "bad_kind",
+			},
+		},
+	}
+
+	entries := afspec.ValidateTestSpecMap(content)
+	if len(entries) == 0 {
+		t.Fatal("ValidateTestSpecMap() returned empty slice; want at least one ValidationEntry for invalid kind")
+	}
+	found := false
+	for _, e := range entries {
+		if strings.Contains(e.Message, "kind") || strings.Contains(e.Message, "bad_kind") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("ValidateTestSpecMap() entries %v do not reference 'kind' or 'bad_kind'", entries)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-4 (issue #62): ValidateTasksMap rejects malformed subtask IDs
+// ---------------------------------------------------------------------------
+
+// TestNS62_ValidateArtifactContent_TasksBadSubtaskID verifies that
+// validateArtifactContent for a tasks artifact returns an error when a
+// subtask has an ID that does not match the {group}.{N} format.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestNS62_ValidateArtifactContent_TasksBadSubtaskID(t *testing.T) {
+	t.Parallel()
+
+	content := map[string]any{
+		"spec_id":   "01",
+		"spec_name": "foo",
+		"task_groups": []any{
+			map[string]any{
+				"id": 1,
+				"subtasks": []any{
+					map[string]any{
+						"id": "BAD.SUB.ID",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := validateArtifactContent(content, "tasks")
+	if err == nil {
+		t.Fatal("validateArtifactContent() returned nil error; want error for malformed subtask ID")
+	}
+	if !strings.Contains(err.Error(), "BAD.SUB.ID") && !strings.Contains(err.Error(), "id_format") {
+		t.Errorf("error %q does not reference the malformed ID or 'id_format'", err.Error())
 	}
 }

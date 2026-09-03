@@ -456,6 +456,132 @@ func ValidateRequirementsMap(content map[string]any) []ValidationEntry {
 	return entries
 }
 
+// subtaskIDPattern matches valid subtask IDs in the form "{group}.{N}" where
+// group and N are integers (e.g. "1.1", "2.3").
+var subtaskIDPattern = regexp.MustCompile(`^\d+\.\d+$`)
+
+// verificationIDPattern matches valid verification subtask IDs in the form
+// "{group}.V" where group is an integer (e.g. "1.V", "2.V").
+var verificationIDPattern = regexp.MustCompile(`^\d+\.V$`)
+
+// validTestCaseKinds contains the valid enum values for the `kind` field on
+// test_cases and edge_case_tests entries per test_spec.v1.json.
+var validTestCaseKinds = map[string]bool{
+	"unit":        true,
+	"integration": true,
+}
+
+// ValidateTestSpecMap performs targeted validation on a test_spec artifact
+// represented as a raw map[string]any. It checks test case ID format and
+// kind enum values without requiring every JSON schema field to be present.
+// This is used by the AI generation pipeline to validate AI-produced content.
+//
+// Checks performed:
+//   - Test case ID format: must match ^TS-\w+-\d+$ (id_format check)
+//   - Test case kind enum: must be "unit" or "integration" (kind_enum check)
+//
+// Returns a slice of ValidationEntry describing any violations. An empty
+// slice means the content passed all checks.
+func ValidateTestSpecMap(content map[string]any) []ValidationEntry {
+	var entries []ValidationEntry
+
+	testCases, _ := content["test_cases"].([]any)
+	for tcIdx, rawTC := range testCases {
+		tc, ok := rawTC.(map[string]any)
+		if !ok {
+			continue
+		}
+		tcID, _ := tc["id"].(string)
+
+		// Check test case ID format.
+		if tcID != "" && !testCaseIDPattern.MatchString(tcID) {
+			entries = append(entries, ValidationEntry{
+				Category: "integrity",
+				Check:    "id_format",
+				Message:  fmt.Sprintf("test case ID %q does not match expected format TS-NN-N", tcID),
+				Artifact: "test_spec.json",
+				EntityID: tcID,
+				Path:     fmt.Sprintf("test_cases[%d].id", tcIdx),
+			})
+		}
+
+		// Check kind enum value.
+		if kind, hasKind := tc["kind"].(string); hasKind && !validTestCaseKinds[kind] {
+			entries = append(entries, ValidationEntry{
+				Category: "integrity",
+				Check:    "kind_enum",
+				Message:  fmt.Sprintf("test case %q has invalid kind value %q; must be one of: unit, integration", tcID, kind),
+				Artifact: "test_spec.json",
+				EntityID: tcID,
+				Path:     fmt.Sprintf("test_cases[%d].kind", tcIdx),
+			})
+		}
+	}
+
+	return entries
+}
+
+// ValidateTasksMap performs targeted validation on a tasks artifact
+// represented as a raw map[string]any. It checks subtask and verification
+// ID formats without requiring every JSON schema field to be present.
+// This is used by the AI generation pipeline to validate AI-produced content.
+//
+// Checks performed:
+//   - Subtask ID format: must match ^\d+\.\d+$ (e.g. "1.1") (id_format check)
+//   - Verification ID format: must match ^\d+\.V$ (e.g. "1.V") (id_format check)
+//
+// Returns a slice of ValidationEntry describing any violations. An empty
+// slice means the content passed all checks.
+func ValidateTasksMap(content map[string]any) []ValidationEntry {
+	var entries []ValidationEntry
+
+	taskGroups, _ := content["task_groups"].([]any)
+	for groupIdx, rawGroup := range taskGroups {
+		group, ok := rawGroup.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		subtasks, _ := group["subtasks"].([]any)
+		for subIdx, rawSub := range subtasks {
+			sub, ok := rawSub.(map[string]any)
+			if !ok {
+				continue
+			}
+			subID, _ := sub["id"].(string)
+
+			// Check subtask ID format: {group}.{N}.
+			if subID != "" && !subtaskIDPattern.MatchString(subID) {
+				entries = append(entries, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("subtask ID %q does not match expected format {group}.{N} (e.g. \"1.1\")", subID),
+					Artifact: "tasks.json",
+					EntityID: subID,
+					Path:     fmt.Sprintf("task_groups[%d].subtasks[%d].id", groupIdx, subIdx),
+				})
+			}
+		}
+
+		// Check verification subtask ID format: {group}.V.
+		if verification, ok := group["verification"].(map[string]any); ok {
+			verID, _ := verification["id"].(string)
+			if verID != "" && !verificationIDPattern.MatchString(verID) {
+				entries = append(entries, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("verification ID %q does not match expected format {group}.V (e.g. \"1.V\")", verID),
+					Artifact: "tasks.json",
+					EntityID: verID,
+					Path:     fmt.Sprintf("task_groups[%d].verification.id", groupIdx),
+				})
+			}
+		}
+	}
+
+	return entries
+}
+
 // validateEarsConstraints checks that each criterion's pattern-specific
 // fields match the required set for its ears_pattern. For each criterion:
 //   - Required fields must be non-nil
