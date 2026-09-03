@@ -131,7 +131,9 @@ class SpecAgent:
         ]
         tools = assessment_tools()
 
-        response = await self._call_api(messages, tools, system=system, temperature=0.2)
+        response = await self._call_api(
+            messages, tools, system=system, max_tokens=4096, temperature=0.2
+        )
         tool_input = self._extract_tool_call(response, "submit_assessment")
         return self._parse_assessment(tool_input)
 
@@ -193,7 +195,9 @@ class SpecAgent:
         ]
         tools = refinement_tools()
 
-        response = await self._call_api(messages, tools, system=system, temperature=0.2)
+        response = await self._call_api(
+            messages, tools, system=system, max_tokens=16384, temperature=0.2
+        )
 
         # Extract updated PRD (03-REQ-2.2)
         prd_update = self._extract_tool_call(response, "submit_prd_update")

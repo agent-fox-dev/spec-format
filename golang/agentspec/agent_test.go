@@ -2899,3 +2899,135 @@ func TestNS70_AssessmentHistory_NotAppendedOnInvalidQuality(t *testing.T) {
 		t.Errorf("assessment = %+v; want zero-value Assessment", assessment)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TS-NS-1: AssessPRD uses MaxTokens of 4096 (NS-REQ-1)
+// TS-NS-2: RefinePRD uses MaxTokens of 16384 (NS-REQ-2)
+// TS-NS-3: GenerateArtifacts retains 65536 default MaxTokens (NS-REQ-3)
+// ---------------------------------------------------------------------------
+
+// TestNS81_AssessPRD_MaxTokens verifies that AssessPRD sets MaxTokens: 4096
+// in the AICallOptions passed to the underlying AI call function.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestNS81_AssessPRD_MaxTokens(t *testing.T) {
+	capture := &aiCallCapture{}
+
+	assessmentResp := makeToolCallResponse("end_turn",
+		makeAssessmentToolCall("ready", "OK", nil, nil),
+	)
+
+	mockFn := newMockAICallFunc(capture, mockAICallResult{
+		raw: assessmentResp,
+	})
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.AssessPRD(ctx, "Sample PRD", "test-spec")
+	if err != nil {
+		t.Fatalf("AssessPRD() returned error: %v", err)
+	}
+
+	if capture.count() != 1 {
+		t.Fatalf("AICall invocation count = %d; want 1", capture.count())
+	}
+
+	callOpts := capture.get(0)
+	if callOpts.MaxTokens != 4096 {
+		t.Errorf("AssessPRD AICallOptions.MaxTokens = %d; want 4096", callOpts.MaxTokens)
+	}
+}
+
+// TestNS81_RefinePRD_MaxTokens verifies that RefinePRD sets MaxTokens: 16384
+// in the AICallOptions passed to the underlying AI call function.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestNS81_RefinePRD_MaxTokens(t *testing.T) {
+	capture := &aiCallCapture{}
+
+	resp := makeToolCallResponse("end_turn",
+		makePRDUpdateToolCall("Updated PRD"),
+		makeAssessmentToolCall("ready", "OK", nil, nil),
+	)
+
+	mockFn := newMockAICallFunc(capture, mockAICallResult{
+		raw: resp,
+	})
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	prevAssessment := Assessment{Quality: "needs_refinement", Summary: "Needs work"}
+	_, _, err := agent.RefinePRD(ctx, "Original PRD",
+		map[string]string{"q1": "a1"}, prevAssessment)
+	if err != nil {
+		t.Fatalf("RefinePRD() returned error: %v", err)
+	}
+
+	if capture.count() != 1 {
+		t.Fatalf("AICall invocation count = %d; want 1", capture.count())
+	}
+
+	callOpts := capture.get(0)
+	if callOpts.MaxTokens != 16384 {
+		t.Errorf("RefinePRD AICallOptions.MaxTokens = %d; want 16384", callOpts.MaxTokens)
+	}
+}
+
+// TestNS81_GenerateArtifacts_MaxTokens verifies that GenerateArtifacts does
+// not set MaxTokens explicitly (leaves it 0 so ApplyDefaults applies 65536).
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestNS81_GenerateArtifacts_MaxTokens(t *testing.T) {
+	capture := &aiCallCapture{}
+
+	mockFn := func(ctx context.Context, opts AICallOptions) (string, any, error) {
+		capture.record(opts)
+		var content map[string]any
+		var artifactName string
+		switch {
+		case strings.Contains(opts.Context, "requirements"):
+			artifactName = "requirements"
+			content = map[string]any{
+				"spec_id": "81", "spec_name": "test", "requirements": []any{},
+			}
+		case strings.Contains(opts.Context, "test_spec"):
+			artifactName = "test_spec"
+			content = map[string]any{
+				"spec_id": "81", "spec_name": "test", "test_cases": []any{},
+			}
+		case strings.Contains(opts.Context, "tasks"):
+			artifactName = "tasks"
+			content = map[string]any{
+				"spec_id": "81", "spec_name": "test", "task_groups": []any{},
+			}
+		default:
+			return "", nil, fmt.Errorf("unexpected context %q", opts.Context)
+		}
+		resp := makeToolCallResponse("end_turn", makeArtifactToolCall(artifactName, content))
+		return "", resp, nil
+	}
+
+	agent := NewSpecAgent("STANDARD")
+	agent.aiCallFunc = mockFn
+
+	ctx := context.Background()
+	_, err := agent.GenerateArtifacts(ctx, "PRD", "81", "test")
+	if err != nil {
+		t.Fatalf("GenerateArtifacts() returned error: %v", err)
+	}
+
+	if capture.count() == 0 {
+		t.Fatal("no AICall invocations recorded")
+	}
+
+	// All GenerateArtifacts calls must have MaxTokens == 0 (unset, so
+	// ApplyDefaults will supply 65536 when AICall is called for real).
+	for i := 0; i < capture.count(); i++ {
+		opts := capture.get(i)
+		if opts.MaxTokens != 0 {
+			t.Errorf("GenerateArtifacts call[%d] (context=%q) MaxTokens = %d; want 0 (relies on ApplyDefaults for 65536)",
+				i, opts.Context, opts.MaxTokens)
+		}
+	}
+}

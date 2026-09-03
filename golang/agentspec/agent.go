@@ -115,6 +115,7 @@ func (sa *SpecAgent) AssessPRD(ctx context.Context, prdText, specName string, op
 		Tools:       toolDefs,
 		ToolChoice:  map[string]any{"type": "any"},
 		Temperature: &assessTemp,
+		MaxTokens:   4096,
 		Context:     "AssessPRD",
 	}
 
@@ -195,6 +196,7 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 		Tools:       toolDefs,
 		ToolChoice:  map[string]any{"type": "any"},
 		Temperature: &refineTemp,
+		MaxTokens:   16384,
 		Context:     "RefinePRD",
 	}
 
