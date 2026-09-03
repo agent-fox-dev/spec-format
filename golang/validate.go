@@ -1676,46 +1676,55 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 	//   A. at least one subtask has non-empty test_spec_refs
 	//   B. at least one test_spec_refs entry matches TS-*-SMOKE-*
 	//   C. at least one subtask title or details mentions 'stub' or 'dead'
+	//
+	// Checks A and B are only enforced when the spec has at least one smoke
+	// test. A freshly scaffolded spec (spec new) has no smoke tests yet, so
+	// these checks are deferred per section 3.3 (bootstrap mode). Check C
+	// always runs because wiring_verification must acknowledge stub removal.
 	if s.Tasks != nil && len(s.Tasks.TaskGroups) > 0 {
 		lastGroup := s.Tasks.TaskGroups[len(s.Tasks.TaskGroups)-1]
 		if lastGroup.Kind == TaskGroupKindWiringVerification {
-			// Sub-check A: at least one subtask has non-empty test_spec_refs
-			hasRefs := false
-			for _, sub := range lastGroup.Subtasks {
-				if len(sub.TestSpecRefs) > 0 {
-					hasRefs = true
-					break
-				}
-			}
-			if !hasRefs {
-				errors = append(errors, ValidationEntry{
-					Category: "integrity",
-					Check:    "wiring_verification",
-					Message:  "wiring_verification group: no subtask has non-empty test_spec_refs",
-					Artifact: "tasks.json",
-				})
-			}
+			hasSmokeTests := s.TestSpec != nil && len(s.TestSpec.SmokeTests) > 0
 
-			// Sub-check B: at least one test_spec_refs entry matches TS-*-SMOKE-*
-			hasSmokeRef := false
-			for _, sub := range lastGroup.Subtasks {
-				for _, ref := range sub.TestSpecRefs {
-					if wiringSmokeRefPattern.MatchString(ref) {
-						hasSmokeRef = true
+			if hasSmokeTests {
+				// Sub-check A: at least one subtask has non-empty test_spec_refs
+				hasRefs := false
+				for _, sub := range lastGroup.Subtasks {
+					if len(sub.TestSpecRefs) > 0 {
+						hasRefs = true
 						break
 					}
 				}
-				if hasSmokeRef {
-					break
+				if !hasRefs {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "wiring_verification",
+						Message:  "wiring_verification group: no subtask has non-empty test_spec_refs",
+						Artifact: "tasks.json",
+					})
 				}
-			}
-			if !hasSmokeRef {
-				errors = append(errors, ValidationEntry{
-					Category: "integrity",
-					Check:    "wiring_verification",
-					Message:  "wiring_verification group: no test_spec_refs entry matches smoke test pattern TS-*-SMOKE-*",
-					Artifact: "tasks.json",
-				})
+
+				// Sub-check B: at least one test_spec_refs entry matches TS-*-SMOKE-*
+				hasSmokeRef := false
+				for _, sub := range lastGroup.Subtasks {
+					for _, ref := range sub.TestSpecRefs {
+						if wiringSmokeRefPattern.MatchString(ref) {
+							hasSmokeRef = true
+							break
+						}
+					}
+					if hasSmokeRef {
+						break
+					}
+				}
+				if !hasSmokeRef {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "wiring_verification",
+						Message:  "wiring_verification group: no test_spec_refs entry matches smoke test pattern TS-*-SMOKE-*",
+						Artifact: "tasks.json",
+					})
+				}
 			}
 
 			// Sub-check C: at least one subtask title/details or verification check

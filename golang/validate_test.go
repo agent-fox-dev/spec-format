@@ -3529,6 +3529,11 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 			{Id: "2.1", Title: "subtask A", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
 			{Id: "2.2", Title: "subtask B", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
 		})
+		// Add a smoke test so that wiring checks A and B are enforced (not in bootstrap mode).
+		spec.TestSpec.SmokeTests = []SmokeTest{{
+			Id: "TS-04-SMOKE-1", Description: "Smoke test", Trigger: "run",
+			RealComponents: []string{"all"}, Mockable: []string{}, ExpectedEffects: []string{"ok"},
+		}}
 		result := spec.ValidateCrossFile()
 
 		var refErrors []ValidationEntry
@@ -3551,6 +3556,11 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 				TestSpecRefs: []string{"TS-04-1", "TS-04-2"}, // no SMOKE entries
 			},
 		})
+		// Add a smoke test so that wiring check B is enforced (not in bootstrap mode).
+		spec.TestSpec.SmokeTests = []SmokeTest{{
+			Id: "TS-04-SMOKE-1", Description: "Smoke test", Trigger: "run",
+			RealComponents: []string{"all"}, Mockable: []string{}, ExpectedEffects: []string{"ok"},
+		}}
 		result := spec.ValidateCrossFile()
 
 		var smokeErrors []ValidationEntry
@@ -3642,8 +3652,15 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 		}
 	})
 
-	t.Run("wiring_group_no_subtasks_three_errors", func(t *testing.T) {
+	// TS-NS-2: When smoke tests exist and the wiring group has no subtasks,
+	// all three wiring verification checks (A, B, C) must fire.
+	t.Run("wiring_group_no_subtasks_with_smoke_three_errors", func(t *testing.T) {
 		spec := buildWiringSpec([]Subtask{}) // no subtasks
+		// Add a smoke test so that A and B are enforced (not in bootstrap mode).
+		spec.TestSpec.SmokeTests = []SmokeTest{{
+			Id: "TS-04-SMOKE-1", Description: "Smoke test", Trigger: "run",
+			RealComponents: []string{"all"}, Mockable: []string{}, ExpectedEffects: []string{"ok"},
+		}}
 		result := spec.ValidateCrossFile()
 
 		var wiringErrors int
@@ -3656,8 +3673,39 @@ func TestValidateCrossFile_WiringVerificationSemantics(t *testing.T) {
 			}
 		}
 		if wiringErrors != 3 {
-			t.Errorf("expected 3 wiring verification errors for empty subtask group, got %d; all errors: %v",
+			t.Errorf("expected 3 wiring verification errors for empty subtask group with smoke tests, got %d; all errors: %v",
 				wiringErrors, result.Errors)
+		}
+	})
+
+	// TS-NS-2: When no smoke tests exist (bootstrap mode), checks A and B are
+	// skipped. Check C still runs; the wiring group uses "check" (no stub
+	// mention) so C fires — 1 error total.
+	t.Run("wiring_group_no_subtasks_no_smoke_skips_a_b", func(t *testing.T) {
+		spec := buildWiringSpec([]Subtask{}) // no subtasks, no smoke tests
+		result := spec.ValidateCrossFile()
+
+		var wiringErrors int
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "test_spec_refs") ||
+				strings.Contains(lower, "smoke") ||
+				strings.Contains(lower, "stub") || strings.Contains(lower, "dead")) {
+				wiringErrors++
+			}
+		}
+		// A and B are skipped (no smoke tests). C fires because "check" does
+		// not mention stub or dead-code. So exactly 1 wiring error expected.
+		if wiringErrors != 1 {
+			t.Errorf("expected 1 wiring error (check C only) for bootstrap spec with no smoke tests, got %d; all errors: %v",
+				wiringErrors, result.Errors)
+		}
+		// Confirm no error is about test_spec_refs or smoke (only C fires).
+		for _, e := range result.Errors {
+			lower := strings.ToLower(e.Message)
+			if e.Category == "integrity" && (strings.Contains(lower, "test_spec_refs") || strings.Contains(lower, "smoke test pattern")) {
+				t.Errorf("unexpected check A/B error in bootstrap mode: %v", e.Message)
+			}
 		}
 	})
 

@@ -856,3 +856,186 @@ func TestTS_NS_5_CollisionIncrementsPrefix(t *testing.T) {
 		t.Errorf("01_my_spec/prd.md was clobbered; content=%q", string(prdData))
 	}
 }
+
+// --- TS-NS-1: A freshly scaffolded spec passes spec validate ---
+
+// TestTS_NS_1_ScaffoldPassesValidation verifies that a spec created by
+// spec new immediately passes spec validate without errors. This covers the
+// fix for issue #73: wiring_verification checks A and B were previously
+// fired on scaffold specs that have no smoke tests, causing spurious errors.
+//
+// The fix defers checks A and B (test_spec_refs and smoke-pattern checks)
+// when the spec has no smoke tests (bootstrap mode per spec section 3.3).
+// Structural checks (first group kind=tests, last kind=wiring_verification)
+// still fire and must pass.
+//
+// Covers: TS-NS-1, NS-REQ-1, NS-REQ-3
+func TestTS_NS_1_ScaffoldPassesValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	prdPath := filepath.Join(tmpDir, "my_feature.md")
+	if err := os.WriteFile(prdPath, []byte("# My Feature PRD\n\nBuild a cool new feature."), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Run spec new to create the scaffold.
+	newCmd := newRootCmd()
+	newCmd.SetOut(new(bytes.Buffer))
+	newCmd.SetErr(new(bytes.Buffer))
+	newCmd.SetArgs([]string{"--spec-dir", specDir, "new", prdPath, "--name", "my_feature"})
+	if err := newCmd.Execute(); err != nil {
+		t.Fatalf("spec new failed: %v", err)
+	}
+
+	// Find the created spec directory.
+	entries, err := os.ReadDir(specDir)
+	if err != nil {
+		t.Fatalf("cannot read spec dir: %v", err)
+	}
+	var specPath string
+	for _, e := range entries {
+		if e.IsDir() && strings.Contains(e.Name(), "my_feature") {
+			specPath = filepath.Join(specDir, e.Name())
+			break
+		}
+	}
+	if specPath == "" {
+		t.Fatal("scaffold spec directory not found after spec new")
+	}
+
+	// Load and fully validate the scaffold spec.
+	spec, err := afspec.LoadSpec(specPath)
+	if err != nil {
+		t.Fatalf("LoadSpec() failed on scaffold: %v", err)
+	}
+	result := spec.Validate()
+
+	// NS-REQ-1: scaffold must be valid with no errors.
+	if !result.Valid {
+		t.Errorf("scaffold spec is not valid (error_count=%d); want valid=true, error_count=0", len(result.Errors))
+		for i, e := range result.Errors {
+			t.Logf("  error[%d]: category=%s check=%s message=%s", i, e.Category, e.Check, e.Message)
+		}
+	}
+	if len(result.Errors) != 0 {
+		t.Errorf("expected 0 errors, got %d", len(result.Errors))
+	}
+
+	// NS-REQ-3: structural check must pass — no task_group_structure errors.
+	for _, e := range result.Errors {
+		if e.Check == "task_group_structure" {
+			t.Errorf("unexpected task_group_structure error: %s", e.Message)
+		}
+	}
+
+	// Verify the spec validate CLI command also exits 0.
+	validateCmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	validateCmd.SetOut(stdoutBuf)
+	validateCmd.SetErr(new(bytes.Buffer))
+	specDirName := filepath.Base(specPath)
+	validateCmd.SetArgs([]string{"--spec-dir", specDir, "validate", specDirName})
+
+	if err := validateCmd.Execute(); err != nil {
+		t.Errorf("spec validate on scaffold returned error (want exit 0): %v\noutput: %s", err, stdoutBuf.String())
+	}
+
+	var parsed map[string]any
+	if jsonErr := json.Unmarshal([]byte(stdoutBuf.String()), &parsed); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput: %s", jsonErr, stdoutBuf.String())
+	}
+	if valid, _ := parsed["valid"].(bool); !valid {
+		t.Errorf("spec validate: valid=%v, want true\noutput: %s", parsed["valid"], stdoutBuf.String())
+	}
+	if ec, _ := parsed["error_count"].(float64); ec != 0 {
+		t.Errorf("spec validate: error_count=%v, want 0\noutput: %s", ec, stdoutBuf.String())
+	}
+}
+
+// TestTS_NS_2_WiringChecksEnforcedWithSmokeTests verifies that wiring
+// verification checks A and B are still enforced when the spec has smoke
+// tests but the wiring group lacks proper subtasks referencing them.
+//
+// This ensures the fix does not suppress real validation errors on
+// fully-populated specs.
+//
+// Covers: TS-NS-2, NS-REQ-2, NS-REQ-4
+func TestTS_NS_2_WiringChecksEnforcedWithSmokeTests(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, ".specs")
+
+	// Build a fully loadable spec with a smoke test.
+	setupLoadableSpec(t, specDir, "08_my_spec", nil)
+
+	// Overwrite tasks.json to have an empty wiring subtask array
+	// (no test_spec_refs at all), while keeping the smoke test in test_spec.json.
+	specPath := filepath.Join(specDir, "08_my_spec")
+	tasks := `{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v1.json",
+  "spec_id": "08",
+  "spec_name": "my_spec",
+  "schema_version": 1,
+  "test_commands": {"spec_tests": "go test", "all_tests": "go test", "linter": "golint"},
+  "dependencies": [],
+  "task_groups": [
+    {
+      "id": 1,
+      "kind": "tests",
+      "title": "Tests",
+      "subtasks": [{
+        "id": "1.1",
+        "title": "Write tests",
+        "details": ["test details"],
+        "test_spec_refs": ["TS-08-1"],
+        "requirement_refs": ["08-REQ-1.1"],
+        "state": "pending",
+        "optional": false
+      }],
+      "verification": {"id": "1.V", "checks": ["tests pass"]}
+    },
+    {
+      "id": 2,
+      "kind": "wiring_verification",
+      "title": "Wiring",
+      "subtasks": [],
+      "verification": {"id": "2.V", "checks": ["smoke tests pass"]}
+    }
+  ],
+  "traceability": [{"requirement_id": "08-REQ-1.1", "test_spec_id": "TS-08-1", "task_id": "1.1", "test_path": null}]
+}`
+	if err := os.WriteFile(filepath.Join(specPath, "tasks.json"), []byte(tasks), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use the library directly to validate.
+	spec, err := afspec.LoadSpec(specPath)
+	if err != nil {
+		t.Fatalf("LoadSpec() failed: %v", err)
+	}
+	result := spec.ValidateCrossFile()
+
+	// NS-REQ-2/NS-REQ-4: wiring checks A and B must fire because smoke tests exist.
+	var wiringErrors []afspec.ValidationEntry
+	for _, e := range result.Errors {
+		if e.Check == "wiring_verification" {
+			wiringErrors = append(wiringErrors, e)
+		}
+	}
+	if len(wiringErrors) < 2 {
+		t.Errorf("expected at least 2 wiring_verification errors (checks A and B) when smoke tests exist, got %d; errors: %v",
+			len(wiringErrors), result.Errors)
+	}
+
+	// Verify the CLI also exits 1 for this spec.
+	validateCmd := newRootCmd()
+	stdoutBuf := new(bytes.Buffer)
+	validateCmd.SetOut(stdoutBuf)
+	validateCmd.SetErr(new(bytes.Buffer))
+	validateCmd.SetArgs([]string{"--spec-dir", specDir, "validate", "08_my_spec"})
+
+	if err := validateCmd.Execute(); err == nil {
+		t.Error("spec validate should exit 1 for spec with smoke tests but empty wiring subtasks")
+	}
+}
