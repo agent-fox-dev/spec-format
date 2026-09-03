@@ -777,8 +777,10 @@ class SpecSession:
         target = self._spec_dir / _SESSION_FILE
         fd, tmp_path_str = tempfile.mkstemp(dir=self._spec_dir, suffix=".tmp")
         try:
-            os.close(fd)
-            Path(tmp_path_str).write_text(content)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
             Path(tmp_path_str).rename(target)
         except BaseException:
             Path(tmp_path_str).unlink(missing_ok=True)

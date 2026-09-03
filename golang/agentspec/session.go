@@ -171,6 +171,13 @@ func (s *SpecSession) persistSession() error {
 			Cause: err,
 		}
 	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return &SessionError{
+			Msg:   fmt.Sprintf("failed to sync _session.json temp file: %v", err),
+			Cause: err,
+		}
+	}
 	if err := tmpFile.Close(); err != nil {
 		return &SessionError{
 			Msg:   fmt.Sprintf("failed to close _session.json temp file: %v", err),

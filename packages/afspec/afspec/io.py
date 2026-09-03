@@ -240,6 +240,8 @@ def _atomic_write(path: Path, content: str) -> str:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
         os.rename(tmp_path, str(path))
     except Exception:
         # Clean up temp file on failure
