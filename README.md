@@ -87,7 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/agent-fox-dev/spec-format/refs/head
 ### Go library
 
 ```bash
-go get github.com/agent-fox-dev/spec-format@v1.3.6
+go get github.com/agent-fox-dev/spec-format@v1.4.0
 ```
 
 ## Development
