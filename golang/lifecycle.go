@@ -1,11 +1,30 @@
 package afspec
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 )
+
+// deepCopyJSON returns a deep copy of v by round-tripping through JSON.
+// It returns nil if v is nil. Panics only if T is not JSON-serialisable,
+// which cannot happen for the generated artifact types.
+func deepCopyJSON[T any](v *T) *T {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("deepCopyJSON: marshal failed: %v", err))
+	}
+	var out T
+	if err := json.Unmarshal(b, &out); err != nil {
+		panic(fmt.Sprintf("deepCopyJSON: unmarshal failed: %v", err))
+	}
+	return &out
+}
 
 // validTransitions maps each spec status to the set of statuses it can transition to.
 // Active specs must be sealed before they can be archived or superseded; use
@@ -61,9 +80,16 @@ func (s *Spec) Transition(target, dir string) (*Spec, error) {
 		}
 	}
 
-	// Create a shallow copy with the new status.
+	// Create a deep copy with the new status.
 	// The receiver is not modified — Transition returns a new Spec.
+	// Slice fields and artifact pointers are deep-copied so that mutations
+	// to the returned spec cannot alias back to the original.
 	newSpec := *s
+	newSpec.Supersedes = append([]string{}, s.Supersedes...)
+	newSpec.Tags = append([]string{}, s.Tags...)
+	newSpec.Requirements = deepCopyJSON(s.Requirements)
+	newSpec.TestSpec = deepCopyJSON(s.TestSpec)
+	newSpec.Tasks = deepCopyJSON(s.Tasks)
 	newSpec.Status = target
 
 	// When activating a draft spec, compute and store the intent hash.
