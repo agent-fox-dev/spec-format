@@ -1256,6 +1256,57 @@ func (s *Spec) ValidateCrossFile() ValidationResult {
 		}
 	}
 
+	// --- Tasks: subtask and verification ID format validation ---
+	// Validates subtask IDs match {group}.{N} (^\d+\.\d+$) and also checks
+	// that the numeric prefix matches the parent group's ID. Validates
+	// verification subtask IDs match {group}.V (^\d+\.V$).
+	if s.Tasks != nil {
+		for gIdx, group := range s.Tasks.TaskGroups {
+			groupIDStr := fmt.Sprintf("%d", group.Id)
+
+			for sIdx, sub := range group.Subtasks {
+				if sub.Id == "" {
+					continue
+				}
+				if !subtaskIDPattern.MatchString(sub.Id) {
+					errors = append(errors, ValidationEntry{
+						Category: "integrity",
+						Check:    "id_format",
+						Message:  fmt.Sprintf("subtask ID %q does not match expected format {group}.{N}", sub.Id),
+						Artifact: "tasks.json",
+						EntityID: sub.Id,
+						Path:     fmt.Sprintf("task_groups[%d].subtasks[%d].id", gIdx, sIdx),
+					})
+				} else {
+					// Verify the numeric prefix matches the parent group ID.
+					if prefix, _, ok := strings.Cut(sub.Id, "."); ok && prefix != groupIDStr {
+						errors = append(errors, ValidationEntry{
+							Category: "integrity",
+							Check:    "id_format",
+							Message:  fmt.Sprintf("subtask ID %q has group prefix %q but parent group ID is %q", sub.Id, prefix, groupIDStr),
+							Artifact: "tasks.json",
+							EntityID: sub.Id,
+							Path:     fmt.Sprintf("task_groups[%d].subtasks[%d].id", gIdx, sIdx),
+						})
+					}
+				}
+			}
+
+			// Check verification subtask ID format.
+			verID := group.Verification.Id
+			if verID != "" && !verificationIDPattern.MatchString(verID) {
+				errors = append(errors, ValidationEntry{
+					Category: "integrity",
+					Check:    "id_format",
+					Message:  fmt.Sprintf("verification ID %q does not match expected format {group}.V", verID),
+					Artifact: "tasks.json",
+					EntityID: verID,
+					Path:     fmt.Sprintf("task_groups[%d].verification.id", gIdx),
+				})
+			}
+		}
+	}
+
 	// --- Coverage gap errors ---
 	// Check all acceptance criteria and edge case criteria for test coverage.
 	// Coverage gaps are blocking errors (matching Python cross-file-2 behavior).

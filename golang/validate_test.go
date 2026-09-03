@@ -7375,3 +7375,182 @@ func TestUnmarshalJSON_TaskGroups_OneGroup(t *testing.T) {
 		t.Errorf("TaskGroups length = %d, want 1", len(tasks.TaskGroups))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #65: subtask and verification ID format validation in ValidateCrossFile
+// Requirements: NS-REQ-1 through NS-REQ-5
+// ---------------------------------------------------------------------------
+
+// buildBaseSpecForIDFormat returns a minimal spec with group id=3 for use in
+// subtask/verification ID format tests. It deliberately uses a group ID of 3
+// to avoid conflating prefix "1" with a group 1 that already exists in
+// buildCrossFileBaseSpec.
+func buildBaseSpecForIDFormat(subtasks []Subtask, verID string) *Spec {
+	s := buildCrossFileBaseSpec()
+	// Replace the default two-group layout with a single group whose ID is 3,
+	// plus the mandatory last group (wiring_verification with ID 4) so the
+	// task_group_structure rule is also satisfied.
+	s.Tasks.TaskGroups = []TaskGroup{
+		{
+			Id:       3,
+			Kind:     TaskGroupKindTests,
+			Title:    "Tests",
+			Subtasks: subtasks,
+			Verification: VerificationSubtask{
+				Id:     verID,
+				Checks: []string{"all tests pass"},
+			},
+		},
+		{
+			Id:    4,
+			Kind:  TaskGroupKindWiringVerification,
+			Title: "Wiring Verification",
+			Subtasks: []Subtask{
+				{
+					Id: "4.1", Title: "Stub and dead-code audit", State: SubtaskStatePending,
+					Details:         []string{"Verify all stubs removed"},
+					RequirementRefs: []string{},
+					TestSpecRefs:    []string{"TS-04-SMOKE-1"},
+				},
+			},
+			Verification: VerificationSubtask{
+				Id:     "4.V",
+				Checks: []string{"smoke tests pass"},
+			},
+		},
+	}
+	return s
+}
+
+// TestValidateCrossFile_SubtaskIDFormat tests AC-1 through AC-5 for issue #65:
+// subtask and verification subtask ID format validation in ValidateCrossFile.
+// Requirements: NS-REQ-1, NS-REQ-2, NS-REQ-3, NS-REQ-4, NS-REQ-5.
+func TestValidateCrossFile_SubtaskIDFormat(t *testing.T) {
+	tests := []struct {
+		name             string
+		subtasks         []Subtask
+		verID            string
+		wantIDFormatErrs int      // expected count of id_format errors
+		wantEntityIDs    []string // EntityID values expected in id_format errors
+		wantNoEntityIDs  []string // EntityID values that must NOT appear in id_format errors
+	}{
+		{
+			// AC-1 / NS-REQ-1: well-formed subtask "3.2" in group 3 passes.
+			name: "well_formed_subtask_passes",
+			subtasks: []Subtask{
+				{Id: "3.2", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 0,
+			wantNoEntityIDs:  []string{"3.2"},
+		},
+		{
+			// AC-2 / NS-REQ-2: malformed subtask ID "banana" fails with id_format.
+			name: "malformed_subtask_id_fails",
+			subtasks: []Subtask{
+				{Id: "banana", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 1,
+			wantEntityIDs:    []string{"banana"},
+		},
+		{
+			// AC-3 / NS-REQ-3: well-formed verification ID "3.V" passes.
+			name: "well_formed_verification_id_passes",
+			subtasks: []Subtask{
+				{Id: "3.1", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 0,
+			wantNoEntityIDs:  []string{"3.V"},
+		},
+		{
+			// AC-4 / NS-REQ-4: verification ID "3.2" (numeric suffix) fails.
+			name: "verification_id_with_numeric_suffix_fails",
+			subtasks: []Subtask{
+				{Id: "3.1", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.2",
+			wantIDFormatErrs: 1,
+			wantEntityIDs:    []string{"3.2"},
+		},
+		{
+			// AC-5 / NS-REQ-5: subtask "5.1" in group 3 fails (prefix mismatch).
+			name: "subtask_prefix_mismatch_fails",
+			subtasks: []Subtask{
+				{Id: "5.1", Title: "Subtask", State: SubtaskStatePending, Details: []string{"detail"}, RequirementRefs: []string{}, TestSpecRefs: []string{}},
+			},
+			verID:            "3.V",
+			wantIDFormatErrs: 1,
+			wantEntityIDs:    []string{"5.1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := buildBaseSpecForIDFormat(tt.subtasks, tt.verID)
+			result := spec.ValidateCrossFile()
+
+			idFormatErrs := filterByCheck(result.Errors, "id_format")
+
+			// Filter to only those referencing tasks.json (to avoid noise from
+			// any requirements/test_spec id_format errors that don't exist here
+			// since the base spec has no requirements).
+			var taskIDErrs []ValidationEntry
+			for _, e := range idFormatErrs {
+				if e.Artifact == "tasks.json" {
+					taskIDErrs = append(taskIDErrs, e)
+				}
+			}
+
+			if len(taskIDErrs) != tt.wantIDFormatErrs {
+				t.Errorf("tasks.json id_format error count = %d, want %d; all id_format errors: %v",
+					len(taskIDErrs), tt.wantIDFormatErrs, idFormatErrs)
+			}
+
+			// For failure cases, check category and artifact.
+			for _, e := range taskIDErrs {
+				if e.Category != "integrity" {
+					t.Errorf("id_format error category = %q, want %q", e.Category, "integrity")
+				}
+				if e.Artifact != "tasks.json" {
+					t.Errorf("id_format error artifact = %q, want %q", e.Artifact, "tasks.json")
+				}
+				if e.Message == "" {
+					t.Error("id_format error message is empty")
+				}
+			}
+
+			// Verify expected EntityIDs appear in errors.
+			for _, wantID := range tt.wantEntityIDs {
+				found := false
+				for _, e := range taskIDErrs {
+					if e.EntityID == wantID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected EntityID %q in id_format errors, not found; errors: %v",
+						wantID, taskIDErrs)
+				}
+			}
+
+			// Verify absent EntityIDs do NOT appear in id_format errors.
+			for _, absentID := range tt.wantNoEntityIDs {
+				for _, e := range taskIDErrs {
+					if e.EntityID == absentID {
+						t.Errorf("EntityID %q should NOT appear in id_format errors, but found: %v",
+							absentID, e)
+					}
+				}
+			}
+
+			// AC-2 specific: ValidateCrossFile returns Valid=false when there
+			// are id_format errors.
+			if tt.wantIDFormatErrs > 0 && result.Valid {
+				t.Error("result.Valid = true, want false when id_format errors present")
+			}
+		})
+	}
+}
