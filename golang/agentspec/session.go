@@ -310,6 +310,69 @@ func (s *SpecSession) Validate() (SessionValidationResult, error) {
 	return s.validateFallback()
 }
 
+// ValidateCrossFile loads the spec from the session's spec directory and runs
+// only cross-file integrity checks, skipping schema validation. Schema
+// validation is already performed inline during artifact generation by
+// validateArtifactContent. If LoadSpec fails (e.g., missing or unreadable
+// artifacts), it falls back to reporting the affected artifacts as integrity
+// errors without running schema validation.
+func (s *SpecSession) ValidateCrossFile() (SessionValidationResult, error) {
+	// Try the happy path: load the full spec and run cross-file checks only.
+	spec, loadErr := afspec.LoadSpec(s.specDir)
+	if loadErr == nil {
+		vr := spec.ValidateCrossFile()
+		return categorizeValidationResult(vr), nil
+	}
+
+	// LoadSpec failed — fall back to reporting missing or unreadable artifacts
+	// as integrity errors.
+	return s.crossFileFallback()
+}
+
+// crossFileFallback checks which known artifact files are present in the spec
+// directory and reports any missing or unreadable artifacts as integrity
+// errors. It does not run schema validation — inline validation in the
+// generation pipeline already covers schema correctness.
+func (s *SpecSession) crossFileFallback() (SessionValidationResult, error) {
+	result := SessionValidationResult{
+		Valid:           false,
+		SchemaErrors:    []string{},
+		IntegrityErrors: []string{},
+	}
+
+	foundAny := false
+	for _, artifactName := range knownArtifacts {
+		artifactPath := filepath.Join(s.specDir, artifactName)
+		data, err := os.ReadFile(artifactPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				result.IntegrityErrors = append(result.IntegrityErrors,
+					fmt.Sprintf("missing artifact: %s", artifactName))
+			} else {
+				result.IntegrityErrors = append(result.IntegrityErrors,
+					fmt.Sprintf("cannot read %s: %v", artifactName, err))
+			}
+			continue
+		}
+		foundAny = true
+		// If the file exists but cannot be parsed as JSON, LoadSpec would have
+		// failed for that reason. Report as an integrity error since cross-file
+		// checks cannot proceed without parseable content.
+		var raw json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			result.IntegrityErrors = append(result.IntegrityErrors,
+				fmt.Sprintf("cannot parse %s for cross-file check: %v", artifactName, err))
+		}
+	}
+
+	if !foundAny {
+		result.IntegrityErrors = append(result.IntegrityErrors,
+			"no artifact files found in spec directory")
+	}
+
+	return result, nil
+}
+
 // categorizeValidationResult converts an afspec.ValidationResult into a
 // SessionValidationResult, splitting entries by category.
 func categorizeValidationResult(vr afspec.ValidationResult) SessionValidationResult {
@@ -864,8 +927,10 @@ func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) {
 	// Transition to StateGenerated.
 	s.Current = StateGenerated
 
-	// Run Validate to check cross-file integrity of generated artifacts.
-	validation, validateErr := s.Validate()
+	// Run ValidateCrossFile to check cross-file integrity of generated artifacts.
+	// Schema validation is skipped here because it was already performed inline
+	// during artifact generation by validateArtifactContent.
+	validation, validateErr := s.ValidateCrossFile()
 	if validateErr != nil {
 		// Validate() itself failed (e.g., could not read artifacts); record
 		// the error in the validation result so callers can surface it.

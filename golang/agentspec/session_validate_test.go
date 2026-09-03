@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -664,6 +665,46 @@ schema_version: 1
 }
 
 // ---------------------------------------------------------------------------
+// TS-NS-1: Post-generation validation only runs cross-file integrity checks,
+// not schema re-validation.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+// ---------------------------------------------------------------------------
+
+// TestTSNS1_GenerateSchemaErrorsEmpty_AfterValidArtifacts verifies that
+// Generate() only runs cross-file integrity checks after generation and does
+// not populate SchemaErrors from the post-generation validation step. When
+// all artifacts are valid, both SchemaErrors and IntegrityErrors are empty.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1.1
+func TestTSNS1_GenerateSchemaErrorsEmpty_AfterValidArtifacts(t *testing.T) {
+	specDir := setupValidSpecDir(t)
+
+	session, err := ResumeSession(specDir)
+	if err != nil {
+		t.Fatalf("ResumeSession() returned error: %v", err)
+	}
+	session.Current = StatePRDAccepted
+
+	ctx := context.Background()
+	result, genErr := session.Generate(ctx)
+	if genErr != nil {
+		t.Fatalf("Generate() returned unexpected error: %v", genErr)
+	}
+
+	// NS-REQ-1.1: SchemaErrors must be empty — the post-generation step only
+	// runs cross-file checks, not schema re-validation.
+	if len(result.Validation.SchemaErrors) != 0 {
+		t.Errorf("GenerateResult.Validation.SchemaErrors is non-empty; want empty (schema validation skipped post-generation): %v",
+			result.Validation.SchemaErrors)
+	}
+
+	// Valid cross-file state means Valid should be true.
+	if !result.Validation.Valid {
+		t.Errorf("GenerateResult.Validation.Valid = false; want true (all artifacts valid): integrityErrors=%v",
+			result.Validation.IntegrityErrors)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TS-NS-2: Generate() returns Validation.Valid == false when post-generation
 // validation finds integrity or schema errors.
 // Test Spec: TS-NS-2, Requirements: NS-REQ-1, NS-REQ-2
@@ -671,8 +712,8 @@ schema_version: 1
 
 // TestTSNS2_GenerateValidationValidFalseOnErrors verifies that when all
 // three artifact files are already present but contain validation errors,
-// Generate() skips the AI call, runs Validate(), and returns a GenerateResult
-// where Validation.Valid == false and Warnings is non-empty.
+// Generate() skips the AI call, runs ValidateCrossFile(), and returns a
+// GenerateResult where Validation.Valid == false and Warnings is non-empty.
 // Test Spec: TS-NS-2, Requirements: NS-REQ-1, NS-REQ-2
 func TestTSNS2_GenerateValidationValidFalseOnErrors(t *testing.T) {
 	specDir := t.TempDir()
@@ -736,5 +777,143 @@ func TestTSNS2_GenerateValidationValidFalseOnErrors(t *testing.T) {
 	// NS-REQ-3: Warnings slice must be non-empty so the CLI can surface them.
 	if len(result.Warnings) == 0 {
 		t.Error("GenerateResult.Warnings is empty; want at least one validation warning")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-3: Cross-file integrity errors ARE surfaced in GenerateResult.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+// ---------------------------------------------------------------------------
+
+// TestTSNS3_CrossFileIntegrityErrors_SurfacedInGenerateResult verifies that
+// Generate() surfaces cross-file integrity errors in GenerateResult when
+// artifacts are individually valid but violate cross-file integrity rules.
+// Specifically: a test_case with a dangling requirement_id reference produces
+// an IntegrityError while SchemaErrors remains empty.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3.1
+func TestTSNS3_CrossFileIntegrityErrors_SurfacedInGenerateResult(t *testing.T) {
+	// Use the valid spec dir helper as a base, then override test_spec.json
+	// with a version that contains a dangling requirement reference.
+	specDir := setupValidSpecDir(t)
+
+	// Overwrite test_spec.json with a test_case that references a requirement
+	// ID ("06-REQ-99") that does not exist in requirements.json.
+	// All other fields are valid so that LoadSpec succeeds and schema
+	// validation passes; the violation is purely a cross-file integrity issue.
+	tsJSON := `{
+		"$schema": "https://agent-fox.dev/schemas/test_spec.v1.json",
+		"spec_id": "06",
+		"spec_name": "test_spec",
+		"schema_version": 1,
+		"test_cases": [
+			{
+				"id": "TS-06-1",
+				"requirement_id": "06-REQ-99",
+				"kind": "unit",
+				"description": "Dangling requirement reference test",
+				"preconditions": [],
+				"input": "any",
+				"expected": "something",
+				"assertion_pseudocode": "assert true"
+			}
+		],
+		"property_tests": [],
+		"edge_case_tests": [],
+		"smoke_tests": [
+			{
+				"id": "TS-06-SMOKE-1",
+				"execution_path_id": "06-PATH-1",
+				"description": "Smoke test",
+				"trigger": "invoke",
+				"real_components": ["core"],
+				"mockable": [],
+				"expected_effects": ["returns result"]
+			}
+		],
+		"coverage": {}
+	}`
+	if err := os.WriteFile(filepath.Join(specDir, "test_spec.json"), []byte(tsJSON), 0o644); err != nil {
+		t.Fatalf("failed to write test_spec.json: %v", err)
+	}
+
+	session, err := ResumeSession(specDir)
+	if err != nil {
+		t.Fatalf("ResumeSession() returned error: %v", err)
+	}
+	session.Current = StatePRDAccepted
+
+	ctx := context.Background()
+	result, genErr := session.Generate(ctx)
+	if genErr != nil {
+		t.Fatalf("Generate() returned unexpected error: %v", genErr)
+	}
+
+	// NS-REQ-3.1: Generate() must return Valid=false when cross-file rules are violated.
+	if result.Validation.Valid {
+		t.Error("GenerateResult.Validation.Valid = true; want false (dangling requirement reference)")
+	}
+
+	// NS-REQ-3.1: IntegrityErrors must contain the dangling reference error.
+	if len(result.Validation.IntegrityErrors) == 0 {
+		t.Error("GenerateResult.Validation.IntegrityErrors is empty; want at least one integrity error for dangling reference")
+	}
+
+	// NS-REQ-1.1: SchemaErrors must be empty — post-generation step skips schema re-validation.
+	if len(result.Validation.SchemaErrors) != 0 {
+		t.Errorf("GenerateResult.Validation.SchemaErrors is non-empty; want empty (schema validation skipped post-generation): %v",
+			result.Validation.SchemaErrors)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TS-NS-4: ValidateCrossFile() handles LoadSpec failure fallback correctly.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+// ---------------------------------------------------------------------------
+
+// TestTSNS4_ValidateCrossFile_MissingArtifact verifies that ValidateCrossFile()
+// returns Valid=false with a non-empty IntegrityErrors slice when an artifact
+// file is missing from the spec directory, without panicking or returning a
+// non-nil error.
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4.1
+func TestTSNS4_ValidateCrossFile_MissingArtifact(t *testing.T) {
+	specDir := setupValidSpecDir(t)
+
+	// Remove one artifact file to simulate a partial-write failure.
+	if err := os.Remove(filepath.Join(specDir, "tasks.json")); err != nil {
+		t.Fatalf("failed to remove tasks.json: %v", err)
+	}
+
+	session, err := ResumeSession(specDir)
+	if err != nil {
+		t.Fatalf("ResumeSession() returned error: %v", err)
+	}
+
+	result, validateErr := session.ValidateCrossFile()
+
+	// NS-REQ-4.1: Must not panic or return a non-nil error.
+	if validateErr != nil {
+		t.Fatalf("ValidateCrossFile() returned non-nil error: %v; want nil", validateErr)
+	}
+
+	// NS-REQ-4.1: Must return Valid=false when an artifact is missing.
+	if result.Valid {
+		t.Error("ValidateCrossFile() returned Valid=true; want false (tasks.json is missing)")
+	}
+
+	// NS-REQ-4.1: IntegrityErrors must contain an entry indicating the missing artifact.
+	if len(result.IntegrityErrors) == 0 {
+		t.Error("ValidateCrossFile() returned empty IntegrityErrors; want at least one entry for missing artifact")
+	}
+
+	// Confirm the error message references the missing file.
+	found := false
+	for _, e := range result.IntegrityErrors {
+		if strings.Contains(e, "tasks.json") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("IntegrityErrors does not mention tasks.json; got: %v", result.IntegrityErrors)
 	}
 }
