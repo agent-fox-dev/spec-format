@@ -644,3 +644,96 @@ class TestEdgeCaseTestSchemaValidation:
         assert any("preconditions" in str(e).lower() for e in errors_list), (
             f"no schema error mentions 'preconditions'; got: {errors_list}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Task group ID minimum constraint tests (Issue #79)
+# NS-REQ-1, NS-REQ-2, NS-REQ-3, NS-REQ-5
+# ---------------------------------------------------------------------------
+
+
+def _minimal_tasks_doc(group_id: int) -> dict:
+    """Return a raw tasks dict with one task group using the given id."""
+    return {
+        "spec_id": "01",
+        "spec_name": "test",
+        "schema_version": 1,
+        "test_commands": {
+            "spec_tests": "pytest -q",
+            "all_tests": "pytest -q",
+            "linter": "ruff check",
+        },
+        "dependencies": [],
+        "task_groups": [
+            {
+                "id": group_id,
+                "kind": "tests",
+                "title": "Test group",
+                "subtasks": [],
+                "verification": {"id": "1.V", "checks": ["check"]},
+            }
+        ],
+        "traceability": [],
+    }
+
+
+class TestTaskGroupIDMinimumConstraint:
+    """NS-REQ-1, NS-REQ-2, NS-REQ-3: task_group id must be >= 1 in JSON schema.
+    NS-REQ-5: Pydantic TaskGroup model rejects id < 1.
+    """
+
+    def _tasks_schema(self) -> dict:
+        schema_map = {name: json.loads(raw) for name, raw in schemas().items()}
+        return schema_map["tasks.v1.json"]
+
+    def test_task_group_id_zero_fails_json_schema(self) -> None:
+        """NS-REQ-1 / TS-NS-1: task_group id=0 violates minimum constraint."""
+        schema = self._tasks_schema()
+        doc = _minimal_tasks_doc(0)
+        validator = jsonschema.Draft202012Validator(schema)
+        errors_list = list(validator.iter_errors(doc))
+        assert len(errors_list) > 0, "JSON schema should reject task_group id=0"
+        assert any("id" in str(e.absolute_path) or "minimum" in str(e).lower() for e in errors_list), (
+            f"no error references id or minimum constraint; got: {errors_list}"
+        )
+
+    def test_task_group_id_negative_fails_json_schema(self) -> None:
+        """NS-REQ-2 / TS-NS-2: task_group id=-5 violates minimum constraint."""
+        schema = self._tasks_schema()
+        doc = _minimal_tasks_doc(-5)
+        validator = jsonschema.Draft202012Validator(schema)
+        errors_list = list(validator.iter_errors(doc))
+        assert len(errors_list) > 0, "JSON schema should reject task_group id=-5"
+        assert any("id" in str(e.absolute_path) or "minimum" in str(e).lower() for e in errors_list), (
+            f"no error references id or minimum constraint; got: {errors_list}"
+        )
+
+    def test_task_group_id_positive_passes_json_schema(self) -> None:
+        """NS-REQ-3 / TS-NS-3: task_group id ≥ 1 passes schema validation."""
+        schema = self._tasks_schema()
+        for good_id in (1, 2, 100):
+            doc = _minimal_tasks_doc(good_id)
+            validator = jsonschema.Draft202012Validator(schema)
+            errors_list = list(validator.iter_errors(doc))
+            id_errors = [e for e in errors_list if "id" in str(e.absolute_path)]
+            assert not id_errors, f"id={good_id}: unexpected id constraint errors: {id_errors}"
+
+    def test_task_group_id_zero_fails_pydantic(self) -> None:
+        """NS-REQ-5 / TS-NS-5: TaskGroup(id=0) raises pydantic.ValidationError."""
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError):
+            TaskGroup(id=0)
+
+    def test_task_group_id_negative_fails_pydantic(self) -> None:
+        """NS-REQ-5 / TS-NS-5: TaskGroup(id=-5) raises pydantic.ValidationError."""
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError):
+            TaskGroup(id=-5)
+
+    def test_task_group_id_positive_succeeds_pydantic(self) -> None:
+        """NS-REQ-5 / TS-NS-5: TaskGroup(id=1) and higher succeed."""
+        for good_id in (1, 2, 100):
+            group = TaskGroup(id=good_id)
+            assert group.id == good_id

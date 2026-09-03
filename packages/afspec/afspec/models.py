@@ -380,7 +380,7 @@ class Subtask(BaseModel):
 class TaskGroup(BaseModel):
     """A task group containing subtasks."""
 
-    id: int = 0
+    id: int = Field(default=1, ge=1)
     kind: TaskGroupKind = TaskGroupKind.STANDARD
     title: str = ""
     subtasks: list[Subtask] = Field(default_factory=list)

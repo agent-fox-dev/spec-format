@@ -8069,3 +8069,98 @@ func TestValidateCrossFile_FolderName_BothMismatches(t *testing.T) {
 		t.Errorf("no folder_name error mentions 'spec_name': %v", folderErrs)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Task group ID minimum constraint tests (Issue #79)
+// ---------------------------------------------------------------------------
+
+// minimalValidTasksDoc returns a raw tasks document map with one task group
+// using the given id, for use with validateArtifactSchema.
+func minimalTasksDocWithGroupID(id any) map[string]any {
+	return map[string]any{
+		"$schema":        "https://agent-fox.dev/schemas/tasks.v1.json",
+		"spec_id":        "01",
+		"spec_name":      "test",
+		"schema_version": 1,
+		"test_commands": map[string]any{
+			"spec_tests": "pytest -q",
+			"all_tests":  "pytest -q",
+			"linter":     "ruff check",
+		},
+		"dependencies": []any{},
+		"task_groups": []any{
+			map[string]any{
+				"id":       id,
+				"kind":     "tests",
+				"title":    "Test group",
+				"subtasks": []any{},
+				"verification": map[string]any{
+					"id":     "1.V",
+					"checks": []any{"check"},
+				},
+			},
+		},
+		"traceability": []any{},
+	}
+}
+
+// TestValidateSchema_TaskGroupIDZero verifies NS-REQ-1: a tasks artifact with
+// task_group id=0 fails JSON schema validation with a minimum-constraint error.
+// Test Spec: TS-NS-1, Requirement: NS-REQ-1
+func TestValidateSchema_TaskGroupIDZero(t *testing.T) {
+	artifact := minimalTasksDocWithGroupID(0)
+	errs := validateArtifactSchema(artifact, "tasks.v1.json", "tasks.json")
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for task_group id=0, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "id") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one schema error referencing 'id'; got: %v", errs)
+	}
+}
+
+// TestValidateSchema_TaskGroupIDNegative verifies NS-REQ-2: a tasks artifact
+// with task_group id=-5 fails JSON schema validation.
+// Test Spec: TS-NS-2, Requirement: NS-REQ-2
+func TestValidateSchema_TaskGroupIDNegative(t *testing.T) {
+	artifact := minimalTasksDocWithGroupID(-5)
+	errs := validateArtifactSchema(artifact, "tasks.v1.json", "tasks.json")
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for task_group id=-5, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Category == "schema" && strings.Contains(e.Path, "id") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one schema error referencing 'id'; got: %v", errs)
+	}
+}
+
+// TestValidateSchema_TaskGroupIDPositive verifies NS-REQ-3: a tasks artifact
+// with a valid task_group id ≥ 1 passes schema validation without errors.
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestValidateSchema_TaskGroupIDPositive(t *testing.T) {
+	for _, id := range []int{1, 2, 100} {
+		artifact := minimalTasksDocWithGroupID(id)
+		errs := validateArtifactSchema(artifact, "tasks.v1.json", "tasks.json")
+		schemaErrs := []ValidationEntry{}
+		for _, e := range errs {
+			if e.Category == "schema" && strings.Contains(e.Path, "id") {
+				schemaErrs = append(schemaErrs, e)
+			}
+		}
+		if len(schemaErrs) > 0 {
+			t.Errorf("id=%d: expected no schema id-constraint errors; got: %v", id, schemaErrs)
+		}
+	}
+}
