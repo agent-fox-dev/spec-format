@@ -1593,6 +1593,21 @@ class TestQAExchangeSmoke:
 class TestNS70_AssessmentQualityEnum:
     """Assessment uses a typed enum for quality; invalid values raise ValueError."""
 
+    def test_ts_ns1_enum_membership(self) -> None:
+        """TS-NS-1: AssessmentQuality has exactly three canonical members.
+
+        Requirement: NS-REQ-1
+        """
+        members = list(AssessmentQuality)
+        assert len(members) == 3, f"Expected 3 members, got {len(members)}: {members}"
+        assert AssessmentQuality.READY.value == "ready"
+        assert AssessmentQuality.NEEDS_REFINEMENT.value == "needs_refinement"
+        assert AssessmentQuality.INCOMPLETE.value == "incomplete"
+        # Check _value2member_map_ for enum lookup completeness
+        assert "ready" in AssessmentQuality._value2member_map_
+        assert "needs_refinement" in AssessmentQuality._value2member_map_
+        assert "incomplete" in AssessmentQuality._value2member_map_
+
     def test_ts_ns1_valid_qualities_accepted(self) -> None:
         """TS-NS-1: Each valid quality value constructs Assessment without error."""
         for quality in ("ready", "needs_refinement", "incomplete"):
@@ -1615,6 +1630,49 @@ class TestNS70_AssessmentQualityEnum:
         """TS-NS-2: An empty quality string raises ValueError at construction time."""
         with pytest.raises(ValueError):
             Assessment(quality="", summary="ok")  # type: ignore[arg-type]
+
+    def test_ts_ns4_parse_assessment_rejects_hallucinated_quality(self) -> None:
+        """TS-NS-4: _parse_assessment() raises AgentError for invalid quality.
+
+        The error message must include the invalid value and list allowed values.
+        Requirement: NS-REQ-4
+        """
+        from agentspec.agent import SpecAgent
+        from agentspec.errors import AgentError
+
+        agent = SpecAgent.__new__(SpecAgent)
+        tool_input = {
+            "quality": "hallucinated_value",
+            "summary": "x",
+            "gaps": [],
+            "questions": [],
+        }
+        with pytest.raises(AgentError) as exc_info:
+            agent._parse_assessment(tool_input)
+
+        error_msg = str(exc_info.value)
+        # Message must include the invalid value
+        assert "hallucinated_value" in error_msg, (
+            f"Error message must include the invalid value; got: {error_msg!r}"
+        )
+        # Message must list allowed values
+        for allowed in ("ready", "needs_refinement", "incomplete"):
+            assert allowed in error_msg, (
+                f"Error message must list allowed value {allowed!r}; got: {error_msg!r}"
+            )
+
+    def test_ts_ns5_assessment_quality_in_all(self) -> None:
+        """TS-NS-5: AssessmentQuality is exported from the top-level agentspec package.
+
+        Requirement: NS-REQ-5
+        """
+        import agentspec
+        from agentspec import AssessmentQuality as ImportedAQ
+
+        assert ImportedAQ is AssessmentQuality
+        assert "AssessmentQuality" in agentspec.__all__, (
+            "'AssessmentQuality' must appear in agentspec.__all__"
+        )
 
     def test_ts_ns5_invalid_quality_not_in_session_history(
         self, tmp_path: Path
