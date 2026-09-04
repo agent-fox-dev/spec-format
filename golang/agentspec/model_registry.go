@@ -42,6 +42,11 @@ var ModelRegistry = map[string]ModelEntry{
 		Tier:    TierAdvanced,
 		Variant: "advanced",
 	},
+	"claude-opus-4-6[1m]": {
+		ModelID: "claude-opus-4-6[1m]",
+		Tier:    TierAdvanced,
+		Variant: "extended",
+	},
 }
 
 // TierDefaults maps each ModelTier to its default model ID string.
@@ -55,17 +60,29 @@ var TierDefaults = map[ModelTier]string{
 // Anthropic model ID. It performs case-insensitive matching for tier constants
 // and direct lookup for model ID keys in ModelRegistry.
 //
+// An optional variant string may be provided. When a tier matches and a
+// variant is given, the registry is scanned for an entry whose (tier, variant)
+// pair matches before falling back to the tier default.
+//
 // Returns the resolved model ID and nil on success, or an empty string and
 // a descriptive error if the name is not recognized.
-func ResolveModel(name string) (string, error) {
+func ResolveModel(name string, variant ...string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("ResolveModel: model name must not be empty")
 	}
 
 	// Case-insensitive tier constant matching.
 	upper := strings.ToUpper(name)
-	if modelID, ok := TierDefaults[ModelTier(upper)]; ok {
-		return modelID, nil
+	tier := ModelTier(upper)
+	if _, ok := TierDefaults[tier]; ok {
+		if len(variant) > 0 && variant[0] != "" {
+			for _, entry := range ModelRegistry {
+				if entry.Tier == tier && entry.Variant == variant[0] {
+					return entry.ModelID, nil
+				}
+			}
+		}
+		return TierDefaults[tier], nil
 	}
 
 	// Direct lookup in model registry by model ID.

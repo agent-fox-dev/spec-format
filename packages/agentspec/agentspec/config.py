@@ -50,6 +50,7 @@ class AgentSpecConfig:
     """
 
     model: str = _DEFAULT_MODEL
+    model_variant: str | None = field(default=None)
     assess_model: str | None = field(default=None)
     refine_model: str | None = field(default=None)
     generate_model: str | None = field(default=None)
@@ -108,8 +109,10 @@ def load_config() -> AgentSpecConfig:
         if isinstance(model_section, dict):
             if "model" in model_section:
                 config.model = str(model_section["model"])
+            if "model_variant" in model_section:
+                config.model_variant = str(model_section["model_variant"])
             # Read optional per-phase overrides.
-            for _phase, _attr in _PHASE_FIELDS.items():
+            for _attr in _PHASE_FIELDS.values():
                 if _attr in model_section:
                     setattr(config, _attr, str(model_section[_attr]))
 

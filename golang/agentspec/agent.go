@@ -65,7 +65,8 @@ func applyOptions(opts []AgentOption) agentOptions {
 // SpecAgent holds the model tier and implements the AI agent pipeline
 // methods: AssessPRD, RefinePRD, and GenerateArtifacts.
 type SpecAgent struct {
-	modelTier string
+	modelTier    string
+	modelVariant string
 
 	// aiCallFunc is an internal hook for testing. When non-nil, it replaces
 	// the real AICall function. Exported tests set this via the unexported
@@ -74,8 +75,13 @@ type SpecAgent struct {
 }
 
 // NewSpecAgent creates a SpecAgent with the given model tier string.
-func NewSpecAgent(modelTier string) *SpecAgent {
-	return &SpecAgent{modelTier: modelTier}
+// An optional model variant may be provided for variant-aware tier resolution.
+func NewSpecAgent(modelTier string, modelVariant ...string) *SpecAgent {
+	a := &SpecAgent{modelTier: modelTier}
+	if len(modelVariant) > 0 {
+		a.modelVariant = modelVariant[0]
+	}
+	return a
 }
 
 // AssessPRD sends a PRD to the LLM with the assessment system prompt and
@@ -109,14 +115,15 @@ func (sa *SpecAgent) AssessPRD(ctx context.Context, prdText, specName string, op
 	// Build AICall options.
 	assessTemp := 0.2
 	callOpts := AICallOptions{
-		ModelTier:   sa.modelTier,
-		System:      systemPrompt,
-		Messages:    []Message{{Role: "user", Content: userPrompt}},
-		Tools:       toolDefs,
-		ToolChoice:  map[string]any{"type": "any"},
-		Temperature: &assessTemp,
-		MaxTokens:   4096,
-		Context:     "AssessPRD",
+		ModelTier:    sa.modelTier,
+		ModelVariant: sa.modelVariant,
+		System:       systemPrompt,
+		Messages:     []Message{{Role: "user", Content: userPrompt}},
+		Tools:        toolDefs,
+		ToolChoice:   map[string]any{"type": "any"},
+		Temperature:  &assessTemp,
+		MaxTokens:    4096,
+		Context:      "AssessPRD",
 	}
 
 	// Invoke AICall (or test mock).
@@ -190,14 +197,15 @@ func (sa *SpecAgent) RefinePRD(ctx context.Context, prdText string, answers map[
 	// Build AICall options.
 	refineTemp := 0.2
 	callOpts := AICallOptions{
-		ModelTier:   sa.modelTier,
-		System:      systemPrompt,
-		Messages:    []Message{{Role: "user", Content: userPrompt}},
-		Tools:       toolDefs,
-		ToolChoice:  map[string]any{"type": "any"},
-		Temperature: &refineTemp,
-		MaxTokens:   16384,
-		Context:     "RefinePRD",
+		ModelTier:    sa.modelTier,
+		ModelVariant: sa.modelVariant,
+		System:       systemPrompt,
+		Messages:     []Message{{Role: "user", Content: userPrompt}},
+		Tools:        toolDefs,
+		ToolChoice:   map[string]any{"type": "any"},
+		Temperature:  &refineTemp,
+		MaxTokens:    16384,
+		Context:      "RefinePRD",
 	}
 
 	// Invoke AICall (or test mock).
@@ -303,13 +311,14 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 		toolName := "submit_" + artifactName
 
 		callOpts := AICallOptions{
-			ModelTier:   sa.modelTier,
-			System:      systemPrompt,
-			Messages:    []Message{{Role: "user", Content: userPrompt}},
-			Tools:       toolDefs,
-			ToolChoice:  map[string]any{"type": "any"},
-			Temperature: &temp,
-			Context:     fmt.Sprintf("GenerateArtifacts:%s", artifactName),
+			ModelTier:    sa.modelTier,
+			ModelVariant: sa.modelVariant,
+			System:       systemPrompt,
+			Messages:     []Message{{Role: "user", Content: userPrompt}},
+			Tools:        toolDefs,
+			ToolChoice:   map[string]any{"type": "any"},
+			Temperature:  &temp,
+			Context:      fmt.Sprintf("GenerateArtifacts:%s", artifactName),
 		}
 
 		_, raw, err := callFn(ctx, callOpts)
@@ -359,13 +368,14 @@ func (sa *SpecAgent) GenerateArtifacts(ctx context.Context, prdText, specID, spe
 			}
 
 			repairOpts := AICallOptions{
-				ModelTier:   sa.modelTier,
-				System:      systemPrompt,
-				Messages:    repairMessages,
-				Tools:       toolDefs,
-				ToolChoice:  map[string]any{"type": "any"},
-				Temperature: &temp,
-				Context:     fmt.Sprintf("GenerateArtifacts:%s:repair:%d", artifactName, repair+1),
+				ModelTier:    sa.modelTier,
+				ModelVariant: sa.modelVariant,
+				System:       systemPrompt,
+				Messages:     repairMessages,
+				Tools:        toolDefs,
+				ToolChoice:   map[string]any{"type": "any"},
+				Temperature:  &temp,
+				Context:      fmt.Sprintf("GenerateArtifacts:%s:repair:%d", artifactName, repair+1),
 			}
 
 			_, raw, err = callFn(ctx, repairOpts)

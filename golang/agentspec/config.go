@@ -12,6 +12,7 @@ import (
 // config.toml with optional environment variable overrides.
 type AgentSpecConfig struct {
 	Model         string
+	ModelVariant  string // optional variant for tier resolution (e.g. "extended")
 	AssessModel   string // optional per-phase override; empty means use Model
 	RefineModel   string // optional per-phase override; empty means use Model
 	GenerateModel string // optional per-phase override; empty means use Model
@@ -47,6 +48,7 @@ func (c AgentSpecConfig) ModelForPhase(phase string) string {
 // configFileModel maps to the [model] TOML section.
 type configFileModel struct {
 	Model         string `toml:"model"`
+	ModelVariant  string `toml:"model_variant"`
 	AssessModel   string `toml:"assess_model"`
 	RefineModel   string `toml:"refine_model"`
 	GenerateModel string `toml:"generate_model"`
@@ -187,6 +189,7 @@ func loadConfigFile(path string) (bool, AgentSpecConfig, error) {
 
 	cfg := AgentSpecConfig{
 		Model:         cf.Model.Model,
+		ModelVariant:  cf.Model.ModelVariant,
 		AssessModel:   cf.Model.AssessModel,
 		RefineModel:   cf.Model.RefineModel,
 		GenerateModel: cf.Model.GenerateModel,

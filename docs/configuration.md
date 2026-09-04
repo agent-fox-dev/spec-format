@@ -17,13 +17,14 @@ tool uses `claude-sonnet-4-6` (the STANDARD tier) by default.
 
 ## Model Selection
 
-Three model tiers are available, each mapping to a specific Claude model:
+Four registered models are available across three tiers:
 
-| Tier | Model ID | Use case |
-|------|----------|----------|
-| `SIMPLE` | `claude-haiku-4-5` | Fast, low-cost tasks |
-| `STANDARD` | `claude-sonnet-4-6` | Default -- good balance of quality and speed |
-| `ADVANCED` | `claude-opus-4-6` | Highest quality, slower and more expensive |
+| Tier | Model ID | Variant | Use case |
+|------|----------|---------|----------|
+| `SIMPLE` | `claude-haiku-4-5` | standard | Fast, low-cost tasks |
+| `STANDARD` | `claude-sonnet-4-6` | standard | Default -- good balance of quality and speed |
+| `ADVANCED` | `claude-opus-4-6` | standard | Highest quality, slower and more expensive |
+| `ADVANCED` | `claude-opus-4-6[1m]` | extended | 1M-context window for large specs |
 
 The default tier is `STANDARD`.
 
@@ -37,6 +38,9 @@ export AF_SPEC_MODEL=ADVANCED
 
 # Or specify a model ID directly
 export AF_SPEC_MODEL=claude-opus-4-6
+
+# Use the 1M-context extended variant directly
+export AF_SPEC_MODEL=claude-opus-4-6[1m]
 ```
 
 This environment variable has the highest precedence and overrides any
@@ -52,8 +56,8 @@ model = "ADVANCED"
 ```
 
 The `model` field accepts either a tier name (`SIMPLE`, `STANDARD`, `ADVANCED`)
-or a model ID (`claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`).
-Tier names are matched case-insensitively.
+or a model ID (`claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`,
+`claude-opus-4-6[1m]`). Tier names are matched case-insensitively.
 
 ## LLM Providers
 
@@ -155,6 +159,7 @@ section stores authentication and cloud provider settings.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `model` | string | `"STANDARD"` | Default model tier or model ID for all phases |
+| `model_variant` | string | *(none)* | Variant for tier resolution (e.g. `"extended"` for the 1M-context model) |
 | `assess_model` | string | *(inherits `model`)* | Override for the PRD assessment phase |
 | `refine_model` | string | *(inherits `model`)* | Override for the PRD refinement phase |
 | `generate_model` | string | *(inherits `model`)* | Override for artifact generation (and repair) |
@@ -162,6 +167,12 @@ section stores authentication and cloud provider settings.
 Each per-phase field accepts either a tier name (`SIMPLE`, `STANDARD`, `ADVANCED`) or a
 direct model ID (`claude-haiku-4-5`, etc.). When omitted, the phase inherits the top-level
 `model` value.
+
+The `model_variant` field selects a variant within a tier. When set to
+`"extended"` with `model = "ADVANCED"`, the 1M-context model
+`claude-opus-4-6[1m]` is used instead of the standard `claude-opus-4-6`.
+When the variant does not match any registered model for the resolved tier,
+the tier default is used.
 
 #### Cost-optimization example
 
@@ -179,6 +190,24 @@ With this configuration:
 - `spec assess` uses `claude-haiku-4-5` (SIMPLE)
 - `spec generate` uses `claude-opus-4-6` (ADVANCED) for all three artifact calls
 - `spec refine` uses `claude-sonnet-4-6` (STANDARD, inherited from `model`)
+
+#### Extended-context example
+
+Use the 1M-context variant of the ADVANCED tier for large specs where the
+200K context window of `claude-opus-4-6` is insufficient:
+
+```toml
+[model]
+model = "ADVANCED"
+model_variant = "extended"
+```
+
+This resolves to `claude-opus-4-6[1m]`. Alternatively, specify the model ID
+directly:
+
+```sh
+export AF_SPEC_MODEL=claude-opus-4-6[1m]
+```
 
 #### Available `[provider]` fields
 
@@ -230,7 +259,7 @@ caching.
 | Variable | Purpose |
 |----------|---------|
 | `ANTHROPIC_API_KEY` | API key for direct Anthropic API access |
-| `AF_SPEC_MODEL` | Override model tier (`SIMPLE`, `STANDARD`, `ADVANCED`) or model ID |
+| `AF_SPEC_MODEL` | Override model tier (`SIMPLE`, `STANDARD`, `ADVANCED`) or model ID (e.g. `claude-opus-4-6[1m]`) |
 | `CLAUDE_CODE_USE_VERTEX` | Set to any non-empty value to route requests through Google Vertex AI |
 | `CLOUD_ML_REGION` | Google Cloud region for Vertex AI (required when Vertex is enabled) |
 | `CLAUDE_CODE_USE_BEDROCK` | Set to any non-empty value to route requests through AWS Bedrock |

@@ -480,6 +480,55 @@ assess_model = "claude-haiku-4-5"
 	}
 }
 
+// TestLoadConfig_ModelVariant verifies that model_variant is parsed from the
+// [model] section of config.toml.
+func TestLoadConfig_ModelVariant(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	configContent := `[model]
+model = "ADVANCED"
+model_variant = "extended"
+`
+	writeTestFile(t, filepath.Join(tmpDir, ".specs", "config.toml"), configContent)
+	chdirTemp(t, tmpDir)
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AF_SPEC_MODEL", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() returned error: %v", err)
+	}
+
+	if cfg.ModelVariant != "extended" {
+		t.Errorf("ModelVariant = %q; want %q", cfg.ModelVariant, "extended")
+	}
+}
+
+// TestLoadConfig_ModelVariantDefaultEmpty verifies that ModelVariant defaults
+// to an empty string when not set.
+func TestLoadConfig_ModelVariantDefaultEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	configContent := `[model]
+model = "ADVANCED"
+`
+	writeTestFile(t, filepath.Join(tmpDir, ".specs", "config.toml"), configContent)
+	chdirTemp(t, tmpDir)
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AF_SPEC_MODEL", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() returned error: %v", err)
+	}
+
+	if cfg.ModelVariant != "" {
+		t.Errorf("ModelVariant = %q; want empty string", cfg.ModelVariant)
+	}
+}
+
 // TestModelForPhase_FallbackForUnknownPhase verifies that ModelForPhase
 // returns the top-level Model when called with an unrecognised phase name.
 func TestModelForPhase_FallbackForUnknownPhase(t *testing.T) {

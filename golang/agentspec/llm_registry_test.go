@@ -227,3 +227,82 @@ func TestSpec07_ResolveModel_CaseInsensitive(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Extended model and variant-aware resolution (Issue #95)
+// ---------------------------------------------------------------------------
+
+// TestSpec07_ModelRegistry_ExtendedEntry verifies that claude-opus-4-6[1m]
+// is registered with the correct tier and variant.
+func TestSpec07_ModelRegistry_ExtendedEntry(t *testing.T) {
+	entry, ok := ModelRegistry["claude-opus-4-6[1m]"]
+	if !ok {
+		t.Fatal("ModelRegistry missing claude-opus-4-6[1m]")
+	}
+	if entry.Tier != TierAdvanced {
+		t.Errorf("Tier = %q; want %q", entry.Tier, TierAdvanced)
+	}
+	if entry.Variant != "extended" {
+		t.Errorf("Variant = %q; want %q", entry.Variant, "extended")
+	}
+}
+
+// TestSpec07_ResolveModel_DirectExtended verifies direct lookup of the
+// extended model ID.
+func TestSpec07_ResolveModel_DirectExtended(t *testing.T) {
+	gotID, err := ResolveModel("claude-opus-4-6[1m]")
+	if err != nil {
+		t.Fatalf("ResolveModel(%q) returned error: %v", "claude-opus-4-6[1m]", err)
+	}
+	if gotID != "claude-opus-4-6[1m]" {
+		t.Errorf("ResolveModel(%q) = %q; want %q", "claude-opus-4-6[1m]", gotID, "claude-opus-4-6[1m]")
+	}
+}
+
+// TestSpec07_ResolveModel_VariantExtended verifies variant-aware tier
+// resolution returns the extended model.
+func TestSpec07_ResolveModel_VariantExtended(t *testing.T) {
+	gotID, err := ResolveModel("ADVANCED", "extended")
+	if err != nil {
+		t.Fatalf("ResolveModel(%q, %q) returned error: %v", "ADVANCED", "extended", err)
+	}
+	if gotID != "claude-opus-4-6[1m]" {
+		t.Errorf("got %q; want %q", gotID, "claude-opus-4-6[1m]")
+	}
+}
+
+// TestSpec07_ResolveModel_VariantCaseInsensitiveTier verifies case-insensitive
+// tier matching with a variant.
+func TestSpec07_ResolveModel_VariantCaseInsensitiveTier(t *testing.T) {
+	gotID, err := ResolveModel("advanced", "extended")
+	if err != nil {
+		t.Fatalf("ResolveModel(%q, %q) returned error: %v", "advanced", "extended", err)
+	}
+	if gotID != "claude-opus-4-6[1m]" {
+		t.Errorf("got %q; want %q", gotID, "claude-opus-4-6[1m]")
+	}
+}
+
+// TestSpec07_ResolveModel_NoVariantUnchanged verifies that no-variant
+// resolution still returns the tier default.
+func TestSpec07_ResolveModel_NoVariantUnchanged(t *testing.T) {
+	gotID, err := ResolveModel("ADVANCED")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if gotID != "claude-opus-4-6" {
+		t.Errorf("got %q; want %q", gotID, "claude-opus-4-6")
+	}
+}
+
+// TestSpec07_ResolveModel_UnknownVariantFallback verifies that an unknown
+// variant falls back to the tier default.
+func TestSpec07_ResolveModel_UnknownVariantFallback(t *testing.T) {
+	gotID, err := ResolveModel("ADVANCED", "nonexistent")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if gotID != "claude-opus-4-6" {
+		t.Errorf("got %q; want %q", gotID, "claude-opus-4-6")
+	}
+}

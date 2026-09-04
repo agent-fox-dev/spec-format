@@ -247,9 +247,7 @@ class TestPerPhaseModelConfig:
 
         Requirement: NS-REQ-1
         """
-        config_toml.write_text(
-            '[model]\nmodel = "STANDARD"\nassess_model = "SIMPLE"\n'
-        )
+        config_toml.write_text('[model]\nmodel = "STANDARD"\nassess_model = "SIMPLE"\n')
         from agentspec.config import load_config
 
         config = load_config()
@@ -328,9 +326,7 @@ class TestPerPhaseModelConfig:
         config_toml: Path,
     ) -> None:
         """refine_model routes the refine phase to the specified tier."""
-        config_toml.write_text(
-            '[model]\nmodel = "SIMPLE"\nrefine_model = "STANDARD"\n'
-        )
+        config_toml.write_text('[model]\nmodel = "SIMPLE"\nrefine_model = "STANDARD"\n')
         from agentspec.config import load_config
 
         config = load_config()
@@ -345,9 +341,7 @@ class TestPerPhaseModelConfig:
         config_toml: Path,
     ) -> None:
         """model_for_phase returns the top-level model for unknown phase names."""
-        config_toml.write_text(
-            '[model]\nmodel = "STANDARD"\nassess_model = "SIMPLE"\n'
-        )
+        config_toml.write_text('[model]\nmodel = "STANDARD"\nassess_model = "SIMPLE"\n')
         from agentspec.config import load_config
 
         config = load_config()

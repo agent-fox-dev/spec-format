@@ -767,7 +767,7 @@ func (s *SpecSession) resolveAgent(phase string) assessor {
 	if err != nil {
 		return NewSpecAgent("STANDARD")
 	}
-	return NewSpecAgent(cfg.ModelForPhase(phase))
+	return NewSpecAgent(cfg.ModelForPhase(phase), cfg.ModelVariant)
 }
 
 // persistError sets the LastErr field and persists the session state.

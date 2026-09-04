@@ -823,7 +823,7 @@ def _create_agent(phase: str = "") -> SpecAgent:
 
     """
     config = load_config()
-    return SpecAgent(config.model_for_phase(phase))
+    return SpecAgent(config.model_for_phase(phase), config.model_variant)
 
 
 def _error_to_dict(exc: AgentError) -> dict[str, Any]:

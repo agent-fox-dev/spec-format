@@ -81,15 +81,19 @@ def _classify_sdk_error(exc: Exception) -> tuple[str, int | None]:
 class SpecAgent:
     """Core agent for spec operations."""
 
-    def __init__(self, model_tier: str) -> None:
+    def __init__(self, model_tier: str, model_variant: str | None = None) -> None:
         """Initialize with a model tier name.
 
         Args:
             model_tier: A model tier name (e.g. ``"STANDARD"``) or a
                 direct model ID (e.g. ``"claude-sonnet-4-6"``).
                 Resolved via ``resolve_model()`` inside ``ai_call()``.
+            model_variant: Optional variant (e.g. ``"extended"``).
+                Passed to ``resolve_model()`` for variant-aware tier
+                resolution.
         """
         self._model = model_tier
+        self._model_variant = model_variant
 
     # -- public methods ---------------------------------------------------
 
@@ -523,6 +527,7 @@ class SpecAgent:
                 messages=messages,
                 system=system,
                 context="spec-generation",
+                model_variant=self._model_variant,
                 **extra_kwargs,
             )
         except (

@@ -48,6 +48,9 @@ MODEL_REGISTRY: dict[str, ModelEntry] = {
     "claude-opus-4-6": ModelEntry(
         "claude-opus-4-6", ModelTier.ADVANCED, variant="standard"
     ),
+    "claude-opus-4-6[1m]": ModelEntry(
+        "claude-opus-4-6[1m]", ModelTier.ADVANCED, variant="extended"
+    ),
 }
 
 TIER_DEFAULTS: dict[ModelTier, str] = {
@@ -63,14 +66,24 @@ class CachePolicy(StrEnum):
     EXTENDED = "extended"
 
 
-def resolve_model(name: str) -> str:
-    """Resolve a tier name or model ID to a model ID string."""
+def resolve_model(name: str, variant: str | None = None) -> str:
+    """Resolve a tier name or model ID to a model ID string.
+
+    Tier names are matched case-insensitively.  When *variant* is given
+    and *name* resolves to a tier, the registry is scanned for an entry
+    whose ``(tier, variant)`` matches before falling back to the tier
+    default.
+    """
     try:
-        tier = ModelTier(name)
+        tier = ModelTier(name.upper())
     except ValueError:
         tier = None
 
     if tier is not None:
+        if variant is not None:
+            for entry in MODEL_REGISTRY.values():
+                if entry.tier == tier and entry.variant == variant:
+                    return entry.model_id
         return TIER_DEFAULTS[tier]
 
     if name in MODEL_REGISTRY:
@@ -91,6 +104,7 @@ def resolve_model(name: str) -> str:
 _CACHE_TOKEN_THRESHOLDS: dict[str, int] = {
     "claude-sonnet-4-6": 2048,
     "claude-opus-4-6": 4096,
+    "claude-opus-4-6[1m]": 4096,
     "claude-haiku-4-5": 4096,
 }
 _DEFAULT_THRESHOLD: int = 4096
@@ -220,13 +234,14 @@ async def ai_call(
     system: str | list[dict[str, Any]] | None = None,
     context: str,
     cache_policy: CachePolicy = CachePolicy.DEFAULT,
+    model_variant: str | None = None,
     **kwargs: Any,
 ) -> tuple[str | None, Any]:
     """Async AI call: resolve model, create client, retry, extract text.
 
     Returns (response_text_or_none, raw_response).
     """
-    model_id = resolve_model(model_tier)
+    model_id = resolve_model(model_tier, variant=model_variant)
 
     modified_system = _inject_cache_control(
         system, model=model_id, cache_policy=cache_policy

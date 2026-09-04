@@ -133,6 +133,8 @@ func isCacheRejection(err error) bool {
 type AICallOptions struct {
 	// ModelTier is the model tier or model ID to use.
 	ModelTier string
+	// ModelVariant is the optional variant for tier resolution (e.g. "extended").
+	ModelVariant string
 	// MaxTokens is the maximum number of tokens to generate.
 	// Defaults to 65536 when zero.
 	MaxTokens int
@@ -292,7 +294,7 @@ func AICall(ctx context.Context, opts AICallOptions) (string, any, error) {
 	ApplyDefaults(&opts)
 
 	// Resolve model tier to a model ID.
-	modelID, err := ResolveModel(opts.ModelTier)
+	modelID, err := ResolveModel(opts.ModelTier, opts.ModelVariant)
 	if err != nil {
 		return "", nil, &AgentError{
 			Detail:        fmt.Sprintf("failed to resolve model: %v", err),

@@ -104,15 +104,19 @@ class TestModelAndProviderSections:
         config = load_config()
         assert config.model == "STANDARD"
 
-    def test_ts01_25_agent_spec_config_has_exactly_four_fields(self) -> None:
-        """TS-01-25: ``AgentSpecConfig`` is a flat dataclass with exactly
-        ``model``, ``auth_method``, ``vertex_project``, ``vertex_region``.
+    def test_ts01_25_agent_spec_config_has_expected_fields(self) -> None:
+        """TS-01-25: ``AgentSpecConfig`` is a flat dataclass with the
+        expected model, variant, per-phase, and provider fields.
 
         Requirement: 01-REQ-7.4
         """
         field_names = {f.name for f in dataclasses.fields(AgentSpecConfig)}
         assert field_names == {
             "model",
+            "model_variant",
+            "assess_model",
+            "refine_model",
+            "generate_model",
             "auth_method",
             "vertex_project",
             "vertex_region",
