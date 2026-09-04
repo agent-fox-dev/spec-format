@@ -40,28 +40,28 @@ override is configured.
 
 ## How the Tier Is Resolved
 
-Each `_call_api()` invocation resolves the model through the following chain:
+Both the Python library and the Go CLI resolve the model through the same
+configuration chain:
 
-1. **`load_config()`** constructs an `AgentSpecConfig` dataclass with defaults
-   (`model="STANDARD"`, all per-phase fields `None`). It checks two TOML paths
-   in order: `.specs/config.toml` (project-local), then `~/.specs/config.toml`
-   (user-global). The first file found wins; files are not merged. Symlinked
-   config files are rejected.
+1. **`LoadConfig()` / `load_config()`** constructs an `AgentSpecConfig` with
+   defaults (`model="STANDARD"`, all per-phase fields empty/`None`). It checks
+   two TOML paths in order: `.specs/config.toml` (project-local), then
+   `~/.specs/config.toml` (user-global). The first file found wins; files are
+   not merged. Symlinked config files are rejected (Python only).
 
 2. **`AF_SPEC_MODEL` environment variable**, if set, overrides `config.model`.
    Per-phase fields (`assess_model`, `refine_model`, `generate_model`) are not
    affected by this variable — it applies to all phases uniformly.
 
-3. **`config.model_for_phase(phase)`** returns the phase-specific field when it
-   is non-`None`; otherwise falls back to `config.model`.
+3. **`config.ModelForPhase(phase)` / `config.model_for_phase(phase)`** returns
+   the phase-specific field when it is set; otherwise falls back to
+   `config.model`.
 
-4. **`SpecAgent(model_tier)`** is constructed with the resolved tier string and
-   holds it as `self._model`.
+4. **`SpecAgent(model_tier)`** / **`NewSpecAgent(model_tier)`** is constructed
+   with the resolved tier string.
 
-5. On each API call, **`ai_call(model_tier=self._model)`** is invoked
-   (`packages/agentspec/agentspec/client.py`).
-
-6. **`resolve_model(name)`** converts the tier string to a concrete model ID:
+5. On each API call, **`resolve_model(name)`** converts the tier string to a
+   concrete model ID:
    - If `name` matches `SIMPLE`, `STANDARD`, or `ADVANCED` (exact-case in
      Python via `ModelTier` StrEnum; case-insensitive in Go via
      `strings.ToUpper`), the corresponding default model ID is returned from
@@ -70,8 +70,9 @@ Each `_call_api()` invocation resolves the model through the following chain:
      allowing direct model ID strings such as `claude-sonnet-4-6`.
    - Otherwise a `ConfigError` is raised (Python) or an error is returned (Go).
 
-Source: `packages/agentspec/agentspec/client.py:66–84`;
-`golang/agentspec/model_registry.go:60–77`.
+Sources: `packages/agentspec/agentspec/client.py:66–84`;
+`golang/agentspec/model_registry.go:60–77`;
+`golang/agentspec/session.go:resolveAgent()`.
 
 ## Configuration
 
@@ -166,12 +167,6 @@ exception as an `AgentError`. Error categories classified as retryable:
 `"rate_limit"`, `"transient"`, `"overloaded"`.
 
 ## Known Limitations
-
-- **Go CLI ignores config** ([#93](https://github.com/agent-fox-dev/spec-format/issues/93)):
-  The compiled Go binary hardcodes `STANDARD` in `session.go:resolveAgent()` and
-  never calls `LoadConfig()`. The `AF_SPEC_MODEL` env var and `.specs/config.toml`
-  are silently ignored for Go consumers. Prompt-caching thresholds and retry
-  logic also reside only in the Python client.
 
 - **Go CLI has no per-phase model support** ([#94](https://github.com/agent-fox-dev/spec-format/issues/94)):
   Per-phase fields (`assess_model`, `refine_model`, `generate_model`) are
