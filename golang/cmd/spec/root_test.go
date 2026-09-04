@@ -207,22 +207,29 @@ func TestTS08_03_BannerOnStderr(t *testing.T) {
 		t.Error("shouldShowBanner(args=['--json']) = true; want false")
 	}
 
-	// printBanner should write to the given writer, not stdout
+	// printBanner should write to the given writer, not stdout.
+	// The version is NOT embedded in the art itself (NS-REQ-3).
+	// We set a sentinel version to verify it does not leak into the art.
 	var bannerBuf bytes.Buffer
 	oldVersion := version
-	version = "test-ver"
+	version = "sentinel-ver"
 	defer func() { version = oldVersion }()
-
-	printBanner(&bannerBuf, version)
+	printBanner(&bannerBuf)
 	bannerOutput := bannerBuf.String()
 	if len(bannerOutput) == 0 {
-		t.Error("printBanner() produced no output; want ASCII art banner with tool name and version")
+		t.Error("printBanner() produced no output; want ASCII art banner")
 	}
-	if !strings.Contains(bannerOutput, "spec") && !strings.Contains(bannerOutput, "Spec") {
-		t.Errorf("banner output = %q; want it to contain tool name", bannerOutput)
+	// Art must contain the fifth descender line from the Python SPEC_ART.
+	if !strings.Contains(bannerOutput, "|_|") {
+		t.Errorf("banner output = %q; want it to contain the descender line '|_|'", bannerOutput)
 	}
-	if !strings.Contains(bannerOutput, "test-ver") {
-		t.Errorf("banner output = %q; want it to contain version %q", bannerOutput, "test-ver")
+	// Art must NOT use the old narrow-font glyphs.
+	if strings.Contains(bannerOutput, "| _ |") || strings.Contains(bannerOutput, "|  _/") {
+		t.Errorf("banner output = %q; want old narrow-font glyphs removed", bannerOutput)
+	}
+	// Version must NOT appear inside the art (it is printed separately by root.go).
+	if strings.Contains(bannerOutput, "sentinel-ver") {
+		t.Errorf("banner output = %q; want version string absent from art", bannerOutput)
 	}
 }
 

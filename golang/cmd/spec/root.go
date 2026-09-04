@@ -82,8 +82,8 @@ func newRootCmd() *cobra.Command {
 			// Show banner if appropriate.
 			if shouldShowBanner(quiet, subcmdName, os.Args) {
 				cwd, _ := os.Getwd()
-				printBanner(cmd.ErrOrStderr(), version)
-				fmt.Fprintf(cmd.ErrOrStderr(), "  working dir: %s\n\n", cwd)
+				printBanner(cmd.ErrOrStderr())
+				fmt.Fprintf(cmd.ErrOrStderr(), "spec v%s  %s\n\n", version, cwd)
 			}
 
 			return nil

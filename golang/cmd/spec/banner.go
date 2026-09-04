@@ -34,12 +34,14 @@ func shouldShowBanner(quiet bool, subcmd string, args []string) bool {
 }
 
 // printBanner writes the ASCII art banner to the given writer.
-func printBanner(w io.Writer, ver string) {
+// The art matches packages/spec/spec/ui.py SPEC_ART exactly.
+// The version is not embedded in the art; it is printed separately by the caller.
+func printBanner(w io.Writer) {
 	fmt.Fprintf(w, `
-  ___  ___  ___  ___
- / __|| _ \| __|| __|
- \__ \|  _/| _| | __|
- |___/|_|  |___||___|  spec v%s
-
-`, ver)
+   ___ _ __   ___  ___
+  / __| '_ \ / _ \/ __|
+  \__ \ |_) |  __/ (__
+  |___/ .__/ \___|\___|
+      |_|
+`)
 }
