@@ -55,6 +55,10 @@ func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "spec",
 		Short: "Spec CLI — manage agentspec specifications",
+		// Suppress the auto-injected cobra completion subcommand so that
+		// the Go CLI surface area matches the Python CLI (which uses Click
+		// and has no such command).
+		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 		// When invoked without subcommand, print help and exit 0.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {

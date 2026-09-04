@@ -313,3 +313,54 @@ func TestTS08_01_UnknownFlagError(t *testing.T) {
 		t.Fatal("Execute() with unknown flag returned nil; want error")
 	}
 }
+
+// --- NS-REQ-1/2/3: Verify the auto-injected cobra completion subcommand
+//     is absent from the root command ---
+
+// TestNSREQ1_CompletionSubcommandAbsent verifies that the root command has
+// no registered subcommand named "completion".
+// Covers: TS-NS-1, NS-REQ-1
+func TestNSREQ1_CompletionSubcommandAbsent(t *testing.T) {
+	cmd := newRootCmd()
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "completion" {
+			t.Errorf("root command has a subcommand named %q; want it absent", sub.Name())
+		}
+	}
+}
+
+// TestNSREQ2_HelpOutputNoCompletion verifies that "--help" output does not
+// list "completion" as an available subcommand.
+// Covers: TS-NS-2, NS-REQ-2
+func TestNSREQ2_HelpOutputNoCompletion(t *testing.T) {
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--help"})
+
+	_ = cmd.Execute()
+
+	output := buf.String()
+	if strings.Contains(output, "completion") {
+		t.Errorf("--help output contains %q; want it absent\nfull output:\n%s", "completion", output)
+	}
+}
+
+// TestNSREQ3_CompletionCommandUnknown verifies that invoking "completion"
+// returns a non-nil error containing "unknown command".
+// Covers: TS-NS-3, NS-REQ-3
+func TestNSREQ3_CompletionCommandUnknown(t *testing.T) {
+	cmd := newRootCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"completion"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() with args [completion] returned nil error; want unknown-command error")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("error = %q; want it to contain %q", err.Error(), "unknown command")
+	}
+}

@@ -8,7 +8,12 @@
       "Bash(go build *)",
       "Bash(go run *)",
       "Bash(gofmt *)",
-      "Bash(make *)"
+      "Bash(make *)",
+      "Bash(cd * && go test *)",
+      "Bash(cd * && go build *)",
+      "Bash(cd * && go vet *)",
+      "Bash(cd * && make *)",
+      "Bash(cd * && uv *)"
     ]
   }
 }
