@@ -154,7 +154,32 @@ section stores authentication and cloud provider settings.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model` | string | `"STANDARD"` | Model tier or model ID |
+| `model` | string | `"STANDARD"` | Default model tier or model ID for all phases |
+| `assess_model` | string | *(inherits `model`)* | Override for the PRD assessment phase |
+| `refine_model` | string | *(inherits `model`)* | Override for the PRD refinement phase |
+| `generate_model` | string | *(inherits `model`)* | Override for the artifact generation phase (and repair) |
+
+Each per-phase field accepts either a tier name (`SIMPLE`, `STANDARD`, `ADVANCED`) or a direct
+model ID (e.g. `claude-haiku-4-5`).  When a per-phase field is absent, the phase uses the
+top-level `model` value.
+
+##### Cost-optimized example
+
+Assessment calls are short and cheap; generation calls are long and expensive.  Use per-phase
+overrides to save cost without sacrificing generation quality:
+
+```toml
+[model]
+model = "STANDARD"          # default for all phases
+
+assess_model = "SIMPLE"     # assessment is a quick quality check — use the fast model
+generate_model = "ADVANCED" # generation produces the spec artifacts — use the best model
+```
+
+With this configuration:
+- `spec assess` → `claude-haiku-4-5`
+- `spec refine` → `claude-sonnet-4-6` (inherits `model`)
+- `spec generate` → `claude-opus-4-6`
 
 #### Available `[provider]` fields
 
@@ -211,3 +236,9 @@ caching.
 | `CLOUD_ML_REGION` | Google Cloud region for Vertex AI (required when Vertex is enabled) |
 | `CLAUDE_CODE_USE_BEDROCK` | Set to any non-empty value to route requests through AWS Bedrock |
 | `AF_AGENT` | Set to `1` for agent mode (suppresses banner, routes errors to JSON on stdout) |
+
+## See Also
+
+- [Model Usage](model-usage.md) — how the spec pipeline selects and resolves
+  Claude models across the assess, refine, and generate phases, with details on
+  prompt caching thresholds, retry behavior, and known limitations.
