@@ -1,4 +1,4 @@
-.PHONY: clean test test-fast lint format check json-go install-skills uninstall-skills \
+.PHONY: clean test test-fast lint format check json-go \
        build-all build-darwin-arm64 build-linux-arm64 build-linux-amd64
 
 GOLANG_DIR := $(CURDIR)/golang
@@ -7,9 +7,6 @@ PYTHON_DIR := $(CURDIR)/packages/afspec
 SCHEMAS_DIR := $(CURDIR)/specification/schemas
 GO_SCHEMAS_DIR := $(GOLANG_DIR)/schemas
 PYTHON_SCHEMAS_DIR := $(PYTHON_DIR)/afspec/schemas
-
-SKILLS_TEMPLATES_DIR := $(CURDIR)/skills
-CLAUDE_SKILLS_DIR := $(HOME)/.claude/skills
 
 # Build configuration
 VERSION ?= dev
@@ -68,21 +65,3 @@ json-gen:
 	cd golang && go-jsonschema -p afspec $(GO_SCHEMAS_DIR)/requirements.v1.json > $(GOLANG_DIR)/requirements.v1.go
 	cd golang && go-jsonschema -p afspec $(GO_SCHEMAS_DIR)/test_spec.v1.json > $(GOLANG_DIR)/test_spec.v1.go
 	cd golang && go-jsonschema -p afspec $(GO_SCHEMAS_DIR)/prd-frontmatter.v1.json > $(GOLANG_DIR)/prd-frontmatter.v1.go
-
-install-skills:
-	@for skill in $(SKILLS_TEMPLATES_DIR)/*; do \
-		name=$$(basename "$$skill"); \
-		target="$(CLAUDE_SKILLS_DIR)/$$name"; \
-		mkdir -p "$$target"; \
-		cp "$$skill" "$$target/SKILL.md"; \
-		echo "installed: $$name -> $$target/SKILL.md"; \
-	done
-
-uninstall-skills:
-	@for skill in $(SKILLS_TEMPLATES_DIR)/*; do \
-		name=$$(basename "$$skill"); \
-		if [ -d "$(CLAUDE_SKILLS_DIR)/$$name" ]; then \
-			rm -rf "$(CLAUDE_SKILLS_DIR)/$$name"; \
-			echo "removed: $$name"; \
-		fi; \
-	done

@@ -6,7 +6,7 @@ validate, mutate, save, and render specs with byte-for-byte round-trip fidelity.
 ## Installation
 
 ```bash
-go get github.com/agent-fox-dev/spec-format@v1.4.0
+go get github.com/agent-fox-dev/spec-format@v1.4.1
 ```
 
 ## Quick Start
