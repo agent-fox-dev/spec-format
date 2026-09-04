@@ -157,29 +157,28 @@ section stores authentication and cloud provider settings.
 | `model` | string | `"STANDARD"` | Default model tier or model ID for all phases |
 | `assess_model` | string | *(inherits `model`)* | Override for the PRD assessment phase |
 | `refine_model` | string | *(inherits `model`)* | Override for the PRD refinement phase |
-| `generate_model` | string | *(inherits `model`)* | Override for the artifact generation phase (and repair) |
+| `generate_model` | string | *(inherits `model`)* | Override for artifact generation (and repair) |
 
-Each per-phase field accepts either a tier name (`SIMPLE`, `STANDARD`, `ADVANCED`) or a direct
-model ID (e.g. `claude-haiku-4-5`).  When a per-phase field is absent, the phase uses the
-top-level `model` value.
+Each per-phase field accepts either a tier name (`SIMPLE`, `STANDARD`, `ADVANCED`) or a
+direct model ID (`claude-haiku-4-5`, etc.). When omitted, the phase inherits the top-level
+`model` value.
 
-##### Cost-optimized example
+#### Cost-optimization example
 
-Assessment calls are short and cheap; generation calls are long and expensive.  Use per-phase
-overrides to save cost without sacrificing generation quality:
+Use a cheaper model for the assessment phase (which is a short, fast call) and a more
+capable model for artifact generation (which produces the bulk of the output):
 
 ```toml
 [model]
-model = "STANDARD"          # default for all phases
-
-assess_model = "SIMPLE"     # assessment is a quick quality check — use the fast model
-generate_model = "ADVANCED" # generation produces the spec artifacts — use the best model
+model = "STANDARD"        # default for phases not listed below
+assess_model = "SIMPLE"   # fast assessment — saves cost
+generate_model = "ADVANCED"  # high-quality artifact generation
 ```
 
 With this configuration:
-- `spec assess` → `claude-haiku-4-5`
-- `spec refine` → `claude-sonnet-4-6` (inherits `model`)
-- `spec generate` → `claude-opus-4-6`
+- `spec assess` uses `claude-haiku-4-5` (SIMPLE)
+- `spec generate` uses `claude-opus-4-6` (ADVANCED) for all three artifact calls
+- `spec refine` uses `claude-sonnet-4-6` (STANDARD, inherited from `model`)
 
 #### Available `[provider]` fields
 

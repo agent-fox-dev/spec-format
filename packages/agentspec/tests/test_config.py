@@ -232,3 +232,154 @@ class TestConfigSmoke:
 
         config = load_config()
         assert config.model == "env-model"
+
+
+class TestPerPhaseModelConfig:
+    """Tests for per-phase model tier overrides (Issue #94)."""
+
+    def test_assess_model_override(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """TS-NS-1: assess_model routes assess phase to the specified tier.
+
+        Requirement: NS-REQ-1
+        """
+        config_toml.write_text(
+            '[model]\nmodel = "STANDARD"\nassess_model = "SIMPLE"\n'
+        )
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.assess_model == "SIMPLE"
+        assert config.model_for_phase("assess") == "SIMPLE"
+        # Other phases unaffected.
+        assert config.model_for_phase("refine") == "STANDARD"
+        assert config.model_for_phase("generate") == "STANDARD"
+
+    def test_generate_model_override(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """TS-NS-2: generate_model routes artifact generation to the specified tier.
+
+        Requirement: NS-REQ-2
+        """
+        config_toml.write_text(
+            '[model]\nmodel = "STANDARD"\ngenerate_model = "ADVANCED"\n'
+        )
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.generate_model == "ADVANCED"
+        assert config.model_for_phase("generate") == "ADVANCED"
+        # Other phases unaffected.
+        assert config.model_for_phase("assess") == "STANDARD"
+        assert config.model_for_phase("refine") == "STANDARD"
+
+    def test_backward_compat_no_per_phase_fields(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """TS-NS-3: Existing single-model configs route all phases to the top-level model.
+
+        Requirement: NS-REQ-3
+        """
+        config_toml.write_text('[model]\nmodel = "ADVANCED"\n')
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.model == "ADVANCED"
+        assert config.assess_model is None
+        assert config.refine_model is None
+        assert config.generate_model is None
+        for phase in ("assess", "refine", "generate"):
+            assert config.model_for_phase(phase) == "ADVANCED"
+
+    def test_per_phase_accepts_direct_model_id(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """TS-NS-4: Per-phase fields accept direct model IDs (not only tier names).
+
+        Requirement: NS-REQ-4
+        """
+        config_toml.write_text(
+            '[model]\nmodel = "STANDARD"\nassess_model = "claude-haiku-4-5"\n'
+        )
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.assess_model == "claude-haiku-4-5"
+        assert config.model_for_phase("assess") == "claude-haiku-4-5"
+
+    def test_refine_model_override(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """refine_model routes the refine phase to the specified tier."""
+        config_toml.write_text(
+            '[model]\nmodel = "SIMPLE"\nrefine_model = "STANDARD"\n'
+        )
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.refine_model == "STANDARD"
+        assert config.model_for_phase("refine") == "STANDARD"
+        assert config.model_for_phase("assess") == "SIMPLE"
+
+    def test_unknown_phase_falls_back_to_model(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """model_for_phase returns the top-level model for unknown phase names."""
+        config_toml.write_text(
+            '[model]\nmodel = "STANDARD"\nassess_model = "SIMPLE"\n'
+        )
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.model_for_phase("unknown") == "STANDARD"
+        assert config.model_for_phase("") == "STANDARD"
+
+    def test_all_three_overrides_at_once(
+        self,
+        clean_env: None,
+        mock_home: Path,
+        config_toml: Path,
+    ) -> None:
+        """All three per-phase overrides can be set simultaneously."""
+        config_toml.write_text(
+            "[model]\n"
+            'model = "STANDARD"\n'
+            'assess_model = "SIMPLE"\n'
+            'refine_model = "STANDARD"\n'
+            'generate_model = "ADVANCED"\n'
+        )
+        from agentspec.config import load_config
+
+        config = load_config()
+        assert config.model_for_phase("assess") == "SIMPLE"
+        assert config.model_for_phase("refine") == "STANDARD"
+        assert config.model_for_phase("generate") == "ADVANCED"
+
+    def test_default_per_phase_fields_are_none(self) -> None:
+        """Per-phase fields default to None when not set."""
+        from agentspec.config import AgentSpecConfig
+
+        config = AgentSpecConfig()
+        assert config.assess_model is None
+        assert config.refine_model is None
+        assert config.generate_model is None

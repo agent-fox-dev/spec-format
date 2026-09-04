@@ -374,3 +374,125 @@ func TestLoadConfig_EnvOverrideWithoutFile(t *testing.T) {
 		t.Errorf("Model = %q; want %q (AF_SPEC_MODEL should apply without config file)", cfg.Model, "ENV_ONLY")
 	}
 }
+
+// TestTS_NS_5_PerPhaseModelFields verifies that LoadConfig reads
+// assess_model, refine_model, and generate_model from the [model] section
+// and that ModelForPhase returns the correct tier for each phase.
+// Test Spec: TS-NS-5, Requirement: NS-REQ-5
+func TestTS_NS_5_PerPhaseModelFields(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	configContent := `[model]
+model = "ADVANCED"
+assess_model = "SIMPLE"
+generate_model = "STANDARD"
+`
+	writeTestFile(t, filepath.Join(tmpDir, ".specs", "config.toml"), configContent)
+	chdirTemp(t, tmpDir)
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AF_SPEC_MODEL", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() returned error: %v", err)
+	}
+
+	// Top-level model.
+	if cfg.Model != "ADVANCED" {
+		t.Errorf("Model = %q; want %q", cfg.Model, "ADVANCED")
+	}
+	// Per-phase overrides.
+	if cfg.AssessModel != "SIMPLE" {
+		t.Errorf("AssessModel = %q; want %q", cfg.AssessModel, "SIMPLE")
+	}
+	if cfg.RefineModel != "" {
+		t.Errorf("RefineModel = %q; want empty (not set)", cfg.RefineModel)
+	}
+	if cfg.GenerateModel != "STANDARD" {
+		t.Errorf("GenerateModel = %q; want %q", cfg.GenerateModel, "STANDARD")
+	}
+	// ModelForPhase resolution.
+	if got := cfg.ModelForPhase("assess"); got != "SIMPLE" {
+		t.Errorf("ModelForPhase(assess) = %q; want %q", got, "SIMPLE")
+	}
+	if got := cfg.ModelForPhase("refine"); got != "ADVANCED" {
+		t.Errorf("ModelForPhase(refine) = %q; want %q (should inherit Model)", got, "ADVANCED")
+	}
+	if got := cfg.ModelForPhase("generate"); got != "STANDARD" {
+		t.Errorf("ModelForPhase(generate) = %q; want %q", got, "STANDARD")
+	}
+}
+
+// TestTS_NS_3_BackwardCompatNoPerPhaseFields verifies that when no per-phase
+// fields are set, all phases return the top-level model (backward compat).
+// Test Spec: TS-NS-3, Requirement: NS-REQ-3
+func TestTS_NS_3_BackwardCompatNoPerPhaseFields(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	configContent := `[model]
+model = "ADVANCED"
+`
+	writeTestFile(t, filepath.Join(tmpDir, ".specs", "config.toml"), configContent)
+	chdirTemp(t, tmpDir)
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AF_SPEC_MODEL", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() returned error: %v", err)
+	}
+
+	for _, phase := range []string{"assess", "refine", "generate", "unknown"} {
+		if got := cfg.ModelForPhase(phase); got != "ADVANCED" {
+			t.Errorf("ModelForPhase(%q) = %q; want %q", phase, got, "ADVANCED")
+		}
+	}
+}
+
+// TestTS_NS_4_PerPhaseAcceptsModelID verifies that per-phase fields accept
+// direct model IDs (not only tier names).
+// Test Spec: TS-NS-4, Requirement: NS-REQ-4
+func TestTS_NS_4_PerPhaseAcceptsModelID(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	configContent := `[model]
+model = "STANDARD"
+assess_model = "claude-haiku-4-5"
+`
+	writeTestFile(t, filepath.Join(tmpDir, ".specs", "config.toml"), configContent)
+	chdirTemp(t, tmpDir)
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AF_SPEC_MODEL", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() returned error: %v", err)
+	}
+
+	if cfg.AssessModel != "claude-haiku-4-5" {
+		t.Errorf("AssessModel = %q; want %q", cfg.AssessModel, "claude-haiku-4-5")
+	}
+	if got := cfg.ModelForPhase("assess"); got != "claude-haiku-4-5" {
+		t.Errorf("ModelForPhase(assess) = %q; want %q", got, "claude-haiku-4-5")
+	}
+}
+
+// TestModelForPhase_FallbackForUnknownPhase verifies that ModelForPhase
+// returns the top-level Model when called with an unrecognised phase name.
+func TestModelForPhase_FallbackForUnknownPhase(t *testing.T) {
+	cfg := AgentSpecConfig{
+		Model:         "STANDARD",
+		AssessModel:   "SIMPLE",
+		GenerateModel: "ADVANCED",
+	}
+
+	if got := cfg.ModelForPhase("unknown"); got != "STANDARD" {
+		t.Errorf("ModelForPhase(unknown) = %q; want %q", got, "STANDARD")
+	}
+	if got := cfg.ModelForPhase(""); got != "STANDARD" {
+		t.Errorf("ModelForPhase(\"\") = %q; want %q", got, "STANDARD")
+	}
+}

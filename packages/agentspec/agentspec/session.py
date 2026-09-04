@@ -319,7 +319,7 @@ class SpecSession:
         except (OSError, ValueError, KeyError):
             landscape = None
 
-        agent = _create_agent()
+        agent = _create_agent("assess")
 
         try:
             assessment = await agent.assess_prd(
@@ -380,7 +380,7 @@ class SpecSession:
         assessment_index = len(self._assessment_history) - 1
         timestamp = _utcnow()
 
-        agent = _create_agent()
+        agent = _create_agent("refine")
 
         try:
             updated_prd, new_assessment = await agent.refine_prd(
@@ -485,7 +485,7 @@ class SpecSession:
         except (OSError, ValueError, KeyError):
             landscape = None
 
-        agent = _create_agent()
+        agent = _create_agent("generate")
 
         # Detect existing artifacts for resume (03-REQ-6.E2).
         # Only check on resume (was_generating=True) — on a fresh generation
@@ -810,15 +810,20 @@ def _utcnow() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _create_agent() -> SpecAgent:
-    """Create a SpecAgent with the configured model tier.
+def _create_agent(phase: str = "") -> SpecAgent:
+    """Create a SpecAgent with the model tier for *phase*.
 
     ``ai_call()`` (used inside ``SpecAgent._call_api``) creates its own
     client per call, so the agent only needs the model tier name.
 
+    Args:
+        phase: The pipeline phase name — one of ``"assess"``, ``"refine"``,
+            or ``"generate"``.  When empty or unrecognised, the top-level
+            ``model`` config value is used.
+
     """
     config = load_config()
-    return SpecAgent(config.model)
+    return SpecAgent(config.model_for_phase(phase))
 
 
 def _error_to_dict(exc: AgentError) -> dict[str, Any]:

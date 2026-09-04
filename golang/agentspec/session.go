@@ -643,7 +643,7 @@ func (s *SpecSession) Assess(ctx context.Context) (Assessment, error) {
 	landscape := s.loadSiblingLandscape()
 
 	// Resolve the agent to use.
-	agent := s.resolveAgent()
+	agent := s.resolveAgent("assess")
 
 	// Extract spec name from directory basename.
 	specName := filepath.Base(s.specDir)
@@ -703,7 +703,7 @@ func (s *SpecSession) Refine(ctx context.Context, answers map[string]string) (As
 	landscape := s.loadSiblingLandscape()
 
 	// Resolve the agent to use.
-	agent := s.resolveAgent()
+	agent := s.resolveAgent("refine")
 
 	// Build agent options.
 	opts := []AgentOption{
@@ -756,12 +756,18 @@ func (s *SpecSession) readPRD() (string, error) {
 }
 
 // resolveAgent returns the assessor to use — the injected mock if set,
-// or a new SpecAgent with the default model tier.
-func (s *SpecSession) resolveAgent() assessor {
+// or a new SpecAgent configured with the model tier appropriate for phase.
+// phase should be one of "assess", "refine", or "generate".
+// If LoadConfig fails (e.g. no config file), it falls back to "STANDARD".
+func (s *SpecSession) resolveAgent(phase string) assessor {
 	if s.agent != nil {
 		return s.agent
 	}
-	return NewSpecAgent("STANDARD")
+	cfg, err := LoadConfig()
+	if err != nil {
+		return NewSpecAgent("STANDARD")
+	}
+	return NewSpecAgent(cfg.ModelForPhase(phase))
 }
 
 // persistError sets the LastErr field and persists the session state.
@@ -856,7 +862,7 @@ func (s *SpecSession) Generate(ctx context.Context) (GenerateResult, error) {
 
 	// Only call GenerateArtifacts if there are missing artifacts.
 	if len(existing) < len(artifactNameToFile) {
-		agent := s.resolveAgent()
+		agent := s.resolveAgent("generate")
 
 		// Extract spec ID and name from the directory basename.
 		dirName := filepath.Base(s.specDir)

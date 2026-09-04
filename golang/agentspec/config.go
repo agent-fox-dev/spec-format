@@ -12,14 +12,44 @@ import (
 // config.toml with optional environment variable overrides.
 type AgentSpecConfig struct {
 	Model         string
+	AssessModel   string // optional per-phase override; empty means use Model
+	RefineModel   string // optional per-phase override; empty means use Model
+	GenerateModel string // optional per-phase override; empty means use Model
 	AuthMethod    string
 	VertexProject string
 	VertexRegion  string
 }
 
+// ModelForPhase returns the model tier or ID to use for the given phase.
+// It looks up the per-phase override field; when that field is empty (not
+// configured), it falls back to the top-level Model value.
+//
+// Recognised phase names: "assess", "refine", "generate".
+// Unknown phase names fall back to Model.
+func (c AgentSpecConfig) ModelForPhase(phase string) string {
+	switch phase {
+	case "assess":
+		if c.AssessModel != "" {
+			return c.AssessModel
+		}
+	case "refine":
+		if c.RefineModel != "" {
+			return c.RefineModel
+		}
+	case "generate":
+		if c.GenerateModel != "" {
+			return c.GenerateModel
+		}
+	}
+	return c.Model
+}
+
 // configFileModel maps to the [model] TOML section.
 type configFileModel struct {
-	Model string `toml:"model"`
+	Model         string `toml:"model"`
+	AssessModel   string `toml:"assess_model"`
+	RefineModel   string `toml:"refine_model"`
+	GenerateModel string `toml:"generate_model"`
 }
 
 // configFileProvider maps to the [provider] TOML section.
@@ -157,6 +187,9 @@ func loadConfigFile(path string) (bool, AgentSpecConfig, error) {
 
 	cfg := AgentSpecConfig{
 		Model:         cf.Model.Model,
+		AssessModel:   cf.Model.AssessModel,
+		RefineModel:   cf.Model.RefineModel,
+		GenerateModel: cf.Model.GenerateModel,
 		AuthMethod:    cf.Provider.AuthMethod,
 		VertexProject: cf.Provider.VertexProject,
 		VertexRegion:  cf.Provider.VertexRegion,

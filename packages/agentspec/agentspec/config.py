@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentspec.errors import ConfigError
@@ -24,22 +24,59 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "STANDARD"
 
+_PHASE_FIELDS: dict[str, str] = {
+    "assess": "assess_model",
+    "refine": "refine_model",
+    "generate": "generate_model",
+}
+
 
 @dataclass
 class AgentSpecConfig:
     """Resolved configuration for agentspec.
 
     Attributes:
-        model: The Anthropic model to use for spec generation.
+        model: The Anthropic model to use for all phases by default.
+        assess_model: Optional model tier or ID for the assess phase.
+            When ``None``, falls back to ``model``.
+        refine_model: Optional model tier or ID for the refine phase.
+            When ``None``, falls back to ``model``.
+        generate_model: Optional model tier or ID for the generate phase
+            (covers artifact generation and repair).
+            When ``None``, falls back to ``model``.
         auth_method: Authentication method (e.g. ``"api_key"``, ``"vertex"``).
         vertex_project: Google Cloud project ID for Vertex AI.
         vertex_region: Google Cloud region for Vertex AI.
     """
 
     model: str = _DEFAULT_MODEL
+    assess_model: str | None = field(default=None)
+    refine_model: str | None = field(default=None)
+    generate_model: str | None = field(default=None)
     auth_method: str = ""
     vertex_project: str = ""
     vertex_region: str = ""
+
+    def model_for_phase(self, phase: str) -> str:
+        """Return the model tier or ID to use for *phase*.
+
+        Looks up the per-phase override field.  When it is ``None`` (not
+        configured), falls back to the top-level ``model`` value.
+
+        Args:
+            phase: One of ``"assess"``, ``"refine"``, ``"generate"``.
+                Unknown phase names fall back to ``model``.
+
+        Returns:
+            A model tier name (e.g. ``"STANDARD"``) or a direct model ID
+            (e.g. ``"claude-haiku-4-5"``).
+        """
+        attr = _PHASE_FIELDS.get(phase)
+        if attr is not None:
+            override: str | None = getattr(self, attr, None)
+            if override is not None:
+                return override
+        return self.model
 
 
 def load_config() -> AgentSpecConfig:
@@ -68,8 +105,13 @@ def load_config() -> AgentSpecConfig:
     if toml_data is not None:
         # Read model from [model] section
         model_section = toml_data.get("model")
-        if isinstance(model_section, dict) and "model" in model_section:
-            config.model = str(model_section["model"])
+        if isinstance(model_section, dict):
+            if "model" in model_section:
+                config.model = str(model_section["model"])
+            # Read optional per-phase overrides.
+            for _phase, _attr in _PHASE_FIELDS.items():
+                if _attr in model_section:
+                    setattr(config, _attr, str(model_section[_attr]))
 
         # Read provider fields from [provider] section
         provider_section = toml_data.get("provider")
